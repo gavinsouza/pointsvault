@@ -249,11 +249,6 @@ function PointsTable({ txns, openingBalance }) {
           </tr>
         </thead>
         <tbody>
-          <tr style={{borderBottom:`1px solid ${bdr}`,background:acc+"06"}}>
-            <td style={{padding:"10px 12px",color:mut}} colSpan={2}><em style={{color:acc,fontSize:12,fontWeight:600}}>Opening Balance</em></td>
-            <td/><td/>
-            <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:acc}}>{(openingBalance||0).toLocaleString()}</td>
-          </tr>
           {display.map(t=>(
             <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
               <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
@@ -263,6 +258,11 @@ function PointsTable({ txns, openingBalance }) {
               <td style={{padding:"10px 12px",textAlign:"right",color:txt,fontWeight:600}}>{t.closing.toLocaleString()}</td>
             </tr>
           ))}
+          <tr style={{borderTop:`2px solid ${bdr}`,background:acc+"06"}}>
+            <td style={{padding:"10px 12px",color:mut}} colSpan={2}><em style={{color:acc,fontSize:12,fontWeight:600}}>Opening Balance</em></td>
+            <td/><td/>
+            <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:acc}}>{(openingBalance||0).toLocaleString()}</td>
+          </tr>
         </tbody>
       </table>
     </div>
@@ -307,14 +307,18 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
 
   const saveEdit=async()=>{
     if(!ef.name?.trim()) return alert("Name required");
-    // opening_balance edit rewrites the stored opening_balance field only; points_balance stays as-is
+    const newOpening=parseInt(ef.opening_balance)||0;
+    // points_balance = new opening balance + sum of all recorded transactions
+    const txnSum=txns.reduce((a,t)=>a+t.points,0);
+    const newBalance=newOpening+txnSum;
     const p={
       name:ef.name.trim(), bank:ef.bank, last4:ef.last4, network:ef.network,
       color:ef.color, points_currency:ef.points_currency,
       inr_per_point:parseFloat(ef.inr_per_point)||0,
       annual_fee:parseFloat(ef.annual_fee)||0,
       stmt_date:parseInt(ef.stmt_date)||null,
-      opening_balance:parseInt(ef.opening_balance)||0,
+      opening_balance:newOpening,
+      points_balance:newBalance,
     };
     const {error}=await db.from("cc_cards").update(card.id,p);
     if(error) return alert("Error: "+JSON.stringify(error));
@@ -348,7 +352,6 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
         </div>
         <div style={{display:"flex",gap:12,marginTop:18,flexWrap:"wrap"}}>
           <StatBox label="Current Balance" value={(card.points_balance||0).toLocaleString()+" "+(card.points_currency||"pts")} color={txt}/>
-          <StatBox label="Opening Balance" value={(card.opening_balance||0).toLocaleString()} color={mut}/>
           {card.inr_per_point>0&&<StatBox label="Approx INR Value" value={inrFmt(inrVal)} sub={`₹${card.inr_per_point}/pt`} color={grn}/>}
           {card.stmt_date&&<StatBox label="Statement Date" value={card.stmt_date+"th"} color={acc}/>}
           {card.annual_fee>0&&<StatBox label="Annual Fee" value={"₹"+Number(card.annual_fee).toLocaleString()} color={red}/>}
@@ -459,7 +462,10 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
 
   const saveEdit=async()=>{
     if(!ef.name?.trim()) return alert("Name required");
-    const p={name:ef.name.trim(),category:ef.category,tier:ef.tier,color:ef.color,expiry_date:ef.expiry_date||null,expiry_rule:ef.expiry_rule,inr_per_point:parseFloat(ef.inr_per_point)||0,opening_balance:parseInt(ef.opening_balance)||0};
+    const newOpening=parseInt(ef.opening_balance)||0;
+    const txnSum=txns.reduce((a,t)=>a+t.points,0);
+    const newBalance=newOpening+txnSum;
+    const p={name:ef.name.trim(),category:ef.category,tier:ef.tier,color:ef.color,expiry_date:ef.expiry_date||null,expiry_rule:ef.expiry_rule,inr_per_point:parseFloat(ef.inr_per_point)||0,opening_balance:newOpening,points_balance:newBalance};
     const {error}=await db.from("loyalty_programs").update(prog.id,p);
     if(error) return alert("Error: "+JSON.stringify(error));
     setProg(x=>({...x,...p})); setShowEdit(false);
@@ -493,7 +499,6 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
         </div>
         <div style={{display:"flex",gap:12,marginTop:18,flexWrap:"wrap"}}>
           <StatBox label="Current Balance" value={(prog.points_balance||0).toLocaleString()+" pts"} color={txt}/>
-          <StatBox label="Opening Balance" value={(prog.opening_balance||0).toLocaleString()} color={mut}/>
           {prog.inr_per_point>0&&<StatBox label="Approx INR Value" value={inrFmt(inrVal)} sub={`₹${prog.inr_per_point}/pt`} color={grn}/>}
           {prog.expiry_date&&<StatBox label="Expiry" value={d!==null?`${d}d left`:"—"} color={exp?red:acc}/>}
         </div>
