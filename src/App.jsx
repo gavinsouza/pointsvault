@@ -171,7 +171,7 @@ function Setup({ onDone }) {
       <div style={{maxWidth:420,width:"100%"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:32,fontWeight:900,color:acc,letterSpacing:"-0.04em"}}>PointsVault</div>
-          <div style={{fontSize:14,color:mut,marginTop:6}}>Your loyalty & cards dashboard</div>
+          <div style={{fontSize:14,color:mut,marginTop:6}}>Your loyalty &amp; cards dashboard</div>
         </div>
         <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:20,padding:28,boxShadow:"0 8px 32px rgba(79,70,229,0.08)"}}>
           {lbl("Supabase Project URL")}<input style={inp} placeholder="https://xxxx.supabase.co" value={url} onChange={e=>setUrl(e.target.value)}/>
@@ -1153,8 +1153,7 @@ Return only the JSON array starting with [ and ending with ].`;
     reader.onload = (e) => {
       try {
         const text = e.target.result;
-        const lines = text.trim().split("
-").map(l => l.split(",").map(c => c.trim().replace(/^"|"$/g, "")));
+        const lines = text.trim().split("\n").map(l => l.split(",").map(c => c.trim().replace(/^"|"$/g, "")));
         if (lines.length < 2) throw new Error("CSV appears empty");
 
         const headers = lines[0].map(h => h.toLowerCase());
@@ -1448,7 +1447,7 @@ export default function App() {
       <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:surf,borderRight:`1.5px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
         <div style={{padding:"24px 20px 20px",borderBottom:`1.5px solid ${bdr}`}}>
           <div style={{fontSize:18,fontWeight:900,color:acc,letterSpacing:"-0.03em"}}>PointsVault</div>
-          <div style={{fontSize:11,color:mut,marginTop:3,letterSpacing:"0.04em"}}>Loyalty & Cards Tracker</div>
+          <div style={{fontSize:11,color:mut,marginTop:3,letterSpacing:"0.04em"}}>Loyalty &amp; Cards Tracker</div>
         </div>
         <div style={{flex:1,paddingTop:10,overflowY:"auto"}}>
           {TABS.map(t=>(
