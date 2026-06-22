@@ -61,7 +61,9 @@ CREATE TABLE IF NOT EXISTS point_transactions (
 ALTER TABLE cc_cards ADD COLUMN IF NOT EXISTS opening_balance bigint DEFAULT 0;
 ALTER TABLE cc_cards ADD COLUMN IF NOT EXISTS inr_per_point numeric DEFAULT 0;
 ALTER TABLE loyalty_programs ADD COLUMN IF NOT EXISTS opening_balance bigint DEFAULT 0;
-ALTER TABLE loyalty_programs ADD COLUMN IF NOT EXISTS inr_per_point numeric DEFAULT 0;`;
+ALTER TABLE loyalty_programs ADD COLUMN IF NOT EXISTS inr_per_point numeric DEFAULT 0;
+ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS amount numeric DEFAULT 0;
+ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS txn_type text DEFAULT 'debit';`;
 
 // ── Theme: warm light ─────────────────────────────────────────────────────────
 const bg    = "#f7f5f2";   // warm off-white
@@ -1061,6 +1063,351 @@ function Settings({ onDisconnect }) {
   );
 }
 
+// ── Statement Import ──────────────────────────────────────────────────────────
+function StatementImport({ db }) {
+  const [cards, setCards] = useState([]);
+  const [selectedCard, setSelectedCard] = useState("");
+  const [mode, setMode] = useState("pdf"); // "pdf" | "csv"
+  const [status, setStatus] = useState("idle"); // idle | parsing | preview | importing | done
+  const [parsed, setParsed] = useState([]);
+  const [selected, setSelected] = useState({});
+  const [error, setError] = useState("");
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("pv_claude_key") || "");
+  const [dragOver, setDragOver] = useState(false);
+  const [importedCount, setImportedCount] = useState(0);
+
+  useEffect(() => { db.from("cc_cards").select().then(r => setCards(r.data || [])); }, []);
+
+  const saveApiKey = (k) => { setApiKey(k); localStorage.setItem("pv_claude_key", k); };
+
+  // ── PDF via Claude API ──────────────────────────────────────────────────────
+  const parsePDF = async (file) => {
+    if (!apiKey) return setError("Enter your Claude API key in the field above first.");
+    if (!selectedCard) return setError("Select a credit card first.");
+    setStatus("parsing"); setError(""); setParsed([]);
+
+    const base64 = await new Promise((res, rej) => {
+      const r = new FileReader();
+      r.onload = () => res(r.result.split(",")[1]);
+      r.onerror = rej;
+      r.readAsDataURL(file);
+    });
+
+    const prompt = `You are a bank statement parser. Extract ALL transactions from this credit card statement PDF.
+Return ONLY a JSON array, no markdown, no explanation. Each item must have exactly these fields:
+- date: string in YYYY-MM-DD format
+- description: merchant/transaction name (string)
+- amount: number (INR amount, always positive)
+- type: "debit" or "credit" (debit = spend/purchase, credit = payment/refund/cashback)
+- points: number (reward points earned for this transaction, 0 if not shown)
+
+If points are not shown in the statement, set points to 0.
+Return only the JSON array starting with [ and ending with ].`;
+
+    try {
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-6",
+          max_tokens: 4096,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+              { type: "text", text: prompt }
+            ]
+          }]
+        })
+      });
+
+      if (!resp.ok) {
+        const err = await resp.json();
+        throw new Error(err.error?.message || "Claude API error");
+      }
+
+      const data = await resp.json();
+      const raw = data.content.map(b => b.text || "").join("");
+      const clean = raw.replace(/```json|```/g, "").trim();
+      const txns = JSON.parse(clean);
+      const withId = txns.map((t, i) => ({ ...t, _id: i }));
+      setParsed(withId);
+      setSelected(Object.fromEntries(withId.map(t => [t._id, true])));
+      setStatus("preview");
+    } catch (e) {
+      setError("Parse failed: " + e.message);
+      setStatus("idle");
+    }
+  };
+
+  // ── CSV parser ──────────────────────────────────────────────────────────────
+  const parseCSV = (file) => {
+    if (!selectedCard) return setError("Select a credit card first.");
+    setStatus("parsing"); setError("");
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target.result;
+        const lines = text.trim().split("
+").map(l => l.split(",").map(c => c.trim().replace(/^"|"$/g, "")));
+        if (lines.length < 2) throw new Error("CSV appears empty");
+
+        const headers = lines[0].map(h => h.toLowerCase());
+        const dateIdx = headers.findIndex(h => h.includes("date"));
+        const descIdx = headers.findIndex(h => h.includes("desc") || h.includes("narrat") || h.includes("particular") || h.includes("merchant"));
+        const amtIdx  = headers.findIndex(h => h.includes("amount") || h.includes("debit") || h.includes("withdrawal"));
+        const crIdx   = headers.findIndex(h => h.includes("credit") || h.includes("deposit"));
+        const ptsIdx  = headers.findIndex(h => h.includes("point") || h.includes("reward"));
+
+        if (dateIdx === -1 || descIdx === -1) throw new Error("Could not find Date or Description columns. Headers found: " + headers.join(", "));
+
+        const txns = lines.slice(1).filter(r => r.length > 1 && r[dateIdx]).map((r, i) => {
+          const rawDate = r[dateIdx] || "";
+          // Try to parse various date formats
+          let date = rawDate;
+          const parts = rawDate.split(/[-\/]/);
+          if (parts.length === 3) {
+            // DD-MM-YYYY or DD/MM/YYYY
+            if (parts[0].length <= 2 && parseInt(parts[0]) <= 31) {
+              date = `${parts[2].length === 2 ? "20" + parts[2] : parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+            }
+          }
+          const debit  = parseFloat((r[amtIdx] || "0").replace(/[^0-9.]/g, "")) || 0;
+          const credit = crIdx >= 0 ? parseFloat((r[crIdx] || "0").replace(/[^0-9.]/g, "")) || 0 : 0;
+          const amount = debit > 0 ? debit : credit;
+          const type   = credit > 0 && debit === 0 ? "credit" : "debit";
+          const points = ptsIdx >= 0 ? parseFloat((r[ptsIdx] || "0").replace(/[^0-9.]/g, "")) || 0 : 0;
+          return { _id: i, date, description: r[descIdx] || "—", amount, type, points };
+        }).filter(t => t.amount > 0);
+
+        setParsed(txns);
+        setSelected(Object.fromEntries(txns.map(t => [t._id, true])));
+        setStatus("preview");
+      } catch (err) {
+        setError("CSV parse error: " + err.message);
+        setStatus("idle");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleFile = (file) => {
+    if (!file) return;
+    if (mode === "pdf" && file.type === "application/pdf") parsePDF(file);
+    else if (mode === "csv" && (file.name.endsWith(".csv") || file.type === "text/csv")) parseCSV(file);
+    else setError(`Please upload a ${mode.toUpperCase()} file.`);
+  };
+
+  // ── Import confirmed transactions ───────────────────────────────────────────
+  const doImport = async () => {
+    const card = cards.find(c => c.name === selectedCard);
+    if (!card) return;
+    setStatus("importing");
+    const toImport = parsed.filter(t => selected[t._id]);
+    let ptsDelta = 0;
+
+    for (const t of toImport) {
+      const pts = t.points || 0;
+      const desc = `${t.description} — ₹${t.amount.toLocaleString("en-IN")} ${t.type === "credit" ? "(credit)" : ""}`;
+      await db.from("point_transactions").insert({
+        program_name: selectedCard,
+        program_type: "card",
+        points: pts,
+        description: desc,
+        txn_date: t.date,
+      });
+      ptsDelta += pts;
+    }
+
+    if (ptsDelta > 0) {
+      const newBal = (card.points_balance || 0) + ptsDelta;
+      await db.from("cc_cards").update(card.id, { points_balance: newBal });
+    }
+
+    setImportedCount(toImport.length);
+    setStatus("done");
+  };
+
+  const reset = () => { setStatus("idle"); setParsed([]); setSelected({}); setError(""); setImportedCount(0); };
+  const toggleAll = (val) => setSelected(Object.fromEntries(parsed.map(t => [t._id, val])));
+  const selCount = Object.values(selected).filter(Boolean).length;
+
+  return (
+    <div>
+      <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em",marginBottom:6}}>Import Statement</div>
+      <div style={{fontSize:13,color:mut,marginBottom:24}}>Import transactions from a PDF or CSV bank statement</div>
+
+      {/* Done state */}
+      {status === "done" && (
+        <div style={{background:"#ecfdf5",border:`1.5px solid #6ee7b7`,borderRadius:14,padding:"20px 24px",maxWidth:560}}>
+          <div style={{fontSize:18,fontWeight:800,color:grn,marginBottom:8}}>✓ Import complete!</div>
+          <div style={{fontSize:14,color:txt,marginBottom:16}}>{importedCount} transactions imported into <strong>{selectedCard}</strong>.</div>
+          <button style={pbtn} onClick={reset}>Import Another Statement</button>
+        </div>
+      )}
+
+      {status !== "done" && (
+        <div style={{maxWidth:680}}>
+
+          {/* Step 1 — Card + Mode */}
+          <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 1 — Select Card & Format</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:0}}>
+              <div>
+                {lbl("Credit Card")}
+                <select style={inp} value={selectedCard} onChange={e=>setSelectedCard(e.target.value)}>
+                  <option value="">— select card —</option>
+                  {cards.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                </select>
+              </div>
+              <div>
+                {lbl("Import Format")}
+                <div style={{display:"flex",gap:8}}>
+                  {["pdf","csv"].map(m=>(
+                    <button key={m} onClick={()=>{ setMode(m); reset(); }} style={{flex:1,padding:"9px",borderRadius:8,border:`1.5px solid ${mode===m?acc:bdr}`,cursor:"pointer",fontSize:13,fontWeight:mode===m?700:400,background:mode===m?acc+"10":"transparent",color:mode===m?acc:mut,textTransform:"uppercase",letterSpacing:"0.05em"}}>
+                      {m === "pdf" ? "📄 PDF" : "📊 CSV"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Step 2 — Claude API key (PDF only) */}
+          {mode === "pdf" && (
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 2 — Claude API Key</div>
+              <div style={{fontSize:12,color:mut,marginBottom:10}}>
+                Your key is saved locally in the browser. Get one free at{" "}
+                <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{color:acc}}>console.anthropic.com</a>
+              </div>
+              {lbl("Anthropic API Key")}
+              <input style={inp} type="password" placeholder="sk-ant-..." value={apiKey} onChange={e=>saveApiKey(e.target.value)}/>
+              <div style={{fontSize:11,color:mut,marginTop:-8}}>Stored only in your browser's localStorage — never sent to any server except Anthropic.</div>
+            </div>
+          )}
+
+          {/* Step 3 — Upload */}
+          {status === "idle" && (
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>
+                {mode === "pdf" ? "Step 3" : "Step 2"} — Upload File
+              </div>
+              {mode === "csv" && (
+                <div style={{fontSize:12,color:mut,marginBottom:12,padding:"10px 14px",background:acc+"08",borderRadius:8,border:`1px solid ${acc}22`}}>
+                  💡 Most banks offer CSV/Excel download from net banking. The file should have columns for Date, Description, and Amount. Points column is optional.
+                </div>
+              )}
+              <div
+                onDragOver={e=>{ e.preventDefault(); setDragOver(true); }}
+                onDragLeave={()=>setDragOver(false)}
+                onDrop={e=>{ e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files[0]); }}
+                style={{border:`2px dashed ${dragOver?acc:bdr}`,borderRadius:12,padding:"36px 20px",textAlign:"center",background:dragOver?acc+"06":surf2,transition:"all 0.15s",cursor:"pointer"}}
+                onClick={()=>document.getElementById("stmt-file-input").click()}
+              >
+                <div style={{fontSize:32,marginBottom:10}}>{mode==="pdf"?"📄":"📊"}</div>
+                <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:6}}>
+                  Drop your {mode.toUpperCase()} here or click to browse
+                </div>
+                <div style={{fontSize:12,color:mut}}>
+                  {mode==="pdf"?"Any Indian bank statement PDF — Claude will extract all transactions automatically":"CSV file with Date, Description, Amount columns"}
+                </div>
+                <input id="stmt-file-input" type="file" accept={mode==="pdf"?".pdf":".csv,.txt"} style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+              </div>
+              {error && <div style={{color:red,fontSize:12,marginTop:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8,border:`1px solid #fecaca`}}>{error}</div>}
+            </div>
+          )}
+
+          {/* Parsing spinner */}
+          {status === "parsing" && (
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"40px 22px",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:28,marginBottom:12}}>⏳</div>
+              <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:6}}>
+                {mode==="pdf"?"Claude is reading your statement…":"Parsing CSV…"}
+              </div>
+              <div style={{fontSize:13,color:mut}}>
+                {mode==="pdf"?"This takes 10–30 seconds depending on statement length":"Just a moment…"}
+              </div>
+            </div>
+          )}
+
+          {/* Preview */}
+          {status === "preview" && (
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:txt}}>{parsed.length} transactions found</div>
+                  <div style={{fontSize:12,color:mut,marginTop:2}}>{selCount} selected for import · Deselect any you want to skip</div>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>toggleAll(true)}>Select All</button>
+                  <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>toggleAll(false)}>Deselect All</button>
+                  <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={reset}>← Back</button>
+                </div>
+              </div>
+
+              <div style={{overflowX:"auto",marginBottom:16}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                  <thead>
+                    <tr style={{color:mut,fontSize:11,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
+                      <th style={{padding:"8px 10px",textAlign:"center",width:36}}>✓</th>
+                      <th style={{padding:"8px 10px",textAlign:"left"}}>Date</th>
+                      <th style={{padding:"8px 10px",textAlign:"left"}}>Description</th>
+                      <th style={{padding:"8px 10px",textAlign:"right"}}>Amount</th>
+                      <th style={{padding:"8px 10px",textAlign:"center"}}>Type</th>
+                      <th style={{padding:"8px 10px",textAlign:"right"}}>Points</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {parsed.map(t=>(
+                      <tr key={t._id} style={{borderBottom:`1px solid ${bdr}`,opacity:selected[t._id]?1:0.4,cursor:"pointer"}} onClick={()=>setSelected(s=>({...s,[t._id]:!s[t._id]}))}>
+                        <td style={{padding:"9px 10px",textAlign:"center"}}>
+                          <input type="checkbox" checked={!!selected[t._id]} onChange={()=>{}} style={{cursor:"pointer",accentColor:acc}}/>
+                        </td>
+                        <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.date}</td>
+                        <td style={{padding:"9px 10px",color:txt,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                        <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount).toLocaleString("en-IN")}</td>
+                        <td style={{padding:"9px 10px",textAlign:"center"}}>
+                          <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:t.type==="credit"?grn+"18":red+"12",color:t.type==="credit"?grn:red}}>{t.type}</span>
+                        </td>
+                        <td style={{padding:"9px 10px",textAlign:"right",color:t.points>0?acc:mut,fontWeight:t.points>0?700:400}}>{t.points>0?"+"+t.points:"-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {error && <div style={{color:red,fontSize:12,marginBottom:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8}}>{error}</div>}
+
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:12,borderTop:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+                <div style={{fontSize:13,color:mut}}>
+                  Total spend: <strong style={{color:txt}}>₹{parsed.filter(t=>t.type==="debit"&&selected[t._id]).reduce((a,t)=>a+t.amount,0).toLocaleString("en-IN")}</strong>
+                  {parsed.some(t=>t.points>0) && <span> · Points: <strong style={{color:acc}}>{parsed.filter(t=>selected[t._id]).reduce((a,t)=>a+(t.points||0),0).toLocaleString()}</strong></span>}
+                </div>
+                <button style={{...pbtn,padding:"10px 20px",opacity:selCount===0?0.5:1}} onClick={selCount>0?doImport:undefined}>
+                  Import {selCount} Transactions →
+                </button>
+              </div>
+            </div>
+          )}
+
+          {status === "importing" && (
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"40px 22px",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+              <div style={{fontSize:28,marginBottom:12}}>💾</div>
+              <div style={{fontSize:15,fontWeight:700,color:txt}}>Saving transactions…</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Shell ─────────────────────────────────────────────────────────────────────
 const TABS=[
   {id:"cards",     label:"Credit Cards",      icon:"💳"},
@@ -1069,6 +1416,7 @@ const TABS=[
   {id:"transfer",  label:"Transfer Points",   icon:"↔️"},
   {id:"vouchers",  label:"Vouchers",          icon:"🎟️"},
   {id:"settings",  label:"Settings",          icon:"🔧"},
+  {id:"import",    label:"Import Statement",   icon:"📥"},
 ];
 
 export default function App() {
@@ -1135,6 +1483,7 @@ export default function App() {
         {tab==="transfer"  && <TransferPoints db={db}/>}
         {tab==="vouchers"  && <Vouchers db={db}/>}
         {tab==="settings"  && <Settings onDisconnect={()=>setDb(null)}/>}
+        {tab==="import"    && <StatementImport db={db}/>}
       </main>
     </div>
   );
