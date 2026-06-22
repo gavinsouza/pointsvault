@@ -49,7 +49,6 @@ CREATE TABLE IF NOT EXISTS vouchers (
 );`;
 
 const bg = "#0a0e1a", surf = "#111827", bdr = "#1e2540", txt = "#e8eaf0", mut = "#4a5280", acc = "#6366f1";
-
 const inp = { width:"100%", padding:"9px 12px", background:bg, border:"1px solid #2a3050", borderRadius:8, color:txt, fontSize:13, outline:"none", boxSizing:"border-box", colorScheme:"dark", marginBottom:12 };
 const pbtn = { display:"inline-flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:8, border:"none", cursor:"pointer", fontSize:13, fontWeight:500, background:acc, color:"#fff" };
 const gbtn = { ...pbtn, background:"rgba(255,255,255,0.05)", color:"#a5b4fc" };
@@ -59,10 +58,10 @@ function Modal({ show, onClose, title, children }) {
   if (!show) return null;
   return (
     <div onClick={e => e.target===e.currentTarget && onClose()} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.9)", display:"flex", alignItems:"center", justifyContent:"center", zIndex:9999, padding:20 }}>
-      <div style={{ background:surf, border:`1px solid ${bdr}`, borderRadius:16, padding:28, width:"100%", maxWidth:460, maxHeight:"88vh", overflowY:"auto", boxShadow:"0 40px 80px rgba(0,0,0,0.9)" }}>
+      <div style={{ background:surf, border:`1px solid ${bdr}`, borderRadius:16, padding:24, width:"100%", maxWidth:460, maxHeight:"90vh", overflowY:"auto", boxShadow:"0 40px 80px rgba(0,0,0,0.9)" }}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20 }}>
           <span style={{ fontSize:16, fontWeight:700, color:"#fff" }}>{title}</span>
-          <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", color:mut, fontSize:20, lineHeight:1, padding:"0 4px" }}>×</button>
+          <button onClick={onClose} style={{ background:"none", border:"none", cursor:"pointer", color:mut, fontSize:22, lineHeight:1, padding:"0 4px" }}>×</button>
         </div>
         {children}
       </div>
@@ -70,7 +69,9 @@ function Modal({ show, onClose, title, children }) {
   );
 }
 
-function lbl(text) { return <div style={{ fontSize:11, color:mut, fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:5 }}>{text}</div>; }
+function lbl(text) {
+  return <div style={{ fontSize:11, color:mut, fontWeight:600, letterSpacing:"0.06em", textTransform:"uppercase", marginBottom:5 }}>{text}</div>;
+}
 
 // ── Setup ──────────────────────────────────────────────────────────────────────
 function Setup({ onDone }) {
@@ -100,12 +101,6 @@ function Setup({ onDone }) {
           <input style={inp} type="password" placeholder="eyJ..." value={key} onChange={e=>setKey(e.target.value)} />
           {msg && <div style={{ color:"#f87171", fontSize:12, marginBottom:10 }}>{msg}</div>}
           <button style={{ ...pbtn, width:"100%", justifyContent:"center" }} onClick={go}>Connect</button>
-          <div style={{ marginTop:16, padding:12, background:"rgba(99,102,241,0.07)", borderRadius:10, border:"1px solid rgba(99,102,241,0.15)", fontSize:12, color:mut, lineHeight:1.8 }}>
-            <div style={{ color:acc, fontWeight:700, fontSize:11, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:4 }}>Quick Setup</div>
-            1. supabase.com → New free project<br/>
-            2. Settings → Data API → copy URL + anon key<br/>
-            3. SQL Editor → run SQL from Settings tab
-          </div>
         </div>
       </div>
     </div>
@@ -120,6 +115,8 @@ function Cards({ db }) {
   const empty = { name:"", bank:"", last4:"", network:"Visa", points_balance:"", points_currency:"pts", stmt_date:"", annual_fee:"", color:"#6366f1" };
   const [f, setF] = useState(empty);
   const up = k => e => setF(p => ({ ...p, [k]: e.target.value }));
+  const nets = ["Visa","Mastercard","Amex","Diners","RuPay","Other"];
+  const nc = { Visa:"#1a1f71", Mastercard:"#eb001b", Amex:"#006fcf", Diners:"#2c2c8c", RuPay:"#ff6600", Other:acc };
 
   const load = async () => { setBusy(true); setMsg(""); const {data,error} = await db.from("cc_cards").select(); if(error) setMsg(JSON.stringify(error)); setRows(data); setBusy(false); };
   useEffect(() => { load(); }, []);
@@ -136,8 +133,6 @@ function Cards({ db }) {
   };
 
   const del = async id => { if(confirm("Delete?")) { await db.from("cc_cards").delete(id); load(); } };
-  const nets = ["Visa","Mastercard","Amex","Diners","RuPay","Other"];
-  const nc = { Visa:"#1a1f71", Mastercard:"#eb001b", Amex:"#006fcf", Diners:"#2c2c8c", RuPay:"#ff6600", Other:acc };
   const total = rows.reduce((a,c)=>a+(c.points_balance||0),0);
 
   return (
@@ -151,12 +146,9 @@ function Cards({ db }) {
       </div>
       {msg && <div style={{ color:"#f87171", fontSize:12, padding:"10px 14px", background:"rgba(239,68,68,0.08)", borderRadius:8, marginBottom:16 }}>{msg}</div>}
       {busy ? <div style={{ color:mut, padding:40, textAlign:"center" }}>Loading…</div> : rows.length===0 ? (
-        <div style={{ textAlign:"center", padding:60, color:"#2e3560" }}>
-          <div style={{ fontSize:32, marginBottom:10 }}>◈</div>
-          <div>No cards yet — click Add Card</div>
-        </div>
+        <div style={{ textAlign:"center", padding:60, color:"#2e3560" }}><div style={{ fontSize:32, marginBottom:10 }}>◈</div><div>No cards yet — click Add Card</div></div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))", gap:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:16 }}>
           {rows.map(c => (
             <div key={c.id} style={{ background:surf, border:`1px solid ${bdr}`, borderRadius:14, padding:"18px 20px", borderTop:`3px solid ${c.color||acc}`, position:"relative" }}>
               <div style={{ display:"flex", justifyContent:"space-between", marginBottom:10 }}>
@@ -243,7 +235,7 @@ function Loyalty({ db }) {
       {busy ? <div style={{ color:mut, padding:40, textAlign:"center" }}>Loading…</div> : rows.length===0 ? (
         <div style={{ textAlign:"center", padding:60, color:"#2e3560" }}><div style={{ fontSize:32, marginBottom:10 }}>◈</div><div>No programs yet</div></div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))", gap:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:16 }}>
           {rows.map(p => {
             const d = days(p.expiry_date); const exp = d!==null&&d<60;
             return (
@@ -292,18 +284,43 @@ function Loyalty({ db }) {
 function Transfers({ db }) {
   const [rows, setRows] = useState([]); const [busy, setBusy] = useState(true);
   const [show, setShow] = useState(false); const [edit, setEdit] = useState(null);
-  const empty = { from_program:"", to_program:"", ratio_from:"1", ratio_to:"1", min_transfer:"1000", max_monthly:"", transfer_time:"", notes:"" };
+  const [cards, setCards] = useState([]);
+  const [loyalties, setLoyalties] = useState([]);
+  const empty = { from_type:"card", from_program:"", to_type:"loyalty", to_program:"", ratio_from:"1", ratio_to:"1", min_transfer:"1000", max_monthly:"", transfer_time:"", notes:"" };
   const [f, setF] = useState(empty);
   const up = k => e => setF(p => ({ ...p, [k]: e.target.value }));
 
-  const load = async () => { setBusy(true); const {data} = await db.from("transfer_partners").select(); setRows(data); setBusy(false); };
+  const load = async () => {
+    setBusy(true);
+    const [t, c, l] = await Promise.all([
+      db.from("transfer_partners").select(),
+      db.from("cc_cards").select(),
+      db.from("loyalty_programs").select(),
+    ]);
+    setRows(t.data); setCards(c.data); setLoyalties(l.data);
+    setBusy(false);
+  };
   useEffect(() => { load(); }, []);
 
+  // Options for each type
+  const optionsFor = type => {
+    if (type === "card") return cards.map(c => c.name);
+    if (type === "loyalty") return loyalties.map(l => l.name);
+    return [];
+  };
+
   const openAdd = () => { setEdit(null); setF({...empty}); setShow(true); };
-  const openEdit = r => { setEdit(r); setF({ from_program:r.from_program||"", to_program:r.to_program||"", ratio_from:String(r.ratio_from||1), ratio_to:String(r.ratio_to||1), min_transfer:String(r.min_transfer||""), max_monthly:String(r.max_monthly||""), transfer_time:r.transfer_time||"", notes:r.notes||"" }); setShow(true); };
+  const openEdit = r => {
+    // Try to detect type from existing data
+    const fromIsCard = cards.some(c => c.name === r.from_program);
+    const toIsCard = cards.some(c => c.name === r.to_program);
+    setEdit(r);
+    setF({ from_type:fromIsCard?"card":"loyalty", from_program:r.from_program||"", to_type:toIsCard?"card":"loyalty", to_program:r.to_program||"", ratio_from:String(r.ratio_from||1), ratio_to:String(r.ratio_to||1), min_transfer:String(r.min_transfer||""), max_monthly:String(r.max_monthly||""), transfer_time:r.transfer_time||"", notes:r.notes||"" });
+    setShow(true);
+  };
 
   const save = async () => {
-    if (!f.from_program||!f.to_program) return alert("Both programs required");
+    if (!f.from_program||!f.to_program) return alert("Please select both programs");
     const p = { from_program:f.from_program, to_program:f.to_program, ratio_from:parseFloat(f.ratio_from)||1, ratio_to:parseFloat(f.ratio_to)||1, min_transfer:parseInt(f.min_transfer)||null, max_monthly:parseInt(f.max_monthly)||null, transfer_time:f.transfer_time, notes:f.notes };
     const {error} = edit ? await db.from("transfer_partners").update(edit.id,p) : await db.from("transfer_partners").insert(p);
     if (error) return alert("Error: "+JSON.stringify(error));
@@ -312,6 +329,9 @@ function Transfers({ db }) {
 
   const del = async id => { if(confirm("Delete?")) { await db.from("transfer_partners").delete(id); load(); } };
   const grouped = rows.reduce((a,r)=>{ (a[r.from_program]=a[r.from_program]||[]).push(r); return a; }, {});
+
+  const fromOpts = optionsFor(f.from_type);
+  const toOpts = optionsFor(f.to_type);
 
   return (
     <div>
@@ -328,12 +348,12 @@ function Transfers({ db }) {
         <div key={from} style={{ background:surf, border:`1px solid ${bdr}`, borderRadius:14, padding:"18px 20px", marginBottom:16 }}>
           <div style={{ fontSize:11, fontWeight:700, color:"#a5b4fc", marginBottom:12, textTransform:"uppercase", letterSpacing:"0.06em" }}>{from}</div>
           {routes.map(r => (
-            <div key={r.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", background:bg, borderRadius:10, border:`1px solid ${bdr}`, marginBottom:8 }}>
+            <div key={r.id} style={{ display:"flex", alignItems:"center", justifyContent:"space-between", padding:"10px 14px", background:bg, borderRadius:10, border:`1px solid ${bdr}`, marginBottom:8, flexWrap:"wrap", gap:8 }}>
               <div>
                 <div style={{ fontSize:14, fontWeight:600, color:"#fff" }}>{r.to_program}</div>
                 {r.notes&&<div style={{ fontSize:11, color:mut }}>{r.notes}</div>}
               </div>
-              <div style={{ display:"flex", alignItems:"center", gap:16 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:12, flexWrap:"wrap" }}>
                 <div style={{ textAlign:"center" }}><div style={{ fontSize:15, fontWeight:800, color:"#fff" }}>{r.ratio_from}:{r.ratio_to}</div><div style={{ fontSize:10, color:mut }}>RATIO</div></div>
                 {r.min_transfer&&<div style={{ textAlign:"center" }}><div style={{ fontSize:13, fontWeight:600, color:"#a5b4fc" }}>{Number(r.min_transfer).toLocaleString()}</div><div style={{ fontSize:10, color:mut }}>MIN</div></div>}
                 {r.transfer_time&&<div style={{ textAlign:"center" }}><div style={{ fontSize:13, fontWeight:600, color:"#34d399" }}>{r.transfer_time}</div><div style={{ fontSize:10, color:mut }}>TIME</div></div>}
@@ -346,11 +366,51 @@ function Transfers({ db }) {
           ))}
         </div>
       ))}
+
       <Modal show={show} onClose={()=>setShow(false)} title={edit?"Edit Route":"Add Transfer Route"}>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-          <div>{lbl("From Program *")}<input style={inp} placeholder="HDFC Rewards" value={f.from_program} onChange={up("from_program")} /></div>
-          <div>{lbl("To Program *")}<input style={inp} placeholder="Air India FR" value={f.to_program} onChange={up("to_program")} /></div>
+        {/* FROM */}
+        <div style={{ background:"rgba(99,102,241,0.06)", border:"1px solid rgba(99,102,241,0.15)", borderRadius:10, padding:14, marginBottom:14 }}>
+          <div style={{ fontSize:11, color:acc, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>From</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div>
+              {lbl("Type")}
+              <select style={inp} value={f.from_type} onChange={e => setF(p => ({ ...p, from_type:e.target.value, from_program:"" }))}>
+                <option value="card">Credit Card</option>
+                <option value="loyalty">Loyalty Program</option>
+              </select>
+            </div>
+            <div>
+              {lbl("Program")}
+              <select style={inp} value={f.from_program} onChange={up("from_program")}>
+                <option value="">— select —</option>
+                {fromOpts.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
         </div>
+
+        {/* TO */}
+        <div style={{ background:"rgba(52,211,153,0.06)", border:"1px solid rgba(52,211,153,0.15)", borderRadius:10, padding:14, marginBottom:14 }}>
+          <div style={{ fontSize:11, color:"#34d399", fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", marginBottom:10 }}>To</div>
+          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div>
+              {lbl("Type")}
+              <select style={inp} value={f.to_type} onChange={e => setF(p => ({ ...p, to_type:e.target.value, to_program:"" }))}>
+                <option value="card">Credit Card</option>
+                <option value="loyalty">Loyalty Program</option>
+              </select>
+            </div>
+            <div>
+              {lbl("Program")}
+              <select style={inp} value={f.to_program} onChange={up("to_program")}>
+                <option value="">— select —</option>
+                {toOpts.map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Details */}
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
           <div>{lbl("Ratio From")}<input style={inp} type="number" step="0.1" value={f.ratio_from} onChange={up("ratio_from")} /></div>
           <div>{lbl("Ratio To")}<input style={inp} type="number" step="0.1" value={f.ratio_to} onChange={up("ratio_to")} /></div>
@@ -396,14 +456,14 @@ function Vouchers({ db }) {
 
   return (
     <div>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:24, flexWrap:"wrap", gap:10 }}>
         <div>
           <div style={{ fontSize:22, fontWeight:700, color:"#fff" }}>Vouchers</div>
           <div style={{ fontSize:12, color:mut, marginTop:3 }}>{rows.filter(v=>!v.redeemed).length} active · {rows.filter(v=>v.redeemed).length} redeemed</div>
         </div>
-        <div style={{ display:"flex", gap:8 }}>
+        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
           {["active","redeemed","all"].map(t=>(
-            <button key={t} onClick={()=>setFilter(t)} style={{ padding:"7px 14px", borderRadius:8, border:"none", cursor:"pointer", fontSize:12, fontWeight:500, background:filter===t?acc:"rgba(255,255,255,0.05)", color:filter===t?"#fff":"#a5b4fc", textTransform:"capitalize" }}>{t}</button>
+            <button key={t} onClick={()=>setFilter(t)} style={{ padding:"7px 12px", borderRadius:8, border:"none", cursor:"pointer", fontSize:12, fontWeight:500, background:filter===t?acc:"rgba(255,255,255,0.05)", color:filter===t?"#fff":"#a5b4fc", textTransform:"capitalize" }}>{t}</button>
           ))}
           <button style={pbtn} onClick={openAdd}>+ Add</button>
         </div>
@@ -411,7 +471,7 @@ function Vouchers({ db }) {
       {busy ? <div style={{ color:mut, padding:40, textAlign:"center" }}>Loading…</div> : shown.length===0 ? (
         <div style={{ textAlign:"center", padding:60, color:"#2e3560" }}><div style={{ fontSize:32, marginBottom:10 }}>◈</div><div>No vouchers here</div></div>
       ) : (
-        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))", gap:16 }}>
+        <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))", gap:16 }}>
           {shown.map(v => {
             const d = days(v.expiry_date); const exp = d!==null&&d<30&&!v.redeemed;
             return (
@@ -475,16 +535,17 @@ function Settings({ onDisconnect }) {
 
 // ── Shell ──────────────────────────────────────────────────────────────────────
 const TABS = [
-  { id:"cards", label:"Credit Cards" },
-  { id:"loyalty", label:"Loyalty Programs" },
-  { id:"transfers", label:"Transfers" },
-  { id:"vouchers", label:"Vouchers" },
-  { id:"settings", label:"Settings" },
+  { id:"cards",     label:"Credit Cards",      icon:"💳" },
+  { id:"loyalty",   label:"Loyalty Programs",  icon:"⭐" },
+  { id:"transfers", label:"Transfers",          icon:"↔️" },
+  { id:"vouchers",  label:"Vouchers",           icon:"🎟️" },
+  { id:"settings",  label:"Settings",           icon:"⚙️" },
 ];
 
 export default function App() {
   const [db, setDb] = useState(null);
   const [tab, setTab] = useState("cards");
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     const u = localStorage.getItem("pv_u"), k = localStorage.getItem("pv_k");
@@ -493,23 +554,49 @@ export default function App() {
 
   if (!db) return <Setup onDone={setDb} />;
 
+  const currentTab = TABS.find(t => t.id === tab);
+
   return (
-    <div style={{ minHeight:"100vh", background:bg, color:txt, fontFamily:"Inter,system-ui,sans-serif", fontSize:14, display:"flex" }}>
-      <nav style={{ position:"fixed", top:0, left:0, bottom:0, width:200, background:"#0d1120", borderRight:`1px solid ${bdr}`, display:"flex", flexDirection:"column", zIndex:10 }}>
+    <div style={{ minHeight:"100vh", background:bg, color:txt, fontFamily:"Inter,system-ui,sans-serif", fontSize:14 }}>
+
+      {/* ── Desktop sidebar ── */}
+      <style>{`@media (max-width: 640px) { .desktop-nav { display: none !important; } .mobile-header { display: flex !important; } .main-content { margin-left: 0 !important; padding: 16px !important; padding-top: 64px !important; } } @media (min-width: 641px) { .mobile-header { display: none !important; } }`}</style>
+
+      <nav className="desktop-nav" style={{ position:"fixed", top:0, left:0, bottom:0, width:200, background:"#0d1120", borderRight:`1px solid ${bdr}`, display:"flex", flexDirection:"column", zIndex:10 }}>
         <div style={{ padding:"22px 18px 18px", borderBottom:`1px solid ${bdr}` }}>
           <div style={{ fontSize:15, fontWeight:700, color:"#fff" }}>PointsVault</div>
           <div style={{ fontSize:10, color:mut, textTransform:"uppercase", letterSpacing:"0.08em", marginTop:2 }}>Loyalty & Cards</div>
         </div>
         <div style={{ flex:1, paddingTop:8 }}>
           {TABS.map(t => (
-            <div key={t.id} onClick={()=>setTab(t.id)} style={{ display:"flex", alignItems:"center", padding:"11px 18px", cursor:"pointer", fontSize:13, fontWeight:tab===t.id?600:400, color:tab===t.id?"#a5b4fc":"#3a4260", background:tab===t.id?"rgba(99,102,241,0.08)":"transparent", borderLeft:tab===t.id?`2px solid ${acc}`:"2px solid transparent" }}>
-              {t.label}
+            <div key={t.id} onClick={()=>setTab(t.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"11px 18px", cursor:"pointer", fontSize:13, fontWeight:tab===t.id?600:400, color:tab===t.id?"#a5b4fc":"#3a4260", background:tab===t.id?"rgba(99,102,241,0.08)":"transparent", borderLeft:tab===t.id?`2px solid ${acc}`:"2px solid transparent" }}>
+              <span>{t.icon}</span>{t.label}
             </div>
           ))}
         </div>
         <div style={{ padding:"0 18px 20px", fontSize:10, color:"#2e3560", textTransform:"uppercase", letterSpacing:"0.06em" }}>Synced · Supabase</div>
       </nav>
-      <main style={{ marginLeft:200, flex:1, padding:"32px 32px 60px" }}>
+
+      {/* ── Mobile header ── */}
+      <div className="mobile-header" style={{ display:"none", position:"fixed", top:0, left:0, right:0, height:56, background:"#0d1120", borderBottom:`1px solid ${bdr}`, alignItems:"center", justifyContent:"space-between", padding:"0 16px", zIndex:100 }}>
+        <div style={{ fontSize:14, fontWeight:700, color:"#fff" }}>PointsVault</div>
+        <div style={{ fontSize:13, color:"#a5b4fc", fontWeight:600 }}>{currentTab?.icon} {currentTab?.label}</div>
+        <button onClick={()=>setMenuOpen(o=>!o)} style={{ background:"none", border:"none", cursor:"pointer", color:txt, fontSize:22, padding:"0 4px" }}>☰</button>
+      </div>
+
+      {/* ── Mobile dropdown menu ── */}
+      {menuOpen && (
+        <div style={{ position:"fixed", top:56, left:0, right:0, background:"#0d1120", borderBottom:`1px solid ${bdr}`, zIndex:99 }}>
+          {TABS.map(t => (
+            <div key={t.id} onClick={()=>{ setTab(t.id); setMenuOpen(false); }} style={{ display:"flex", alignItems:"center", gap:12, padding:"13px 20px", cursor:"pointer", fontSize:14, fontWeight:tab===t.id?600:400, color:tab===t.id?"#a5b4fc":"#8890b0", background:tab===t.id?"rgba(99,102,241,0.08)":"transparent", borderBottom:`1px solid ${bdr}` }}>
+              <span>{t.icon}</span>{t.label}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Main content ── */}
+      <main className="main-content" style={{ marginLeft:200, padding:"32px 32px 60px", minHeight:"100vh" }}>
         {tab==="cards"     && <Cards db={db} />}
         {tab==="loyalty"   && <Loyalty db={db} />}
         {tab==="transfers" && <Transfers db={db} />}
