@@ -1067,8 +1067,8 @@ function Settings({ onDisconnect }) {
 function StatementImport({ db }) {
   const [cards, setCards] = useState([]);
   const [selectedCard, setSelectedCard] = useState("");
-  const [mode, setMode] = useState("pdf"); // "pdf" | "csv"
-  const [status, setStatus] = useState("idle"); // idle | parsing | preview | importing | done
+  const [mode, setMode] = useState("pdf");
+  const [status, setStatus] = useState("idle");
   const [parsed, setParsed] = useState([]);
   const [selected, setSelected] = useState({});
   const [error, setError] = useState("");
@@ -1283,12 +1283,11 @@ Return only the JSON array starting with [ and ending with ].`;
             <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 2 — Claude API Key</div>
               <div style={{fontSize:12,color:mut,marginBottom:10}}>
-                Your key is saved locally in the browser. Get one free at{" "}
-                <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{color:acc}}>console.anthropic.com</a>
+                Your key is saved locally in the browser. Get one free at <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{color:acc}}>console.anthropic.com</a>
               </div>
               {lbl("Anthropic API Key")}
               <input style={inp} type="password" placeholder="sk-ant-..." value={apiKey} onChange={e=>saveApiKey(e.target.value)}/>
-              <div style={{fontSize:11,color:mut,marginTop:-8}}>Stored only in your browser's localStorage — never sent to any server except Anthropic.</div>
+              <div style={{fontSize:11,color:mut,marginTop:-8}}>Stored only in your browser localStorage — never sent to any server except Anthropic.</div>
             </div>
           )}
 
