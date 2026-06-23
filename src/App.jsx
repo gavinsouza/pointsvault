@@ -35,7 +35,7 @@ function createSupabaseClient(url, anonKey) {
         } catch(e) { return { data: null, error: { message: e.message } }; }
       },
       getPublicUrl: (bucket, path) => {
-        return `${url}/storage/v1/object/public/${bucket}/${path}`;
+        return `${url}/storage/v1/object/public/${bucket}/${encodeURIComponent(path)}`;
       },
     },
   };
@@ -139,18 +139,20 @@ function inrFmt(v) {
 }
 
 // ── Logo components ───────────────────────────────────────────────────────────
-function LogoCircle({ url, name, color="#4f7fff", size=40 }) {
+function LogoCircle({ url, name, color="#b5862a", size=40 }) {
+  const [imgErr, setImgErr] = useState(false);
   const initials = (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-  if (url) {
+  if (url && !imgErr) {
     return (
-      <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${bdr}`,background:surf2}}>
-        <img src={url} alt={name} style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
+      <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${bdr}`,background:surf2,display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <img src={url} alt={name} style={{width:"100%",height:"100%",objectFit:"contain",padding:2}}
+          onError={()=>setImgErr(true)}/>
       </div>
     );
   }
   return (
     <div style={{width:size,height:size,borderRadius:size*0.28,background:color+"18",border:`1.5px solid ${color}33`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-      <span style={{fontSize:size*0.35,fontWeight:700,color:color}}>{initials}</span>
+      <span style={{fontSize:size*0.35,fontWeight:700,color:color,lineHeight:1}}>{initials}</span>
     </div>
   );
 }
@@ -739,15 +741,61 @@ function Cards({ db }) {
   const total=rows.reduce((a,c)=>a+(c.points_balance||0),0);
   const totalInr=rows.reduce((a,c)=>a+(c.points_balance||0)*(c.inr_per_point||0),0);
 
+  // Summary stats
+  const bankMap2 = {};
+  rows.forEach(c=>{ const b=c.bank||"Other"; bankMap2[b]=(bankMap2[b]||0)+(c.points_balance||0); });
+  const banks2 = Object.entries(bankMap2).sort((a,b)=>b[1]-a[1]);
+  const maxBank2 = banks2[0]?.[1]||1;
+  const netMap = {};
+  rows.forEach(c=>{ const n=c.network||"Other"; netMap[n]=(netMap[n]||0)+(c.points_balance||0); });
+  const nc2={Visa:"#1a1f71",Mastercard:"#dc2626",Amex:"#0066b3",Diners:"#2c2c8c",RuPay:"#ea580c",Other:acc};
+
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
         <div>
-          <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>Credit Cards</div>
-          <div style={{fontSize:13,color:mut,marginTop:3}}>{rows.length} cards · {total.toLocaleString()} pts{totalInr>0?` · ${inrFmt(totalInr)}`:""}</div>
+          <div style={{fontSize:30,fontWeight:800,color:txt,letterSpacing:"-0.04em",lineHeight:1.1}}>Credit Cards</div>
+          <div style={{fontSize:14,color:mut,marginTop:6}}>{rows.length} cards · {total.toLocaleString("en-IN")} pts{totalInr>0?` · ${inrFmt(totalInr)} est. value`:""}</div>
         </div>
         <button style={pbtn} onClick={()=>{ setF({...empty}); setShow(true); }}>+ Add Card</button>
       </div>
+
+      {/* Stat row */}
+      {rows.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:24}}>
+        <div style={{background:txt,borderRadius:16,padding:"16px 18px",color:"#fff"}}>
+          <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.5)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Total Points</div>
+          <div style={{fontSize:24,fontWeight:800,letterSpacing:"-0.03em"}}>{total.toLocaleString("en-IN")}</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:4}}>{rows.length} cards</div>
+        </div>
+        {totalInr>0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Est. Value</div>
+          <div style={{fontSize:24,fontWeight:800,color:grn,letterSpacing:"-0.03em"}}>{inrFmt(totalInr)}</div>
+          <div style={{fontSize:11,color:mut,marginTop:4}}>across all cards</div>
+        </div>}
+        {banks2[0]&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Top Bank</div>
+          <div style={{fontSize:16,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>{banks2[0][0]}</div>
+          <div style={{fontSize:11,color:acc,marginTop:4,fontWeight:600}}>{banks2[0][1].toLocaleString("en-IN")} pts</div>
+        </div>}
+      </div>}
+
+      {/* Bank breakdown bar chart */}
+      {banks2.length>1&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:14}}>Points by Bank</div>
+        {banks2.map(([bank,pts],i)=>(
+          <div key={bank} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <div style={{fontSize:13,fontWeight:500,color:txt}}>{bank}</div>
+              <div style={{fontSize:13,fontWeight:700,color:txt}}>{pts.toLocaleString("en-IN")}</div>
+            </div>
+            <div style={{height:6,background:surf2,borderRadius:10,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${(pts/maxBank2)*100}%`,background:i===0?acc:bdr2,borderRadius:10}}/>
+            </div>
+          </div>
+        ))}
+      </div>}
+
       <SearchBar value={search} onChange={setSearch} placeholder="Search by name or bank…"/>
       <SortBar options={[{value:"name",label:"Name A–Z"},{value:"bank",label:"Bank"},{value:"balance",label:"Points ↓"}]} value={sort} onChange={setSort}/>
       {msg&&<div style={{color:red,fontSize:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8,marginBottom:16}}>{msg}</div>}
@@ -850,15 +898,69 @@ function Loyalty({ db }) {
 
   const totalInr=rows.reduce((a,p)=>a+(p.points_balance||0)*(p.inr_per_point||0),0);
 
+  // Category breakdown
+  const catBreak = {};
+  rows.forEach(l=>{ const c=l.category||"Other"; catBreak[c]=(catBreak[c]||0)+(l.points_balance||0); });
+  const catList = Object.entries(catBreak).sort((a,b)=>b[1]-a[1]);
+  const maxCat = catList[0]?.[1]||1;
+  const catColors2 = {Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const totalLPts = rows.reduce((a,l)=>a+(l.points_balance||0),0);
+  const exp30 = rows.filter(l=>{ if(!l.expiry_date) return false; const d=Math.round((new Date(l.expiry_date)-new Date())/86400000); return d>=0&&d<=30; });
+  const exp90 = rows.filter(l=>{ if(!l.expiry_date) return false; const d=Math.round((new Date(l.expiry_date)-new Date())/86400000); return d>=0&&d<=90; });
+
   return (
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:28}}>
         <div>
-          <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>Loyalty Programs</div>
-          <div style={{fontSize:13,color:mut,marginTop:3}}>{rows.length} programs{totalInr>0?` · ${inrFmt(totalInr)} total value`:""}</div>
+          <div style={{fontSize:30,fontWeight:800,color:txt,letterSpacing:"-0.04em",lineHeight:1.1}}>Loyalty Programs</div>
+          <div style={{fontSize:14,color:mut,marginTop:6}}>{rows.length} programs{totalInr>0?` · ${inrFmt(totalInr)} est. value`:""}</div>
         </div>
         <button style={pbtn} onClick={()=>{ setF({...empty}); setShow(true); }}>+ Add Program</button>
       </div>
+
+      {/* Stat row */}
+      {rows.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:24}}>
+        <div style={{background:acc,borderRadius:16,padding:"16px 18px",color:"#fff"}}>
+          <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Total Points</div>
+          <div style={{fontSize:24,fontWeight:800,letterSpacing:"-0.03em"}}>{totalLPts.toLocaleString("en-IN")}</div>
+          <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:4}}>{rows.length} programs</div>
+        </div>
+        {totalInr>0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Est. Value</div>
+          <div style={{fontSize:24,fontWeight:800,color:grn,letterSpacing:"-0.03em"}}>{inrFmt(totalInr)}</div>
+          <div style={{fontSize:11,color:mut,marginTop:4}}>across all programs</div>
+        </div>}
+        {exp30.length>0&&<div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:16,padding:"16px 18px"}}>
+          <div style={{fontSize:10,fontWeight:600,color:"#92400e",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Expiring Soon</div>
+          <div style={{fontSize:24,fontWeight:800,color:red,letterSpacing:"-0.03em"}}>{exp30.length}</div>
+          <div style={{fontSize:11,color:"#b45309",marginTop:4}}>within 30 days</div>
+        </div>}
+        {exp90.length>0&&exp30.length===0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Expiring (90d)</div>
+          <div style={{fontSize:24,fontWeight:800,color:gold,letterSpacing:"-0.03em"}}>{exp90.length}</div>
+          <div style={{fontSize:11,color:mut,marginTop:4}}>programs</div>
+        </div>}
+      </div>}
+
+      {/* Category breakdown */}
+      {catList.length>1&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:14}}>Points by Category</div>
+        {catList.map(([cat,pts],i)=>(
+          <div key={cat} style={{marginBottom:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <div style={{fontSize:13,fontWeight:500,color:txt,display:"flex",alignItems:"center",gap:6}}>
+                <div style={{width:8,height:8,borderRadius:2,background:catColors2[cat]||acc2,flexShrink:0}}/>
+                {cat}
+              </div>
+              <div style={{fontSize:13,fontWeight:700,color:txt}}>{pts.toLocaleString("en-IN")}</div>
+            </div>
+            <div style={{height:6,background:surf2,borderRadius:10,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${(pts/maxCat)*100}%`,background:catColors2[cat]||acc2,borderRadius:10}}/>
+            </div>
+          </div>
+        ))}
+      </div>}
+
       <SearchBar value={search} onChange={setSearch} placeholder="Search by name, category or tier…"/>
       <SortBar options={[{value:"name",label:"Name A–Z"},{value:"category",label:"Category"},{value:"balance",label:"Points ↓"}]} value={sort} onChange={setSort}/>
       {busy?<div style={{color:mut,padding:40,textAlign:"center"}}>Loading…</div>:filtered.length===0?(
@@ -1632,9 +1734,9 @@ function TransferHistory({ db }) {
   const totalBonus = filtered.reduce((a, l) => a + (l.bonus_miles || 0), 0);
 
   return (
-    <div>
-      <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em",marginBottom:6}}>Transfer History</div>
-      <div style={{fontSize:13,color:mut,marginBottom:24}}>All point transfers across your cards and programs</div>
+    <div style={{minHeight:"60vh"}}>
+      <div style={{fontSize:30,fontWeight:800,color:txt,letterSpacing:"-0.04em",lineHeight:1.1,marginBottom:6}}>Transfer History</div>
+      <div style={{fontSize:14,color:mut,marginBottom:24}}>All point transfers across your cards and programs</div>
 
       {/* Summary stats */}
       {logs.length > 0 && (
@@ -1729,7 +1831,7 @@ function TransferHistory({ db }) {
 
           {/* Expanded detail row */}
           {detail && (
-            <div style={{background:acc+"06",borderTop:`2px solid ${acc}22`,padding:"16px 20px"}}>
+            <div style={{background:surf2,borderTop:`2px solid ${bdr}`,padding:"16px 20px"}}>
               <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:12}}>Transfer Detail</div>
               <div style={{display:"flex",gap:24,flexWrap:"wrap",alignItems:"flex-start"}}>
                 <div style={{flex:1,minWidth:200}}>
@@ -1795,9 +1897,9 @@ function Dashboard({ db, onNavigate }) {
       const [c, l, t, v, tr] = await Promise.all([
         db.from("cc_cards").select(),
         db.from("loyalty_programs").select(),
-        db.from("point_transactions").select(),
+        db.from("point_transactions").select("&order=created_at.desc"),
         db.from("vouchers").select(),
-        db.from("transfer_log").select(),
+        db.from("transfer_log").select("&order=created_at.desc"),
       ]);
       setCards(c.data || []);
       setLoyalties(l.data || []);
@@ -1967,6 +2069,7 @@ function Dashboard({ db, onNavigate }) {
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1}}>{totalCardPts.toLocaleString("en-IN")}</div>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",marginTop:6}}>{cards.length} active cards</div>
           {cardInr > 0 && <div style={{fontSize:13,color:gold,marginTop:4,fontWeight:600}}>{inrFmt(cardInr)}</div>}
+          <button onClick={()=>onNavigate("cards")} style={{marginTop:10,background:"rgba(255,255,255,0.15)",border:"none",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:600,padding:"4px 10px",borderRadius:6,letterSpacing:"0.04em"}}>View All →</button>
           <div style={{position:"absolute",right:16,top:16,opacity:0.08,fontSize:48}}>💳</div>
         </div>
 
@@ -1976,6 +2079,7 @@ function Dashboard({ db, onNavigate }) {
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1}}>{totalLoyalPts.toLocaleString("en-IN")}</div>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginTop:6}}>{loyalties.length} programs</div>
           {loyalInr > 0 && <div style={{fontSize:13,color:"#fff",marginTop:4,fontWeight:600,opacity:0.9}}>{inrFmt(loyalInr)}</div>}
+          <button onClick={()=>onNavigate("loyalty")} style={{marginTop:10,background:"rgba(255,255,255,0.2)",border:"none",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:600,padding:"4px 10px",borderRadius:6,letterSpacing:"0.04em"}}>View All →</button>
           <div style={{position:"absolute",right:16,top:16,opacity:0.15,fontSize:48}}>⭐</div>
         </div>
 
@@ -2081,19 +2185,17 @@ function Dashboard({ db, onNavigate }) {
         )}
       </div>
 
-      {/* ── Bottom row: Loyalty Programs + Recent Transactions ── */}
+      {/* ── Bottom row: Loyalty Programs + Credit Cards ── */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
 
-        {/* Loyalty Programs list */}
+        {/* Loyalty Programs */}
         {card(
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
               <div style={s}>Loyalty Programs</div>
-              <button onClick={()=>onNavigate("loyalty")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>View All →</button>
+              <button onClick={()=>onNavigate("loyalty")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",padding:0}}>View All →</button>
             </div>
-            <div style={{fontSize:12,color:mut,marginBottom:16}}>
-              {loyalties.length} programs{loyalInr>0?` · ${inrFmt(loyalInr)} est. value`:""}
-            </div>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>{loyalties.length} programs{loyalInr>0?` · ${inrFmt(loyalInr)} est. value`:""}</div>
             {loyalties.length === 0 ? (
               <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No loyalty programs yet</div>
             ) : [...loyalties].sort((a,b)=>(b.points_balance||0)-(a.points_balance||0)).slice(0,5).map(l => {
@@ -2107,15 +2209,15 @@ function Dashboard({ db, onNavigate }) {
                     <div>
                       <div style={{fontSize:13,fontWeight:600,color:txt}}>{l.name}</div>
                       <div style={{fontSize:11,color:mut,marginTop:1}}>
-                        {l.tier&&<span style={{color:l.color,fontWeight:600}}>{l.tier} · </span>}
-                        {expiring && <span style={{color:red}}>⚠ {days}d left · </span>}
+                        {l.tier&&<span style={{color:l.color||acc2,fontWeight:600}}>{l.tier} · </span>}
+                        {expiring&&<span style={{color:red}}>⚠ {days}d · </span>}
                         {l.category}
                       </div>
                     </div>
                   </div>
                   <div style={{textAlign:"right"}}>
                     <div style={{fontSize:14,fontWeight:700,color:txt}}>{(l.points_balance||0).toLocaleString("en-IN")}</div>
-                    {inrVal > 0 && <div style={{fontSize:11,color:grn,marginTop:1}}>{inrFmt(inrVal)}</div>}
+                    {inrVal>0&&<div style={{fontSize:11,color:grn,marginTop:1}}>{inrFmt(inrVal)}</div>}
                   </div>
                 </div>
               );
@@ -2123,33 +2225,38 @@ function Dashboard({ db, onNavigate }) {
           </div>
         )}
 
-        {/* Recent Transactions */}
+        {/* Credit Cards */}
         {card(
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-              <div style={s}>Recent Transactions</div>
-              <div style={{fontSize:11,color:mut}}>Latest activity</div>
+              <div style={s}>Credit Cards</div>
+              <button onClick={()=>onNavigate("cards")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",padding:0}}>View All →</button>
             </div>
-            <div style={{fontSize:12,color:mut,marginBottom:16}}>Across all accounts</div>
-            {recentTxns.length === 0 ? (
-              <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No transactions yet</div>
-            ) : recentTxns.map(t => (
-              <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
-                <div style={{width:32,height:32,borderRadius:10,background:t.points>0?grn+"15":red+"12",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <span style={{fontSize:13,color:t.points>0?grn:red}}>{t.points>0?"↑":"↓"}</span>
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description||"Transaction"}</div>
-                  <div style={{fontSize:11,color:mut,marginTop:1,display:"flex",gap:6,alignItems:"center"}}>
-                    <span style={{background:surf2,borderRadius:4,padding:"1px 6px",fontSize:10}}>{t.program_type==="card"?"💳":"⭐"} {t.program_name}</span>
-                    <span>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</span>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>{cards.length} cards{cardInr>0?` · ${inrFmt(cardInr)} est. value`:""}</div>
+            {cards.length === 0 ? (
+              <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No cards yet</div>
+            ) : [...cards].sort((a,b)=>(b.points_balance||0)-(a.points_balance||0)).slice(0,5).map(c => {
+              const inrVal = (c.points_balance||0)*(c.inr_per_point||0);
+              const nc2 = {Visa:"#1a1f71",Mastercard:"#dc2626",Amex:"#0066b3",Diners:"#2c2c8c",RuPay:"#ea580c",Other:acc};
+              return (
+                <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={36}/>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:txt}}>{c.name}</div>
+                      <div style={{fontSize:11,color:mut,marginTop:1,display:"flex",gap:6,alignItems:"center"}}>
+                        <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:10,background:(nc2[c.network]||acc)+"15",color:nc2[c.network]||acc}}>{c.network}</span>
+                        {c.bank&&<span>{c.bank}</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:txt}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+                    {inrVal>0&&<div style={{fontSize:11,color:grn,marginTop:1}}>{inrFmt(inrVal)}</div>}
                   </div>
                 </div>
-                <div style={{fontSize:13,fontWeight:700,color:t.points>0?grn:red,flexShrink:0}}>
-                  {t.points>0?"+":""}{t.points.toLocaleString()}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -2180,7 +2287,7 @@ function Dashboard({ db, onNavigate }) {
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div style={s}>Recent Transfers</div>
-            <button onClick={()=>onNavigate("history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>View All →</button>
+            <button onClick={()=>onNavigate("history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",padding:0}}>View All →</button>
           </div>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
