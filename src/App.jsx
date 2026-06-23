@@ -173,54 +173,75 @@ function Setup({onDone}){
   );
 }
 
-// ── OvList — sortable overview list panel ─────────────────────────────────────
-function OvList({title,items,sortOptions,onNav}){
-  const [sort,setSort]=useState(sortOptions[0].value);
+// ── OvList — filterable overview list panel ────────────────────────────────────
+function OvList({title,items,filterOptions,owners,onNav}){
+  const [ownerF,setOwnerF]=useState("all");
+  const [catF,setCatF]=useState("all");
 
-  const sorted=[...items].sort((a,b)=>{
-    if(sort==="balance")  return (b.balance||0)-(a.balance||0);
-    if(sort==="owner")    return (a.sortOwner||"").localeCompare(b.sortOwner||"");
-    if(sort==="category") return (a.sortCat||"").localeCompare(b.sortCat||"");
-    if(sort==="bank")     return (a.sortBank||"").localeCompare(b.sortBank||"");
-    if(sort==="network")  return (a.sortNetwork||"").localeCompare(b.sortNetwork||"");
-    if(sort==="name")     return (a.name||"").localeCompare(b.name||"");
-    return 0;
-  }).slice(0,6);
+  const filtered=[...items]
+    .filter(item=>{
+      if(ownerF!=="all"&&item.ownerId!==ownerF) return false;
+      if(catF==="all") return true;
+      // Support both plain category match and bank:/net: prefixed match
+      if(catF.startsWith("bank:")) return item.cat===catF||item.catBank===catF.slice(5);
+      if(catF.startsWith("net:"))  return item.catNet===catF.slice(4);
+      return item.cat===catF;
+    })
+    .sort((a,b)=>(b.balance||0)-(a.balance||0))
+    .slice(0,6);
+
+  const selStyle={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 8px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",flexShrink:0}}>{title}</div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <select
-            value={sort}
-            onChange={e=>setSort(e.target.value)}
-            style={{fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"}}
-          >
-            {sortOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+        <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <select value={ownerF} onChange={e=>setOwnerF(e.target.value)} style={selStyle}>
+            <option value="all">All owners</option>
+            {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+          <select value={catF} onChange={e=>setCatF(e.target.value)} style={selStyle}>
+            <option value="all">All</option>
+            {filterOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:500,padding:0,fontFamily:"'Manrope',sans-serif",flexShrink:0}}>View all</button>
         </div>
       </div>
       {items.length===0
         ?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"16px 0"}}>None yet</div>
-        :sorted.map(item=>(
-          <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
-              <LogoCircle url={item.logo} name={item.name} size={32}/>
-              <div style={{minWidth:0}}>
-                <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{item.name}</div>
-                {item.sub&&<div style={{fontSize:10,color:mut,marginTop:1,fontWeight:400}}>{item.sub}</div>}
+        :filtered.length===0
+          ?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"16px 0"}}>No matches</div>
+          :filtered.map(item=>(
+            <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
+                <LogoCircle url={item.logo} name={item.name} size={32}/>
+                <div style={{minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{item.name}</div>
+                  {item.sub&&<div style={{fontSize:10,color:mut,marginTop:1,fontWeight:400}}>{item.sub}</div>}
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0,marginLeft:10}}>
+                <div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(item.balance||0).toLocaleString("en-IN")}</div>
+                {item.inrVal>0&&<div style={{fontSize:10,color:grn,marginTop:1,fontWeight:500}}>{inrFmt(item.inrVal)}</div>}
               </div>
             </div>
-            <div style={{textAlign:"right",flexShrink:0,marginLeft:10}}>
-              <div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(item.balance||0).toLocaleString("en-IN")}</div>
-              {item.inrVal>0&&<div style={{fontSize:10,color:grn,marginTop:1,fontWeight:500}}>{inrFmt(item.inrVal)}</div>}
-            </div>
-          </div>
-        ))
+          ))
       }
-      {items.length>6&&<div style={{fontSize:10,color:mut,textAlign:"center",paddingTop:10,fontWeight:400}}>{items.length-6} more · <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:10,fontWeight:500,padding:0}}>view all</button></div>}
+      {filtered.length>0&&(()=>{
+        const totalMatch=items.filter(item=>{
+          if(ownerF!=="all"&&item.ownerId!==ownerF) return false;
+          if(catF==="all") return true;
+          if(catF.startsWith("bank:")) return item.catBank===catF.slice(5);
+          if(catF.startsWith("net:"))  return item.catNet===catF.slice(4);
+          return item.cat===catF;
+        }).length;
+        return totalMatch>6?(
+          <div style={{fontSize:10,color:mut,textAlign:"center",paddingTop:10,fontWeight:400}}>
+            {totalMatch-6} more · <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:10,fontWeight:500,padding:0}}>view all</button>
+          </div>
+        ):null;
+      })()}
     </div>
   );
 }
@@ -333,15 +354,18 @@ function Overview({db,owners,onNavigate}){
           <OvList
             title="Loyalty Programs"
             onNav={()=>onNavigate("my-programs")}
-            sortOptions={[
-              {value:"balance",label:"Balance"},
-              {value:"owner",label:"Owner"},
-              {value:"category",label:"Category"},
-              {value:"name",label:"Name"},
+            owners={owners}
+            filterOptions={[
+              {value:"Airline",label:"Airline"},
+              {value:"Hotel",label:"Hotel"},
+              {value:"Retail",label:"Retail"},
+              {value:"Dining",label:"Dining"},
+              {value:"Fuel",label:"Fuel"},
+              {value:"Other",label:"Other"},
             ]}
             items={fProgs.map(p=>{
               const m=gmp(p.master_id);
-              return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),sortOwner:own(p.owner_id),sortCat:m?.category||""};
+              return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),ownerId:p.owner_id,cat:m?.category||"Other"};
             })}
           />
         </Card>
@@ -349,16 +373,14 @@ function Overview({db,owners,onNavigate}){
           <OvList
             title="Credit Cards"
             onNav={()=>onNavigate("my-cards")}
-            sortOptions={[
-              {value:"balance",label:"Balance"},
-              {value:"owner",label:"Owner"},
-              {value:"bank",label:"Bank"},
-              {value:"network",label:"Network"},
-              {value:"name",label:"Name"},
+            owners={owners}
+            filterOptions={[
+              ...([...new Set(fCards.map(c=>gmc(c.master_id)?.bank).filter(Boolean))].sort().map(b=>({value:"bank:"+b,label:b}))),
+              ...([...new Set(fCards.map(c=>gmc(c.master_id)?.network).filter(Boolean))].sort().map(n=>({value:"net:"+n,label:n}))),
             ]}
             items={fCards.map(c=>{
               const m=gmc(c.master_id);
-              return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),sortOwner:own(c.owner_id),sortBank:m?.bank||"",sortNetwork:m?.network||""};
+              return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),ownerId:c.owner_id,cat:"bank:"+(m?.bank||""),catBank:m?.bank||"",catNet:m?.network||""};
             })}
           />
         </Card>
