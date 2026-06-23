@@ -25,24 +25,28 @@ function createSupabaseClient(url, anonKey) {
     storage: {
       upload: async (bucket, path, file) => {
         try {
-          // POST first (create new)
-          const r = await fetch(`${storageBase}/object/${bucket}/${path}`, {
+          const uploadUrl = `${storageBase}/object/${bucket}/${path}`;
+          console.log("[Logo] Uploading to:", uploadUrl, "type:", file.type, "size:", file.size);
+          const r = await fetch(uploadUrl, {
             method: "POST",
             headers: {
               apikey: anonKey,
               Authorization: `Bearer ${anonKey}`,
               "Content-Type": file.type,
               "x-upsert": "true",
-              "cache-control": "3600",
             },
             body: file,
           });
+          const responseText = await r.text();
+          console.log("[Logo] POST response status:", r.status, "body:", responseText);
           if (r.ok) {
-            const data = await r.json().catch(()=>({}));
+            let data = {};
+            try { data = JSON.parse(responseText); } catch(_){}
             return { data, error: null };
           }
-          // PUT fallback (update existing)
-          const r2 = await fetch(`${storageBase}/object/${bucket}/${path}`, {
+          // Try PUT
+          console.log("[Logo] POST failed, trying PUT...");
+          const r2 = await fetch(uploadUrl, {
             method: "PUT",
             headers: {
               apikey: anonKey,
@@ -52,13 +56,21 @@ function createSupabaseClient(url, anonKey) {
             },
             body: file,
           });
-          const data2 = await r2.json().catch(()=>({}));
-          if (!r2.ok) return { data: null, error: data2 };
+          const responseText2 = await r2.text();
+          console.log("[Logo] PUT response status:", r2.status, "body:", responseText2);
+          let data2 = {};
+          try { data2 = JSON.parse(responseText2); } catch(_){}
+          if (!r2.ok) return { data: null, error: { message: `Upload failed: ${r2.status} ${responseText2}` } };
           return { data: data2, error: null };
-        } catch(e) { return { data: null, error: { message: e.message } }; }
+        } catch(e) {
+          console.log("[Logo] Upload exception:", e.message);
+          return { data: null, error: { message: e.message } };
+        }
       },
       getPublicUrl: (bucket, path) => {
-        return `${url}/storage/v1/object/public/${bucket}/${path}`;
+        const publicUrl = `${url}/storage/v1/object/public/${bucket}/${path}`;
+        console.log("[Logo] Public URL:", publicUrl);
+        return publicUrl;
       },
     },
   };
@@ -181,7 +193,8 @@ function LogoCircle({ url, name, color="#b5862a", size=40 }) {
           src={url}
           alt={name||""}
           style={{width:"100%",height:"100%",objectFit:"contain",padding:size*0.07,display:"block"}}
-          onError={()=>setImgErr(true)}
+          onError={(e)=>{ console.log("[Logo] Image failed to load:", url, e.type); setImgErr(true); }}
+          onLoad={()=>console.log("[Logo] Image loaded OK:", url)}
         />
       ) : (
         <span style={{fontSize:size*0.33,fontWeight:700,color,lineHeight:1,userSelect:"none"}}>{initials}</span>
@@ -459,8 +472,15 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
     let logo_url=card.logo_url||null;
     if(editLogoFile){
       const path=`cards/${card.id}-${Date.now()}.${editLogoFile.name.split(".").pop()}`;
+      console.log("[Logo] CC edit - uploading:", editLogoFile.name, editLogoFile.type, editLogoFile.size);
       const {error:ue}=await db.storage.upload("logos",path,editLogoFile);
-      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+      if(ue){
+        console.error("[Logo] CC upload error:", ue);
+        alert("Logo upload failed: " + (ue.message||JSON.stringify(ue)) + "\n\nCheck: 1) Supabase Storage bucket 'logos' exists  2) Bucket is set to PUBLIC");
+      } else {
+        logo_url=db.storage.getPublicUrl("logos",path);
+        console.log("[Logo] CC upload success, url:", logo_url);
+      }
     } else if(editLogoPreview===null && card.logo_url) {
       logo_url=null;
     }
@@ -639,8 +659,15 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
     let logo_url=prog.logo_url||null;
     if(editLogoFile){
       const path=`loyalty/${prog.id}-${Date.now()}.${editLogoFile.name.split(".").pop()}`;
+      console.log("[Logo] LP edit - uploading file:", editLogoFile.name, editLogoFile.type, editLogoFile.size);
       const {error:ue}=await db.storage.upload("logos",path,editLogoFile);
-      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+      if(ue){
+        console.error("[Logo] LP edit upload error:", ue);
+        alert("Logo upload failed: " + (ue.message||JSON.stringify(ue)) + "\n\nCheck: 1) Supabase Storage bucket 'logos' exists  2) Bucket is set to PUBLIC");
+      } else {
+        logo_url=db.storage.getPublicUrl("logos",path);
+        console.log("[Logo] LP edit upload success, url:", logo_url);
+      }
     } else if(editLogoPreview===null && prog.logo_url){
       logo_url=null;
     }
