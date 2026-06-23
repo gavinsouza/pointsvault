@@ -30,12 +30,23 @@ function createSupabaseClient(url, anonKey) {
             headers: { ...storageH, "Content-Type": file.type, "x-upsert": "true" },
             body: file,
           });
+          if (!r.ok) {
+            // Try PUT (upsert)
+            const r2 = await fetch(`${storageBase}/object/${bucket}/${path}`, {
+              method: "PUT",
+              headers: { ...storageH, "Content-Type": file.type, "x-upsert": "true" },
+              body: file,
+            });
+            const data2 = await r2.json();
+            return { data: data2, error: r2.ok ? null : data2 };
+          }
           const data = await r.json();
-          return { data, error: r.ok ? null : data };
+          return { data, error: null };
         } catch(e) { return { data: null, error: { message: e.message } }; }
       },
       getPublicUrl: (bucket, path) => {
-        return `${url}/storage/v1/object/public/${bucket}/${encodeURIComponent(path)}`;
+        // Return clean URL without double-encoding
+        return `${url}/storage/v1/object/public/${bucket}/${path}`;
       },
     },
   };
@@ -136,6 +147,10 @@ function inrFmt(v) {
   if (v >= 100000) return "₹" + (v/100000).toFixed(1) + "L";
   if (v >= 1000) return "₹" + (v/1000).toFixed(1) + "K";
   return "₹" + Math.round(v).toLocaleString("en-IN");
+}
+function ordinal(n) {
+  const s = ["th","st","nd","rd"], v = n % 100;
+  return n + (s[(v-20)%10] || s[v] || s[0]);
 }
 
 // ── Logo components ───────────────────────────────────────────────────────────
@@ -461,7 +476,7 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
         <div style={{display:"flex",gap:12,marginTop:18,flexWrap:"wrap"}}>
           <StatBox label="Current Balance" value={(card.points_balance||0).toLocaleString()+" "+(card.points_currency||"pts")} color={txt}/>
           {card.inr_per_point>0&&<StatBox label="Approx INR Value" value={inrFmt(inrVal)} sub={`₹${card.inr_per_point}/pt`} color={grn}/>}
-          {card.stmt_date&&<StatBox label="Statement Date" value={card.stmt_date+"th"} color={acc}/>}
+          {card.stmt_date&&<StatBox label="Statement Date" value={ordinal(card.stmt_date)} color={acc}/>}
           {card.annual_fee>0&&<StatBox label="Annual Fee" value={"₹"+Number(card.annual_fee).toLocaleString()} color={red}/>}
         </div>
       </div>
@@ -701,6 +716,138 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
   );
 }
 
+// ── CC Chart Section ──────────────────────────────────────────────────────────
+function CCChartSection({ rows, acc, surf, surf2, bdr, bdr2, txt, mut, grn, nc }) {
+  const [view, setView] = useState("bank");
+  const views = [
+    {id:"bank",   label:"By Bank"},
+    {id:"card",   label:"By Card"},
+    {id:"network",label:"By Network"},
+    {id:"inr",    label:"By INR Value"},
+  ];
+
+  const buildData = () => {
+    const map = {};
+    rows.forEach(c => {
+      let key, val;
+      if (view === "bank")    { key = c.bank || "Other"; val = c.points_balance || 0; }
+      if (view === "card")    { key = c.name; val = c.points_balance || 0; }
+      if (view === "network") { key = c.network || "Other"; val = c.points_balance || 0; }
+      if (view === "inr")     { key = c.name; val = (c.points_balance||0)*(c.inr_per_point||0); }
+      if (key) map[key] = (map[key]||0) + val;
+    });
+    return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  };
+
+  const data = buildData();
+  const max = data[0]?.[1] || 1;
+  const isInr = view === "inr";
+  const barColors = ["#b5862a","#1d4ed8","#059669","#ea580c","#dc2626","#8b5cf6","#0891b2","#64748b"];
+
+  if (data.length === 0) return null;
+  return (
+    <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>Distribution</div>
+        <div style={{display:"flex",gap:4}}>
+          {views.map(v=>(
+            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {data.map(([label,val],i)=>(
+        <div key={label} style={{marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+            <div style={{fontSize:12,fontWeight:500,color:txt}}>{label}</div>
+            <div style={{fontSize:12,fontWeight:600,color:txt}}>{isInr ? inrFmt(val) : val.toLocaleString("en-IN")}</div>
+          </div>
+          <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${(val/max)*100}%`,background:barColors[i%barColors.length],borderRadius:10,transition:"width 0.4s ease"}}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── LP Chart Section ──────────────────────────────────────────────────────────
+function LPChartSection({ rows, acc, acc2, surf, surf2, bdr, bdr2, txt, mut, grn }) {
+  const [view, setView] = useState("category");
+  const catColors2 = {Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const cats = ["Airline","Hotel","Retail","Dining","Fuel","Other"];
+  const barColors = ["#b5862a","#1d4ed8","#059669","#ea580c","#dc2626","#8b5cf6","#0891b2","#64748b"];
+
+  const catViews = cats.filter(c=>rows.some(l=>l.category===c));
+  const views = [
+    {id:"category", label:"By Category"},
+    {id:"program",  label:"By Program"},
+    {id:"inr",      label:"By INR Value"},
+    ...catViews.map(c=>({id:`cat_${c}`, label:c+" only"})),
+  ];
+
+  const buildData = () => {
+    let filtered = rows;
+    if (view.startsWith("cat_")) filtered = rows.filter(l=>l.category===view.slice(4));
+    const map = {};
+    filtered.forEach(l => {
+      let key, val;
+      if (view === "category")        { key = l.category||"Other"; val = l.points_balance||0; }
+      else if (view === "program")    { key = l.name; val = l.points_balance||0; }
+      else if (view === "inr")        { key = l.name; val = (l.points_balance||0)*(l.inr_per_point||0); }
+      else                            { key = l.name; val = l.points_balance||0; }
+      if (key) map[key] = (map[key]||0) + val;
+    });
+    return Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  };
+
+  const data = buildData();
+  const max = data[0]?.[1] || 1;
+  const isInr = view === "inr";
+
+  if (data.length === 0) return (
+    <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,color:mut,fontSize:13,textAlign:"center"}}>
+      No programs in this category yet
+    </div>
+  );
+
+  const getColor = (label, i) => {
+    if (view === "category") return catColors2[label] || barColors[i % barColors.length];
+    return barColors[i % barColors.length];
+  };
+
+  return (
+    <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>Distribution</div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {views.map(v=>(
+            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {data.map(([label,val],i)=>(
+        <div key={label} style={{marginBottom:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+            <div style={{fontSize:12,fontWeight:500,color:txt,display:"flex",alignItems:"center",gap:6}}>
+              {view==="category"&&<div style={{width:7,height:7,borderRadius:2,background:catColors2[label]||acc2,flexShrink:0}}/>}
+              {label}
+            </div>
+            <div style={{fontSize:12,fontWeight:600,color:txt}}>{isInr ? inrFmt(val) : val.toLocaleString("en-IN")}</div>
+          </div>
+          <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
+            <div style={{height:"100%",width:`${(val/max)*100}%`,background:getColor(label,i),borderRadius:10,transition:"width 0.4s ease"}}/>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
 // ── Cards List ────────────────────────────────────────────────────────────────
 function Cards({ db }) {
   const [rows,setRows]=useState([]); const [loyalties,setLoyalties]=useState([]);
@@ -780,21 +927,8 @@ function Cards({ db }) {
         </div>}
       </div>}
 
-      {/* Bank breakdown bar chart */}
-      {banks2.length>1&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-        <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:14}}>Points by Bank</div>
-        {banks2.map(([bank,pts],i)=>(
-          <div key={bank} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <div style={{fontSize:13,fontWeight:500,color:txt}}>{bank}</div>
-              <div style={{fontSize:13,fontWeight:700,color:txt}}>{pts.toLocaleString("en-IN")}</div>
-            </div>
-            <div style={{height:6,background:surf2,borderRadius:10,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${(pts/maxBank2)*100}%`,background:i===0?acc:bdr2,borderRadius:10}}/>
-            </div>
-          </div>
-        ))}
-      </div>}
+      {/* CC chart with dropdown */}
+      {rows.length>0&&<CCChartSection rows={rows} acc={acc} surf={surf} surf2={surf2} bdr={bdr} bdr2={bdr2} txt={txt} mut={mut} grn={grn} nc={nc}/>}
 
       <SearchBar value={search} onChange={setSearch} placeholder="Search by name or bank…"/>
       <SortBar options={[{value:"name",label:"Name A–Z"},{value:"bank",label:"Bank"},{value:"balance",label:"Points ↓"}]} value={sort} onChange={setSort}/>
@@ -806,24 +940,34 @@ function Cards({ db }) {
           {filtered.map(c=>{
             const inrVal=(c.points_balance||0)*(c.inr_per_point||0);
             return (
-              <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 20px",borderTop:`4px solid ${c.color||acc}`,cursor:"pointer",position:"relative",boxShadow:"0 2px 8px rgba(0,0,0,0.05)",transition:"box-shadow 0.15s,transform 0.15s"}}
-                onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
-                onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.05)"; e.currentTarget.style.transform="none"; }}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,alignItems:"flex-start"}}>
+              <div key={c.id} onClick={()=>setDetail(c)}
+                style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",position:"relative",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",transition:"all 0.2s"}}
+                onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)"; e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.borderColor=c.color||acc; }}
+                onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)"; e.currentTarget.style.transform="none"; e.currentTarget.style.borderColor=bdr; }}>
+                {/* color accent bar */}
+                <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:c.color||acc,borderRadius:"14px 14px 0 0"}}/>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,marginTop:4}}>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={36}/>
-                    <div><div style={{fontSize:15,fontWeight:700,color:txt}}>{c.name}</div><div style={{fontSize:12,color:mut}}>{c.bank}{c.last4?` ···· ${c.last4}`:""}</div></div>
+                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={34}/>
+                    <div>
+                      <div style={{fontSize:14,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{c.name}</div>
+                      <div style={{fontSize:11,color:mut,marginTop:1}}>{c.bank}{c.last4?` ···· ${c.last4}`:""}</div>
+                    </div>
                   </div>
-                  <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:(nc[c.network]||acc)+"18",color:nc[c.network]||acc}}>{c.network}</span>
+                  <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:(nc[c.network]||acc)+"15",color:nc[c.network]||acc,letterSpacing:"0.04em"}}>{c.network}</span>
                 </div>
-                <div style={{fontSize:26,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{(c.points_balance||0).toLocaleString()}</div>
-                <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{c.points_currency||"pts"}</div>
-                {c.inr_per_point>0&&<div style={{fontSize:13,fontWeight:600,color:grn,marginBottom:8}}>{inrFmt(inrVal)}</div>}
-                <div style={{display:"flex",gap:14,fontSize:12,color:mut,borderTop:`1px solid ${bdr}`,paddingTop:10}}>
-                  {c.stmt_date&&<span>Stmt: {c.stmt_date}th</span>}
-                  {c.annual_fee>0&&<span>Fee: ₹{Number(c.annual_fee).toLocaleString()}</span>}
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.02em",lineHeight:1}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:3}}>{c.points_currency||"pts"}</div>
                 </div>
-                <div style={{position:"absolute",bottom:13,right:16,fontSize:11,color:acc,fontWeight:600}}>View →</div>
+                {c.inr_per_point>0&&<div style={{fontSize:12,fontWeight:600,color:grn,marginBottom:10}}>{inrFmt(inrVal)}</div>}
+                <div style={{display:"flex",gap:12,fontSize:11,color:mut,borderTop:`1px solid ${bdr}`,paddingTop:10,justifyContent:"space-between"}}>
+                  <div style={{display:"flex",gap:12}}>
+                    {c.stmt_date&&<span>Stmt {ordinal(c.stmt_date)}</span>}
+                    {c.annual_fee>0&&<span>₹{Number(c.annual_fee).toLocaleString()} fee</span>}
+                  </div>
+                  <span style={{color:acc,fontWeight:500}}>View →</span>
+                </div>
               </div>
             );
           })}
@@ -942,24 +1086,8 @@ function Loyalty({ db }) {
         </div>}
       </div>}
 
-      {/* Category breakdown */}
-      {catList.length>1&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-        <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:14}}>Points by Category</div>
-        {catList.map(([cat,pts],i)=>(
-          <div key={cat} style={{marginBottom:12}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-              <div style={{fontSize:13,fontWeight:500,color:txt,display:"flex",alignItems:"center",gap:6}}>
-                <div style={{width:8,height:8,borderRadius:2,background:catColors2[cat]||acc2,flexShrink:0}}/>
-                {cat}
-              </div>
-              <div style={{fontSize:13,fontWeight:700,color:txt}}>{pts.toLocaleString("en-IN")}</div>
-            </div>
-            <div style={{height:6,background:surf2,borderRadius:10,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${(pts/maxCat)*100}%`,background:catColors2[cat]||acc2,borderRadius:10}}/>
-            </div>
-          </div>
-        ))}
-      </div>}
+      {/* LP chart with dropdown */}
+      {rows.length>0&&<LPChartSection rows={rows} acc={acc} acc2={acc2} surf={surf} surf2={surf2} bdr={bdr} bdr2={bdr2} txt={txt} mut={mut} grn={grn}/>}
 
       <SearchBar value={search} onChange={setSearch} placeholder="Search by name, category or tier…"/>
       <SortBar options={[{value:"name",label:"Name A–Z"},{value:"category",label:"Category"},{value:"balance",label:"Points ↓"}]} value={sort} onChange={setSort}/>
@@ -968,21 +1096,33 @@ function Loyalty({ db }) {
       ):(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:16}}>
           {filtered.map(p=>{ const d=days(p.expiry_date); const exp=d!==null&&d<60; const inrVal=(p.points_balance||0)*(p.inr_per_point||0); return (
-            <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 20px",borderTop:`4px solid ${p.color||acc2}`,cursor:"pointer",position:"relative",boxShadow:"0 2px 8px rgba(0,0,0,0.05)",transition:"box-shadow 0.15s,transform 0.15s"}}
-              onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
-              onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.05)"; e.currentTarget.style.transform="none"; }}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10,alignItems:"flex-start"}}>
+            <divkey={p.id} onClick={()=>setDetail(p)}
+              style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",position:"relative",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",transition:"all 0.2s"}}
+              onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)"; e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.borderColor=p.color||acc2; }}
+              onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)"; e.currentTarget.style.transform="none"; e.currentTarget.style.borderColor=bdr; }}>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:p.color||acc2,borderRadius:"14px 14px 0 0"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,marginTop:4}}>
                 <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <LogoCircle url={p.logo_url} name={p.name} color={p.color||acc2} size={36}/>
-                  <div><div style={{fontSize:15,fontWeight:700,color:txt}}>{p.name}</div>{p.tier&&<div style={{fontSize:12,color:acc2,fontWeight:600}}>{p.tier}</div>}</div>
+                  <LogoCircle url={p.logo_url} name={p.name} color={p.color||acc2} size={34}/>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{p.name}</div>
+                    {p.tier&&<div style={{fontSize:11,color:p.color||acc2,fontWeight:600,marginTop:1}}>{p.tier}</div>}
+                  </div>
                 </div>
-                <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:(cc[p.category]||acc2)+"18",color:cc[p.category]||acc2}}>{p.category}</span>
+                <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:(cc[p.category]||acc2)+"15",color:cc[p.category]||acc2,letterSpacing:"0.04em"}}>{p.category}</span>
               </div>
-              <div style={{fontSize:26,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{(p.points_balance||0).toLocaleString()}</div>
-              <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>points</div>
-              {p.inr_per_point>0&&<div style={{fontSize:13,fontWeight:600,color:grn,marginBottom:6}}>{inrFmt(inrVal)}</div>}
-              {p.expiry_date&&<div style={{fontSize:12,color:exp?red:mut,borderTop:`1px solid ${bdr}`,paddingTop:8}}>{exp?"⚠ ":""}Exp {new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}{d!==null&&<span> · {d>0?`${d}d`:"Expired"}</span>}</div>}
-              <div style={{position:"absolute",bottom:13,right:16,fontSize:11,color:acc2,fontWeight:600}}>View →</div>
+              <div style={{marginBottom:10}}>
+                <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.02em",lineHeight:1}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
+                <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:3}}>points</div>
+              </div>
+              {p.inr_per_point>0&&<div style={{fontSize:12,fontWeight:600,color:grn,marginBottom:8}}>{inrFmt(inrVal)}</div>}
+              <div style={{borderTop:`1px solid ${bdr}`,paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                {p.expiry_date
+                  ? <div style={{fontSize:11,color:exp?red:mut}}>{exp?"⚠ ":""}{d>0?`${d}d left`:"Expired"} · {new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                  : <div/>
+                }
+                <div style={{fontSize:11,color:acc2,fontWeight:500}}>View →</div>
+              </div>
             </div>
           );})}
         </div>
@@ -1297,19 +1437,28 @@ function Vouchers({ db }) {
       ):(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:16}}>
           {shown.map(v=>{ const d=days(v.expiry_date); const exp=d!==null&&d<30&&!v.redeemed; return (
-            <div key={v.id} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 20px",opacity:v.redeemed?0.6:1,boxShadow:"0 2px 8px rgba(0,0,0,0.05)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:v.redeemed?surf2:`${grn}18`,color:v.redeemed?mut:grn}}>{v.redeemed?"Redeemed":"Active"}</span>
-                {exp&&<span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:"#fff7ed",color:"#ea580c"}}>Expiring soon</span>}
+            <div key={v.id} style={{background:surf,border:`1px solid ${v.redeemed?bdr:exp?"#fde68a":bdr}`,borderRadius:14,padding:"16px 18px",opacity:v.redeemed?0.55:1,boxShadow:"0 1px 4px rgba(0,0,0,0.04)",position:"relative",overflow:"hidden"}}>
+              {/* top accent */}
+              <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:v.redeemed?bdr2:exp?"#f59e0b":grn,borderRadius:"14px 14px 0 0"}}/>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginTop:4,marginBottom:10}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{v.program}</div>
+                  {v.description&&<div style={{fontSize:11,color:mut,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.description}</div>}
+                </div>
+                <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:v.redeemed?surf2:exp?"#fef3c7":`${grn}15`,color:v.redeemed?mut:exp?"#92400e":grn,marginLeft:8,flexShrink:0,letterSpacing:"0.04em"}}>
+                  {v.redeemed?"USED":exp?"EXPIRING":"ACTIVE"}
+                </span>
               </div>
-              <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:2}}>{v.program}</div>
-              {v.description&&<div style={{fontSize:13,color:mut,marginBottom:6}}>{v.description}</div>}
-              {v.value&&<div style={{fontSize:20,fontWeight:800,color:grn,marginBottom:6}}>{v.value}</div>}
-              {v.expiry_date&&<div style={{fontSize:12,color:exp?red:mut,marginBottom:10}}>Expires {new Date(v.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}{d!==null&&<span> · {d>0?`${d}d`:"Expired"}</span>}</div>}
-              <div style={{display:"flex",gap:6}}>
-                <button onClick={()=>toggle(v)} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${bdr}`,cursor:"pointer",fontSize:12,fontWeight:600,background:v.redeemed?surf2:acc,color:v.redeemed?mut:"#fff"}}>{v.redeemed?"Mark Active":"Mark Redeemed"}</button>
-                <button style={{...gbtn,padding:"5px 8px"}} onClick={()=>openEdit(v)}>✎</button>
-                <button style={{...dbtn,padding:"5px 8px"}} onClick={()=>del(v.id)}>✕</button>
+              {v.value&&<div style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.02em",marginBottom:8}}>{v.value}</div>}
+              {v.expiry_date&&<div style={{fontSize:11,color:exp?red:mut,marginBottom:10}}>
+                Expires {new Date(v.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+                {d!==null&&<span style={{fontWeight:600}}> · {d>0?`${d}d left`:"Expired"}</span>}
+              </div>}
+              {v.notes&&<div style={{fontSize:11,color:mut,marginBottom:10,fontStyle:"italic"}}>{v.notes}</div>}
+              <div style={{display:"flex",gap:6,borderTop:`1px solid ${bdr}`,paddingTop:10,alignItems:"center"}}>
+                <button onClick={()=>toggle(v)} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${bdr}`,cursor:"pointer",fontSize:11,fontWeight:600,background:v.redeemed?surf2:txt,color:v.redeemed?mut:"#fff",letterSpacing:"0.02em",transition:"all 0.15s"}}>{v.redeemed?"Restore":"Mark Used"}</button>
+                <button style={{...gbtn,padding:"5px 8px",fontSize:11}} onClick={()=>openEdit(v)}>✎</button>
+                <button style={{...dbtn,padding:"5px 8px",fontSize:11}} onClick={()=>del(v.id)}>✕</button>
               </div>
             </div>
           );})}
@@ -1897,9 +2046,9 @@ function Dashboard({ db, onNavigate }) {
       const [c, l, t, v, tr] = await Promise.all([
         db.from("cc_cards").select(),
         db.from("loyalty_programs").select(),
-        db.from("point_transactions").select("&order=created_at.desc"),
+        db.from("point_transactions").select(),
         db.from("vouchers").select(),
-        db.from("transfer_log").select("&order=created_at.desc"),
+        db.from("transfer_log").select(),
       ]);
       setCards(c.data || []);
       setLoyalties(l.data || []);
@@ -2096,7 +2245,7 @@ function Dashboard({ db, onNavigate }) {
           <div style={{fontSize:11,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Vouchers</div>
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",color:txt,lineHeight:1}}>{activeVouchers}</div>
           <div style={{fontSize:12,color:mut,marginTop:6}}>active vouchers</div>
-          <button onClick={()=>onNavigate("vouchers")} style={{marginTop:10,background:"none",border:"none",cursor:"pointer",fontSize:12,color:acc,fontWeight:600,padding:0}}>View all →</button>
+          <button onClick={()=>onNavigate("vouchers")} style={{marginTop:10,background:"rgba(0,0,0,0.06)",border:"none",cursor:"pointer",fontSize:11,color:txt,fontWeight:600,padding:"4px 10px",borderRadius:6,letterSpacing:"0.04em"}}>View All →</button>
         </div>
       </div>
 
@@ -2283,34 +2432,38 @@ function Dashboard({ db, onNavigate }) {
       , {marginBottom:16})}
 
       {/* ── Transfer activity ── */}
-      {transfers.length > 0 && card(
+      {card(
         <div>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div style={s}>Recent Transfers</div>
             <button onClick={()=>onNavigate("history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",padding:0}}>View All →</button>
           </div>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead>
-                <tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:`1.5px solid ${bdr}`}}>
-                  {["Date","From","To","Sent","Received"].map(h=>(
-                    <th key={h} style={{padding:"6px 12px",textAlign:h==="Sent"||h==="Received"?"right":"left",fontWeight:700}}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {[...transfers].sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)).slice(0,4).map(t=>(
-                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{t.from_program}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{t.to_program}</td>
-                    <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(t.points_sent||0).toLocaleString()}</td>
-                    <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{((t.points_received||0)+(t.bonus_miles||0)).toLocaleString()}</td>
+          {transfers.length===0 ? (
+            <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No transfers yet. Use Transfer Points to move points between programs.</div>
+          ) : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+                <thead>
+                  <tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:`1.5px solid ${bdr}`}}>
+                    {["Date","From","To","Sent","Received"].map(h=>(
+                      <th key={h} style={{padding:"6px 12px",textAlign:h==="Sent"||h==="Received"?"right":"left",fontWeight:700}}>{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {[...transfers].sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)).slice(0,5).map(t=>(
+                    <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
+                      <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</td>
+                      <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{t.from_program}</td>
+                      <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{t.to_program}</td>
+                      <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(t.points_sent||0).toLocaleString()}</td>
+                      <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{((t.points_received||0)+(t.bonus_miles||0)).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       , {marginBottom:16})}
 
