@@ -25,27 +25,39 @@ function createSupabaseClient(url, anonKey) {
     storage: {
       upload: async (bucket, path, file) => {
         try {
+          // POST first (create new)
           const r = await fetch(`${storageBase}/object/${bucket}/${path}`, {
             method: "POST",
-            headers: { ...storageH, "Content-Type": file.type, "x-upsert": "true" },
+            headers: {
+              apikey: anonKey,
+              Authorization: `Bearer ${anonKey}`,
+              "Content-Type": file.type,
+              "x-upsert": "true",
+              "cache-control": "3600",
+            },
             body: file,
           });
-          if (!r.ok) {
-            // Try PUT (upsert)
-            const r2 = await fetch(`${storageBase}/object/${bucket}/${path}`, {
-              method: "PUT",
-              headers: { ...storageH, "Content-Type": file.type, "x-upsert": "true" },
-              body: file,
-            });
-            const data2 = await r2.json();
-            return { data: data2, error: r2.ok ? null : data2 };
+          if (r.ok) {
+            const data = await r.json().catch(()=>({}));
+            return { data, error: null };
           }
-          const data = await r.json();
-          return { data, error: null };
+          // PUT fallback (update existing)
+          const r2 = await fetch(`${storageBase}/object/${bucket}/${path}`, {
+            method: "PUT",
+            headers: {
+              apikey: anonKey,
+              Authorization: `Bearer ${anonKey}`,
+              "Content-Type": file.type,
+              "x-upsert": "true",
+            },
+            body: file,
+          });
+          const data2 = await r2.json().catch(()=>({}));
+          if (!r2.ok) return { data: null, error: data2 };
+          return { data: data2, error: null };
         } catch(e) { return { data: null, error: { message: e.message } }; }
       },
       getPublicUrl: (bucket, path) => {
-        // Return clean URL without double-encoding
         return `${url}/storage/v1/object/public/${bucket}/${path}`;
       },
     },
@@ -157,29 +169,33 @@ function ordinal(n) {
 function LogoCircle({ url, name, color="#b5862a", size=40 }) {
   const [imgErr, setImgErr] = useState(false);
   const initials = (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-  if (url && !imgErr) {
-    return (
-      <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${bdr}`,background:surf2,display:"flex",alignItems:"center",justifyContent:"center"}}>
-        <img src={url} alt={name} style={{width:"100%",height:"100%",objectFit:"contain",padding:2}}
-          onError={()=>setImgErr(true)}/>
-      </div>
-    );
-  }
+  const showImg = url && url.length > 0 && !imgErr;
   return (
-    <div style={{width:size,height:size,borderRadius:size*0.28,background:color+"18",border:`1.5px solid ${color}33`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-      <span style={{fontSize:size*0.35,fontWeight:700,color:color,lineHeight:1}}>{initials}</span>
+    <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${showImg?bdr:color+"33"}`,background:showImg?surf2:color+"15",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+      {showImg ? (
+        <img
+          src={url}
+          alt={name||""}
+          style={{width:"100%",height:"100%",objectFit:"contain",padding:size*0.06,display:"block"}}
+          onError={()=>setImgErr(true)}
+          onLoad={()=>setImgErr(false)}
+          crossOrigin="anonymous"
+        />
+      ) : (
+        <span style={{fontSize:size*0.33,fontWeight:700,color:color,lineHeight:1,userSelect:"none"}}>{initials}</span>
+      )}
     </div>
   );
 }
 
 function LogoUpload({ current, onUpload, size=56 }) {
-  const [previewing, setPreviewing] = useState(false);
   const handleFile = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) return alert("Please upload an image file");
-    if (file.size > 500000) return alert("Image must be under 500KB");
+    if (!file.type.startsWith("image/")) return alert("Please upload an image file (PNG, JPG, SVG)");
+    if (file.size > 2000000) return alert("Image must be under 2MB");
     const reader = new FileReader();
     reader.onload = (e) => onUpload(file, e.target.result);
+    reader.onerror = () => alert("Could not read file");
     reader.readAsDataURL(file);
   };
   return (
@@ -397,8 +413,16 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
   const load=async()=>{
     setBusy(true);
     const [t,p]=await Promise.all([db.from("point_transactions").filter("program_name",card.name),db.from("transfer_partners").filter("from_program",card.name)]);
-    setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    const txnData = t.data||[];
+    setTxns(txnData.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     setPartners(p.data||[]);
+    // Sync balance: opening_balance + sum of all transactions
+    const txnSum = txnData.reduce((a,tx)=>a+tx.points,0);
+    const correctBalance = (card.opening_balance||0) + txnSum;
+    if (correctBalance !== (card.points_balance||0)) {
+      await db.from("cc_cards").update(card.id, { points_balance: correctBalance });
+      setCard(c=>({...c, points_balance: correctBalance}));
+    }
     setBusy(false);
   };
   useEffect(()=>{ load(); },[]);
@@ -572,8 +596,16 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
   const load=async()=>{
     setBusy(true);
     const [t,p]=await Promise.all([db.from("point_transactions").filter("program_name",prog.name),db.from("transfer_partners").filter("from_program",prog.name)]);
-    setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    const txnData = t.data||[];
+    setTxns(txnData.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     setPartners(p.data||[]);
+    // Sync balance
+    const txnSum = txnData.reduce((a,tx)=>a+tx.points,0);
+    const correctBalance = (prog.opening_balance||0) + txnSum;
+    if (correctBalance !== (prog.points_balance||0)) {
+      await db.from("loyalty_programs").update(prog.id, { points_balance: correctBalance });
+      setProg(x=>({...x, points_balance: correctBalance}));
+    }
     setBusy(false);
   };
   useEffect(()=>{ load(); },[]);
@@ -871,9 +903,10 @@ function Cards({ db }) {
     const ob=parseInt(f.opening_balance)||0;
     let logo_url=null;
     if(logoFile){
-      const path=`cards/${Date.now()}-${logoFile.name.replace(/[^a-zA-Z0-9.]/g,"-")}`;
-      const {error:ue}=await db.storage.upload("logos",path,logoFile);
-      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+      const path=`cards/${Date.now()}-${logoFile.name.replace(/[^a-zA-Z0-9.-]/g,"-")}`;
+      const {error:ue, status}=await db.storage.upload("logos",path,logoFile);
+      if(ue) console.error("Logo upload error:",ue,"status:",status);
+      else logo_url=db.storage.getPublicUrl("logos",path);
     }
     const p={name:f.name.trim(),bank:f.bank,last4:f.last4,network:f.network,color:f.color,points_currency:f.points_currency,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,annual_fee:parseFloat(f.annual_fee)||0,stmt_date:parseInt(f.stmt_date)||null,logo_url};
     const {error}=await db.from("cc_cards").insert(p);
@@ -1024,9 +1057,10 @@ function Loyalty({ db }) {
     const ob=parseInt(f.opening_balance)||0;
     let logo_url=null;
     if(logoFile){
-      const path=`loyalty/${Date.now()}-${logoFile.name.replace(/[^a-zA-Z0-9.]/g,"-")}`;
-      const {error:ue}=await db.storage.upload("logos",path,logoFile);
-      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+      const path=`loyalty/${Date.now()}-${logoFile.name.replace(/[^a-zA-Z0-9.-]/g,"-")}`;
+      const {error:ue, status}=await db.storage.upload("logos",path,logoFile);
+      if(ue) console.error("Logo upload error:",ue,"status:",status);
+      else logo_url=db.storage.getPublicUrl("logos",path);
     }
     const p={name:f.name.trim(),category:f.category,tier:f.tier,color:f.color,expiry_date:f.expiry_date||null,expiry_rule:f.expiry_rule,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,logo_url};
     const {error}=await db.from("loyalty_programs").insert(p);
@@ -1407,12 +1441,12 @@ function Vouchers({ db }) {
   const [rows,setRows]=useState([]); const [busy,setBusy]=useState(true);
   const [show,setShow]=useState(false); const [edit,setEdit]=useState(null);
   const [filter,setFilter]=useState("active");
-  const empty={program:"",description:"",value:"",expiry_date:"",redeemed:false,notes:""};
+  const empty={program:"",description:"",value:"",expiry_date:"",redeemed:false,notes:"",voucher_code:"",voucher_pin:"",received_from:""};
   const [f,setF]=useState(empty);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const load=async()=>{ setBusy(true); const {data}=await db.from("vouchers").select(); setRows(data||[]); setBusy(false); };
   useEffect(()=>{ load(); },[]);
-  const openEdit=r=>{ setEdit(r); setF({program:r.program||"",description:r.description||"",value:r.value||"",expiry_date:r.expiry_date||"",redeemed:r.redeemed||false,notes:r.notes||""}); setShow(true); };
+  const openEdit=r=>{ setEdit(r); setF({program:r.program||"",description:r.description||"",value:r.value||"",expiry_date:r.expiry_date||"",redeemed:r.redeemed||false,notes:r.notes||"",voucher_code:r.voucher_code||"",voucher_pin:r.voucher_pin||"",received_from:r.received_from||""}); setShow(true); };
   const save=async()=>{
     if(!f.program.trim()) return alert("Program name required");
     const {error}=edit?await db.from("vouchers").update(edit.id,{...f,expiry_date:f.expiry_date||null}):await db.from("vouchers").insert({...f,expiry_date:f.expiry_date||null});
@@ -1454,6 +1488,9 @@ function Vouchers({ db }) {
                 Expires {new Date(v.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
                 {d!==null&&<span style={{fontWeight:600}}> · {d>0?`${d}d left`:"Expired"}</span>}
               </div>}
+              {v.received_from&&<div style={{fontSize:11,color:mut,marginBottom:4}}>From: <span style={{color:txt,fontWeight:500}}>{v.received_from}</span></div>}
+              {v.voucher_code&&<div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}><span style={{color:mut}}>Code:</span><span style={{fontFamily:"monospace",fontWeight:600,color:acc,background:acc+"10",padding:"1px 6px",borderRadius:4,letterSpacing:"0.08em"}}>{v.voucher_code}</span></div>}
+              {v.voucher_pin&&<div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}><span style={{color:mut}}>PIN:</span><span style={{fontFamily:"monospace",fontWeight:600,color:txt,background:surf2,padding:"1px 6px",borderRadius:4}}>{v.voucher_pin}</span></div>}
               {v.notes&&<div style={{fontSize:11,color:mut,marginBottom:10,fontStyle:"italic"}}>{v.notes}</div>}
               <div style={{display:"flex",gap:6,borderTop:`1px solid ${bdr}`,paddingTop:10,alignItems:"center"}}>
                 <button onClick={()=>toggle(v)} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${bdr}`,cursor:"pointer",fontSize:11,fontWeight:600,background:v.redeemed?surf2:txt,color:v.redeemed?mut:"#fff",letterSpacing:"0.02em",transition:"all 0.15s"}}>{v.redeemed?"Restore":"Mark Used"}</button>
@@ -1471,6 +1508,11 @@ function Vouchers({ db }) {
           <div>{lbl("Value")}<input style={inp} placeholder="₹5,000 / 1 Night" value={f.value} onChange={up("value")}/></div>
           <div>{lbl("Expiry Date")}<input style={inp} type="date" value={f.expiry_date||""} onChange={up("expiry_date")}/></div>
         </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Voucher Code")}<input style={inp} placeholder="ABC123XYZ" value={f.voucher_code||""} onChange={up("voucher_code")}/></div>
+          <div>{lbl("Voucher PIN")}<input style={inp} placeholder="1234" value={f.voucher_pin||""} onChange={up("voucher_pin")}/></div>
+        </div>
+        {lbl("Received From")}<input style={inp} placeholder="SmartBuy, Infinia CC, GrabDeals..." value={f.received_from||""} onChange={up("received_from")}/>
         {lbl("Notes")}<input style={inp} placeholder="Conditions, notes..." value={f.notes} onChange={up("notes")}/>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>{edit?"Save Changes":"Add Voucher"}</button>
       </Modal>
@@ -1853,8 +1895,11 @@ function TransferHistory({ db }) {
 
   const load = async () => {
     setBusy(true);
-    const { data } = await db.from("transfer_log").select();
-    setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
+    try {
+      const { data, error } = await db.from("transfer_log").select();
+      if (error) { console.error("transfer_log error:", error); }
+      setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
+    } catch(e) { console.error("transfer_log exception:", e); }
     setBusy(false);
   };
   useEffect(() => { load(); }, []);
@@ -1883,7 +1928,7 @@ function TransferHistory({ db }) {
   const totalBonus = filtered.reduce((a, l) => a + (l.bonus_miles || 0), 0);
 
   return (
-    <div style={{minHeight:"60vh"}}>
+    <div style={{minHeight:"60vh",background:bg,color:txt}}>
       <div style={{fontSize:30,fontWeight:800,color:txt,letterSpacing:"-0.04em",lineHeight:1.1,marginBottom:6}}>Transfer History</div>
       <div style={{fontSize:14,color:mut,marginBottom:24}}>All point transfers across your cards and programs</div>
 
@@ -2026,6 +2071,122 @@ function TransferHistory({ db }) {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+
+// ── Portfolio Bar Chart (overview) ───────────────────────────────────────────
+function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, acc, acc2, grn, s }) {
+  const [view, setView] = useState("points");
+  const [search, setSearch] = useState("");
+  const [sortDir, setSortDir] = useState("desc");
+
+  const catColors = {Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const ncColors  = {Visa:"#1a1f71",Mastercard:"#dc2626",Amex:"#0066b3",Diners:"#2c2c8c",RuPay:"#ea580c",Other:acc};
+  const barColors = ["#b5862a","#1d4ed8","#059669","#ea580c","#dc2626","#8b5cf6","#0891b2","#64748b","#7c3aed","#0f766e"];
+
+  const views = [
+    {id:"points", label:"By Points"},
+    {id:"inr",    label:"By INR Value"},
+    {id:"bank",   label:"By Bank"},
+    {id:"cat",    label:"By Category"},
+  ];
+
+  const buildData = () => {
+    const all = [
+      ...cards.map(c=>({
+        name: c.name, type:"card", bank: c.bank||"Other",
+        cat: "CC", color: c.color||acc,
+        points: c.points_balance||0,
+        inr: (c.points_balance||0)*(c.inr_per_point||0),
+      })),
+      ...loyalties.map(l=>({
+        name: l.name, type:"loyalty", bank: "—",
+        cat: l.category||"Other", color: catColors[l.category]||acc2,
+        points: l.points_balance||0,
+        inr: (l.points_balance||0)*(l.inr_per_point||0),
+      })),
+    ];
+
+    if (view === "bank") {
+      const map = {};
+      cards.forEach(c=>{ const b=c.bank||"Other"; map[b]=(map[b]||0)+(c.points_balance||0); });
+      return Object.entries(map)
+        .map(([name,points],i)=>({name,points,inr:0,color:barColors[i%barColors.length]}))
+        .sort((a,b)=>sortDir==="desc"?b.points-a.points:a.points-b.points)
+        .filter(d=>d.name.toLowerCase().includes(search.toLowerCase()));
+    }
+    if (view === "cat") {
+      const map = {};
+      loyalties.forEach(l=>{ const c=l.category||"Other"; map[c]=(map[c]||0)+(l.points_balance||0); });
+      return Object.entries(map)
+        .map(([name,points])=>({name,points,inr:0,color:catColors[name]||acc2}))
+        .sort((a,b)=>sortDir==="desc"?b.points-a.points:a.points-b.points)
+        .filter(d=>d.name.toLowerCase().includes(search.toLowerCase()));
+    }
+    // points or inr — show all individual programs/cards
+    const sorted = [...all]
+      .filter(d=>d.name.toLowerCase().includes(search.toLowerCase()))
+      .sort((a,b)=>sortDir==="desc"?(b[view]||0)-(a[view]||0):(a[view]||0)-(b[view]||0));
+    return sorted;
+  };
+
+  const data = buildData();
+  const maxVal = data[0]?.[view==="inr"?"inr":"points"] || 1;
+
+  return (
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={s}>Portfolio Distribution</div>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+          {views.map(v=>(
+            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
+              {v.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {/* Search + sort row */}
+      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center"}}>
+        <div style={{position:"relative",flex:1}}>
+          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:12}}>🔍</span>
+          <input
+            style={{width:"100%",padding:"7px 10px 7px 30px",borderRadius:8,border:`1px solid ${bdr}`,background:surf2,color:txt,fontSize:12,outline:"none",boxSizing:"border-box"}}
+            placeholder="Search..."
+            value={search}
+            onChange={e=>setSearch(e.target.value)}
+          />
+        </div>
+        <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${bdr}`,background:surf2,color:mut,cursor:"pointer",fontSize:11,fontWeight:500,flexShrink:0}}>
+          {sortDir==="desc"?"↓ High→Low":"↑ Low→High"}
+        </button>
+      </div>
+
+      {data.length === 0 ? (
+        <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No data yet</div>
+      ) : data.slice(0, 12).map((d,i)=>{
+        const val = view==="inr" ? d.inr : d.points;
+        const pct = maxVal > 0 ? (val/maxVal)*100 : 0;
+        return (
+          <div key={d.name+i} style={{marginBottom:10}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
+                <div style={{width:8,height:8,borderRadius:2,background:d.color,flexShrink:0}}/>
+                <div style={{fontSize:12,fontWeight:500,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
+                {d.type&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:8,background:d.type==="card"?acc+"12":acc2+"12",color:d.type==="card"?acc:acc2,flexShrink:0,fontWeight:600}}>{d.type==="card"?"CC":"LP"}</span>}
+              </div>
+              <div style={{fontSize:12,fontWeight:600,color:txt,flexShrink:0,marginLeft:8}}>
+                {view==="inr" ? inrFmt(d.inr) : (d.points||0).toLocaleString("en-IN")}
+              </div>
+            </div>
+            <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:d.color,borderRadius:10,transition:"width 0.4s ease"}}/>
+            </div>
+          </div>
+        );
+      })}
+      {data.length > 12 && <div style={{fontSize:11,color:mut,textAlign:"center",marginTop:8}}>Showing top 12 of {data.length}</div>}
     </div>
   );
 }
@@ -2297,41 +2458,8 @@ function Dashboard({ db, onNavigate }) {
           </div>
         )}
 
-        {/* Bank Comparison */}
-        {card(
-          <div>
-            <div style={s}>Bank Comparison</div>
-            <div style={{fontSize:12,color:mut,marginBottom:16}}>Total rewards by bank</div>
-            {banks.length === 0 ? (
-              <div style={{color:mut,fontSize:13}}>No cards added yet</div>
-            ) : banks.map(([bank, pts], i) => (
-              <div key={bank} style={{marginBottom:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <div style={{width:22,height:22,borderRadius:8,background:surf2,border:`1.5px solid ${bdr}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:txt}}>{i+1}</div>
-                    <div style={{fontSize:13,fontWeight:600,color:txt}}>{bank}</div>
-                  </div>
-                  <div style={{fontSize:13,fontWeight:700,color:txt}}>{pts.toLocaleString("en-IN")}</div>
-                </div>
-                <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
-                  <div style={{height:"100%",width:`${(pts/maxBankPts)*100}%`,background:i===0?acc:bdr2,borderRadius:10,transition:"width 0.6s ease"}}/>
-                </div>
-              </div>
-            ))}
-            {topBank && (
-              <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Top Bank</div>
-                  <div style={{fontSize:14,fontWeight:700,color:txt,marginTop:2}}>{topBank[0]}</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Total</div>
-                  <div style={{fontSize:14,fontWeight:700,color:acc,marginTop:2}}>{topBank[1].toLocaleString("en-IN")}</div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+        {/* Portfolio Bar Chart */}
+        {card(<PortfolioChart cards={cards} loyalties={loyalties} surf={surf} surf2={surf2} bdr={bdr} bdr2={bdr2} txt={txt} mut={mut} acc={acc} acc2={acc2} grn={grn} s={s}/>)}
       </div>
 
       {/* ── Bottom row: Loyalty Programs + Credit Cards ── */}
