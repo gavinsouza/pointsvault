@@ -173,162 +173,186 @@ function Setup({onDone}){
   );
 }
 
-// ── PortfolioChart — SVG line chart, works for programs or cards ───────────────
-function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
+// ── PointsChart — SVG line chart of points value over time ────────────────────
+function PointsChart({txns,progs,mProgs,owners}){
   const [period,setPeriod]=useState("3m");
   const [ownerF,setOwnerF]=useState("all");
-  const [entityF,setEntityF]=useState("all");
-  const [metric,setMetric]=useState("points");
+  const [progF,setProgF]=useState("all");
+  const [metric,setMetric]=useState("points"); // points | inr
 
-  const color=accentColor||acc;
+  const periods={
+    "1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999
+  };
 
-  const periodDays={"1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999};
-
+  // Build daily series
   const series=useMemo(()=>{
     const now=new Date();
-    const cutoff=new Date(now-periodDays[period]*86400000);
-    const filtered=txns.filter(t=>{
-      const ent=entities.find(e=>e.id===t.entity_id);
-      if(!ent) return false;
-      if(t.entity_type!==entityType) return false;
-      if(ownerF!=="all"&&ent.owner_id!==ownerF) return false;
-      if(entityF!=="all"&&ent.id!==entityF) return false;
-      return true;
+    const cutoff=new Date(now-periods[period]*86400000);
+
+    // Filter txns by owner/prog
+    const filteredTxns=txns.filter(t=>{
+      const prog=progs.find(p=>p.id===t.entity_id);
+      if(!prog) return false;
+      if(ownerF!=="all"&&prog.owner_id!==ownerF) return false;
+      if(progF!=="all"&&prog.id!==progF) return false;
+      return t.entity_type==="program";
     });
-    const entIds=[...new Set(filtered.map(t=>t.entity_id))];
-    const openBals={};
-    entIds.forEach(eid=>{
-      const ent=entities.find(e=>e.id===eid);
-      const pre=txns.filter(t=>t.entity_id===eid&&new Date(t.txn_date)<cutoff);
-      openBals[eid]=(ent?.opening_balance||0)+pre.reduce((a,t)=>a+t.points,0);
+
+    // Build opening balance per prog (sum of txns before cutoff)
+    const progIds=[...new Set(filteredTxns.map(t=>t.entity_id))];
+    const openingBals={};
+    progIds.forEach(pid=>{
+      const prog=progs.find(p=>p.id===pid);
+      const beforeCutoff=txns.filter(t=>t.entity_id===pid&&new Date(t.txn_date)<cutoff);
+      openingBals[pid]=(prog?.opening_balance||0)+beforeCutoff.reduce((a,t)=>a+t.points,0);
     });
-    const inRange=filtered.filter(t=>new Date(t.txn_date)>=cutoff);
-    const dateSet=new Set(inRange.map(t=>t.txn_date));
-    dateSet.add(cutoff.toISOString().split("T")[0]);
-    dateSet.add(now.toISOString().split("T")[0]);
+
+    // Get all dates in range with at least one txn, plus today
+    const txnsInRange=filteredTxns.filter(t=>new Date(t.txn_date)>=cutoff);
+    const dateSet=new Set(txnsInRange.map(t=>t.txn_date));
+    // Add start and today
+    const startStr=cutoff.toISOString().split("T")[0];
+    const todayStr=now.toISOString().split("T")[0];
+    dateSet.add(startStr);dateSet.add(todayStr);
     const dates=[...dateSet].sort();
-    const run={...openBals};
-    return dates.map(date=>{
-      inRange.filter(t=>t.txn_date===date).forEach(t=>{ if(run[t.entity_id]!==undefined) run[t.entity_id]+=t.points; });
+
+    // Running balance per prog across dates
+    const runningBals={};
+    progIds.forEach(pid=>{ runningBals[pid]=openingBals[pid]||0; });
+
+    const points=dates.map(date=>{
+      // Apply txns on this date
+      txnsInRange.filter(t=>t.txn_date===date).forEach(t=>{
+        if(runningBals[t.entity_id]!==undefined) runningBals[t.entity_id]+=t.points;
+      });
+      // Sum total value
       let total=0;
-      entIds.forEach(eid=>{
-        const ent=entities.find(e=>e.id===eid);
-        const m=masters.find(x=>x.id===ent?.master_id);
-        total+=metric==="inr"?(run[eid]||0)*(m?.inr_per_point||0):(run[eid]||0);
+      progIds.forEach(pid=>{
+        const prog=progs.find(p=>p.id===pid);
+        const master=mProgs.find(m=>m.id===prog?.master_id);
+        const bal=runningBals[pid]||0;
+        if(metric==="inr") total+=bal*(master?.inr_per_point||0);
+        else total+=bal;
       });
       return{date,value:total};
     });
-  },[txns,entities,masters,ownerF,entityF,period,metric,entityType]);
 
-  const W=600,H=150,PL=48,PR=12,PT=10,PB=28;
-  const cW=W-PL-PR,cH=H-PT-PB;
+    return points;
+  },[txns,progs,mProgs,ownerF,progF,period,metric]);
+
+  // SVG chart
+  const W=600,H=160,PL=52,PR=16,PT=12,PB=32;
+  const cW=W-PL-PR, cH=H-PT-PB;
+
   const vals=series.map(s=>s.value);
-  const minV=Math.min(...vals,0),maxV=Math.max(...vals,1),range=maxV-minV||1;
+  const minV=Math.min(...vals,0);
+  const maxV=Math.max(...vals,1);
+  const range=maxV-minV||1;
+
   const toX=i=>PL+(i/(series.length-1||1))*cW;
   const toY=v=>PT+cH-((v-minV)/range)*cH;
+
   const pathD=series.map((s,i)=>`${i===0?"M":"L"}${toX(i).toFixed(1)},${toY(s.value).toFixed(1)}`).join(" ");
   const areaD=series.length>1?`${pathD} L${toX(series.length-1).toFixed(1)},${(PT+cH).toFixed(1)} L${toX(0).toFixed(1)},${(PT+cH).toFixed(1)} Z`:"";
-  const yTicks=3;
+
+  // Y axis ticks
+  const yTicks=4;
   const yTickVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
   const fmtTick=v=>metric==="inr"?inrFmt(v):(v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(0)+"K":Math.round(v).toString());
-  const xIdxs=series.length<=1?[0]:[0,Math.floor((series.length-1)/2),series.length-1];
-  const fmtDate=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
-  const isEmpty=series.length<2||vals.every(v=>v===0);
-  const latestVal=vals[vals.length-1]||0;
-  const gradId=`g${entityType}`;
 
-  const [hover,setHover]=useState(null); // {idx,x,y,value,date}
-
-  const handleMouseMove=e=>{
-    const svg=e.currentTarget;
-    const rect=svg.getBoundingClientRect();
-    const mx=((e.clientX-rect.left)/rect.width)*W;
-    if(mx<PL||mx>W-PR) return setHover(null);
-    const rawIdx=(mx-PL)/cW*(series.length-1);
-    const idx=Math.round(Math.max(0,Math.min(series.length-1,rawIdx)));
-    const pt=series[idx];
-    setHover({idx,x:toX(idx),y:toY(pt.value),value:pt.value,date:pt.date});
+  // X axis labels — show ~4 evenly spaced dates
+  const xLabelIdxs=series.length<=1?[0]:
+    [0,Math.floor(series.length/3),Math.floor(2*series.length/3),series.length-1].filter((v,i,a)=>a.indexOf(v)===i);
+  const fmtDate=d=>{
+    const dt=new Date(d);
+    return dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
   };
 
-  const ttW=110,ttH=42;
+  const selStyle={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 8px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
+  const periodBtnStyle=active=>({padding:"3px 9px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut2,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"});
+
+  // Prog options for filter
+  const progOptions=progs
+    .filter(p=>ownerF==="all"||p.owner_id===ownerF)
+    .map(p=>{const m=mProgs.find(x=>x.id===p.master_id);return{id:p.id,name:p.nickname||m?.name||"Program"};});
+
+  const isEmpty=series.length<2||vals.every(v=>v===0);
 
   return(
-    <Card style={{marginTop:12}}>
-      {/* Controls row */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+    <Card style={{marginBottom:16}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
         <div>
-          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:3}}>Points over time</div>
-          {!isEmpty&&<div className="pv-num" style={{fontSize:17,fontWeight:700,color:hover?color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em",transition:"color 0.1s"}}>
-            {metric==="inr"?inrFmt(hover?hover.value:latestVal):(hover?hover.value:latestVal).toLocaleString("en-IN")}
-            <span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:5}}>{metric==="inr"?"est. value":"pts"}</span>
-            {hover&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:8}}>{fmtDate(hover.date)}</span>}
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Points Value Over Time</div>
+          {!isEmpty&&<div className="pv-num" style={{fontSize:22,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em"}}>
+            {metric==="inr"?inrFmt(vals[vals.length-1]||0):(vals[vals.length-1]||0).toLocaleString("en-IN")}
+            <span style={{fontSize:11,color:mut,fontWeight:400,marginLeft:6}}>{metric==="inr"?"est. value":"pts"}</span>
           </div>}
         </div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
-          <div style={{display:"flex",gap:2,background:surf3,borderRadius:7,padding:2}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {/* Metric toggle */}
+          <div style={{display:"flex",gap:3,background:surf3,borderRadius:8,padding:3}}>
             {["points","inr"].map(m=>(
-              <button key={m} onClick={()=>setMetric(m)} style={{padding:"2px 8px",borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,fontSize:10,fontWeight:metric===m?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif",boxShadow:metric===m?"0 1px 2px rgba(0,0,0,0.07)":"none"}}>
-            {m==="inr"?"₹":"Pts"}
-            </button>
+              <button key={m} onClick={()=>setMetric(m)} style={{...periodBtnStyle(metric===m),borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,boxShadow:metric===m?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
+                {m==="inr"?"₹ Value":"Points"}
+              </button>
             ))}
           </div>
-          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setEntityF("all");}} style={selSt}>
-            <option value="all">All</option>
+          {/* Owner filter */}
+          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setProgF("all");}} style={selStyle}>
+            <option value="all">All owners</option>
             {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-          <select value={entityF} onChange={e=>setEntityF(e.target.value)} style={selSt}>
-            <option value="all">All</option>
-            {entOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+          {/* Program filter */}
+          <select value={progF} onChange={e=>setProgF(e.target.value)} style={selStyle}>
+            <option value="all">All programs</option>
+            {progOptions.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
       </div>
-      {/* Period pills */}
-      <div style={{display:"flex",gap:3,marginBottom:10}}>
+
+      {/* Period selector */}
+      <div style={{display:"flex",gap:4,marginBottom:16}}>
         {["1m","3m","6m","1y","3y","LT"].map(p=>(
-          <button key={p} onClick={()=>setPeriod(p)} style={pBtnSt(period===p)}>{p==="LT"?"All":p}</button>
+          <button key={p} onClick={()=>setPeriod(p)} style={periodBtnStyle(period===p)}>{p==="LT"?"All time":p}</button>
         ))}
       </div>
-      {/* SVG */}
-      {isEmpty
-        ?<div style={{height:100,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11,fontWeight:400}}>Add transactions to see trend</div>
-        :<svg
-          viewBox={`0 0 ${W} ${H}`}
-          style={{width:"100%",height:"auto",display:"block",cursor:"crosshair"}}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={()=>setHover(null)}
-        >
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity="0.10"/>
-              <stop offset="100%" stopColor={color} stopOpacity="0"/>
-            </linearGradient>
-          </defs>
-          {yTickVals.map((v,i)=><line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>)}
-          {yTickVals.map((v,i)=><text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmtTick(v)}</text>)}
-          {xIdxs.map(idx=><text key={idx} x={toX(idx)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtDate(series[idx].date)}</text>)}
-          {areaD&&<path d={areaD} fill={`url(#${gradId})`}/>}
-          {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
-          {/* Hover crosshair */}
-          {hover&&<>
-            <line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={color} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.5"/>
-            <circle cx={hover.x} cy={hover.y} r="3.5" fill={surf} stroke={color} strokeWidth="1.5"/>
-            {/* Tooltip box */}
-            {(()=>{
-              const tx=Math.min(hover.x+8, W-PR-ttW-4);
-              const ty=Math.max(PT+2, hover.y-ttH-6);
-              return <>
-                <rect x={tx} y={ty} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75" style={{filter:"drop-shadow(0 1px 4px rgba(0,0,0,0.08))"}}/>
-                <text x={tx+8} y={ty+14} fontSize="8" fill={mut} fontFamily="Manrope" fontWeight="400">{fmtDate(hover.date)}</text>
-                <text x={tx+8} y={ty+28} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700" style={{fontVariantNumeric:"tabular-nums"}}>
-                  {metric==="inr"?inrFmt(hover.value):hover.value.toLocaleString("en-IN")}
-                </text>
-              </>;
-            })()}
-          </>}
-          {/* End dot (when not hovering) */}
-          {!hover&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
-        </svg>
-      }
+
+      {/* Chart */}
+      {isEmpty?(
+        <div style={{height:160,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:12,fontWeight:400}}>
+          No transaction history yet — add transactions to see your portfolio trend.
+        </div>
+      ):(
+        <div style={{overflowX:"auto"}}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",minWidth:300,height:"auto",display:"block"}}>
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={acc} stopOpacity="0.12"/>
+                <stop offset="100%" stopColor={acc} stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            {/* Grid lines */}
+            {yTickVals.map((v,i)=>(
+              <line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>
+            ))}
+            {/* Y axis labels */}
+            {yTickVals.map((v,i)=>(
+              <text key={i} x={PL-6} y={toY(v)+4} textAnchor="end" fontSize="9" fill={mut} fontFamily="Manrope,sans-serif" fontWeight="400">{fmtTick(v)}</text>
+            ))}
+            {/* X axis labels */}
+            {xLabelIdxs.map((idx)=>(
+              <text key={idx} x={toX(idx)} y={H-6} textAnchor="middle" fontSize="9" fill={mut} fontFamily="Manrope,sans-serif" fontWeight="400">{fmtDate(series[idx].date)}</text>
+            ))}
+            {/* Area fill */}
+            {areaD&&<path d={areaD} fill="url(#chartGrad)"/>}
+            {/* Line */}
+            {pathD&&<path d={pathD} fill="none" stroke={acc} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+            {/* End dot */}
+            {series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="3" fill={acc}/>}
+          </svg>
+        </div>
+      )}
     </Card>
   );
 }
@@ -485,9 +509,9 @@ function Overview({db,owners,onNavigate}){
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
         {[
-          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:null,nav:null,accent:grn,dark:true,breakdownCC:tCP,breakdownLP:tPP},
-          {label:"Credit Cards",value:tCP.toLocaleString("en-IN"),unit:"pts",sub:fCards.length+" cards"+(cInr>0?" · "+inrFmt(cInr):""),nav:"my-cards"},
+          {label:"Credit Cards",value:tCP.toLocaleString("en-IN"),unit:"pts",sub:fCards.length+" cards"+(cInr>0?" · "+inrFmt(cInr):""),nav:"my-cards",dark:true},
           {label:"Loyalty Programs",value:tPP.toLocaleString("en-IN"),unit:"pts",sub:fProgs.length+" programs"+(pInr>0?" · "+inrFmt(pInr):""),nav:"my-programs"},
+          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:null,nav:null,accent:grn,breakdownCC:tCP,breakdownLP:tPP},
           {label:"Vouchers",value:String(actV),unit:"",sub:"active vouchers",nav:"vouchers"},
         ].map((s,i)=>(
           <div key={i} style={{background:s.dark?txt:surf,border:s.dark?"none":`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:s.dark?"none":"0 1px 2px rgba(0,0,0,0.04)"}}>
@@ -496,8 +520,8 @@ function Overview({db,owners,onNavigate}){
             {s.unit&&<div style={{fontSize:11,fontWeight:500,color:s.dark?"rgba(255,255,255,0.35)":mut,marginTop:3,letterSpacing:"0.06em",textTransform:"uppercase"}}>{s.unit}</div>}
             {s.sub&&<div style={{fontSize:12,color:s.dark?"rgba(255,255,255,0.45)":mut,marginTop:8,fontWeight:400}}>{s.sub}</div>}
             {s.breakdownCC!==undefined&&<div style={{marginTop:8}}>
-              <div className="pv-num" style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:400}}>{s.breakdownCC.toLocaleString("en-IN")} CC pts</div>
-              <div className="pv-num" style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:400,marginTop:2}}>{s.breakdownLP.toLocaleString("en-IN")} Loyalty pts</div>
+              <div className="pv-num" style={{fontSize:11,color:mut,fontWeight:400}}>{s.breakdownCC.toLocaleString("en-IN")} CC pts</div>
+              <div className="pv-num" style={{fontSize:11,color:mut,fontWeight:400,marginTop:2}}>{s.breakdownLP.toLocaleString("en-IN")} loyalty pts</div>
             </div>}
             {s.nav&&<button onClick={()=>onNavigate(s.nav)} style={{marginTop:14,background:"none",border:`1px solid ${s.dark?"rgba(255,255,255,0.25)":bdr}`,cursor:"pointer",fontSize:11,color:s.dark?"rgba(255,255,255,0.7)":mut2,fontWeight:500,padding:"5px 12px",borderRadius:7,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"}}>View all</button>}
           </div>
@@ -513,55 +537,43 @@ function Overview({db,owners,onNavigate}){
       })}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-        {/* LEFT COL — Loyalty Programs */}
-        <div>
-          <Card>
-            <OvList
-              title="Loyalty Programs"
-              onNav={()=>onNavigate("my-programs")}
-              owners={owners}
-              filterOptions={[
-                {value:"Airline",label:"Airline"},
-                {value:"Hotel",label:"Hotel"},
-                {value:"Retail",label:"Retail"},
-                {value:"Dining",label:"Dining"},
-                {value:"Fuel",label:"Fuel"},
-                {value:"Other",label:"Other"},
-              ]}
-              items={fProgs.map(p=>{
-                const m=gmp(p.master_id);
-                return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),ownerId:p.owner_id,cat:m?.category||"Other"};
-              })}
-            />
-          </Card>
-          <PortfolioChart
-            txns={txns} entities={progs} masters={mp} owners={owners}
-            entityType="program" accentColor={acc}
+        <Card>
+          <OvList
+            title="Loyalty Programs"
+            onNav={()=>onNavigate("my-programs")}
+            owners={owners}
+            filterOptions={[
+              {value:"Airline",label:"Airline"},
+              {value:"Hotel",label:"Hotel"},
+              {value:"Retail",label:"Retail"},
+              {value:"Dining",label:"Dining"},
+              {value:"Fuel",label:"Fuel"},
+              {value:"Other",label:"Other"},
+            ]}
+            items={fProgs.map(p=>{
+              const m=gmp(p.master_id);
+              return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),ownerId:p.owner_id,cat:m?.category||"Other"};
+            })}
           />
-        </div>
-        {/* RIGHT COL — Credit Cards */}
-        <div>
-          <Card>
-            <OvList
-              title="Credit Cards"
-              onNav={()=>onNavigate("my-cards")}
-              owners={owners}
-              filterOptions={[
-                ...([...new Set(fCards.map(c=>gmc(c.master_id)?.bank).filter(Boolean))].sort().map(b=>({value:"bank:"+b,label:b}))),
-                ...([...new Set(fCards.map(c=>gmc(c.master_id)?.network).filter(Boolean))].sort().map(n=>({value:"net:"+n,label:n}))),
-              ]}
-              items={fCards.map(c=>{
-                const m=gmc(c.master_id);
-                return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),ownerId:c.owner_id,cat:"bank:"+(m?.bank||""),catBank:m?.bank||"",catNet:m?.network||""};
-              })}
-            />
-          </Card>
-          <PortfolioChart
-            txns={txns} entities={cards} masters={mc} owners={owners}
-            entityType="card" accentColor={txt}
+        </Card>
+        <Card>
+          <OvList
+            title="Credit Cards"
+            onNav={()=>onNavigate("my-cards")}
+            owners={owners}
+            filterOptions={[
+              ...([...new Set(fCards.map(c=>gmc(c.master_id)?.bank).filter(Boolean))].sort().map(b=>({value:"bank:"+b,label:b}))),
+              ...([...new Set(fCards.map(c=>gmc(c.master_id)?.network).filter(Boolean))].sort().map(n=>({value:"net:"+n,label:n}))),
+            ]}
+            items={fCards.map(c=>{
+              const m=gmc(c.master_id);
+              return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),ownerId:c.owner_id,cat:"bank:"+(m?.bank||""),catBank:m?.bank||"",catNet:m?.network||""};
+            })}
           />
-        </div>
+        </Card>
       </div>
+
+      <PointsChart txns={txns} progs={progs} mProgs={mp} owners={owners}/>
 
       {transfers.length>0&&(
         <Card>
@@ -942,12 +954,7 @@ function MyCards({db,owners}){
     if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
     const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:ob,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null};
-    const {data}=await db.from("my_cards").insert(p);
-    const newId=data&&data[0]?.id;
-    if(newId){
-      const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
-    }
+    await db.from("my_cards").insert(p);
     setShow(false); load();
   };
 
@@ -1163,12 +1170,18 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
-
+                <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
+                  <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>--</td>
+                  <td style={{padding:"9px 10px",color:mut}}><em style={{fontSize:12,fontWeight:600}}>Opening Balance</em></td>
+                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:acc}}>+{ob.toLocaleString()}</td>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>0</td>
+                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:acc}}>{ob.toLocaleString()}</td>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -1234,12 +1247,7 @@ function MyPrograms({db,owners}){
     if(!f.master_id) return alert("Select a master program");
     if(!f.owner_id) return alert("Select an owner");
     const ob=parseInt(f.opening_balance)||0;
-    const {data}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:ob,expiry_date:f.expiry_date||null});
-    const newId=data&&data[0]?.id;
-    if(newId){
-      const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
-    }
+    await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:ob,expiry_date:f.expiry_date||null});
     setShow(false);load();
   };
 
@@ -1445,12 +1453,18 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
-
+                <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
+                  <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>--</td>
+                  <td style={{padding:"9px 10px",color:mut}}><em style={{fontSize:12,fontWeight:600}}>Opening Balance</em></td>
+                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:acc}}>+{ob.toLocaleString()}</td>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>0</td>
+                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:acc}}>{ob.toLocaleString()}</td>
+                </tr>
               </tbody>
             </table>
           </div>
