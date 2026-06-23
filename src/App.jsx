@@ -173,186 +173,130 @@ function Setup({onDone}){
   );
 }
 
-// ── PointsChart — SVG line chart of points value over time ────────────────────
-function PointsChart({txns,progs,mProgs,owners}){
+// ── PortfolioChart — SVG line chart, works for programs or cards ───────────────
+function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const [period,setPeriod]=useState("3m");
   const [ownerF,setOwnerF]=useState("all");
-  const [progF,setProgF]=useState("all");
-  const [metric,setMetric]=useState("points"); // points | inr
+  const [entityF,setEntityF]=useState("all");
+  const [metric,setMetric]=useState("points");
 
-  const periods={
-    "1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999
-  };
+  const color=accentColor||acc;
 
-  // Build daily series
+  const periodDays={"1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999};
+
   const series=useMemo(()=>{
     const now=new Date();
-    const cutoff=new Date(now-periods[period]*86400000);
-
-    // Filter txns by owner/prog
-    const filteredTxns=txns.filter(t=>{
-      const prog=progs.find(p=>p.id===t.entity_id);
-      if(!prog) return false;
-      if(ownerF!=="all"&&prog.owner_id!==ownerF) return false;
-      if(progF!=="all"&&prog.id!==progF) return false;
-      return t.entity_type==="program";
+    const cutoff=new Date(now-periodDays[period]*86400000);
+    const filtered=txns.filter(t=>{
+      const ent=entities.find(e=>e.id===t.entity_id);
+      if(!ent) return false;
+      if(t.entity_type!==entityType) return false;
+      if(ownerF!=="all"&&ent.owner_id!==ownerF) return false;
+      if(entityF!=="all"&&ent.id!==entityF) return false;
+      return true;
     });
-
-    // Build opening balance per prog (sum of txns before cutoff)
-    const progIds=[...new Set(filteredTxns.map(t=>t.entity_id))];
-    const openingBals={};
-    progIds.forEach(pid=>{
-      const prog=progs.find(p=>p.id===pid);
-      const beforeCutoff=txns.filter(t=>t.entity_id===pid&&new Date(t.txn_date)<cutoff);
-      openingBals[pid]=(prog?.opening_balance||0)+beforeCutoff.reduce((a,t)=>a+t.points,0);
+    const entIds=[...new Set(filtered.map(t=>t.entity_id))];
+    const openBals={};
+    entIds.forEach(eid=>{
+      const ent=entities.find(e=>e.id===eid);
+      const pre=txns.filter(t=>t.entity_id===eid&&new Date(t.txn_date)<cutoff);
+      openBals[eid]=(ent?.opening_balance||0)+pre.reduce((a,t)=>a+t.points,0);
     });
-
-    // Get all dates in range with at least one txn, plus today
-    const txnsInRange=filteredTxns.filter(t=>new Date(t.txn_date)>=cutoff);
-    const dateSet=new Set(txnsInRange.map(t=>t.txn_date));
-    // Add start and today
-    const startStr=cutoff.toISOString().split("T")[0];
-    const todayStr=now.toISOString().split("T")[0];
-    dateSet.add(startStr);dateSet.add(todayStr);
+    const inRange=filtered.filter(t=>new Date(t.txn_date)>=cutoff);
+    const dateSet=new Set(inRange.map(t=>t.txn_date));
+    dateSet.add(cutoff.toISOString().split("T")[0]);
+    dateSet.add(now.toISOString().split("T")[0]);
     const dates=[...dateSet].sort();
-
-    // Running balance per prog across dates
-    const runningBals={};
-    progIds.forEach(pid=>{ runningBals[pid]=openingBals[pid]||0; });
-
-    const points=dates.map(date=>{
-      // Apply txns on this date
-      txnsInRange.filter(t=>t.txn_date===date).forEach(t=>{
-        if(runningBals[t.entity_id]!==undefined) runningBals[t.entity_id]+=t.points;
-      });
-      // Sum total value
+    const run={...openBals};
+    return dates.map(date=>{
+      inRange.filter(t=>t.txn_date===date).forEach(t=>{ if(run[t.entity_id]!==undefined) run[t.entity_id]+=t.points; });
       let total=0;
-      progIds.forEach(pid=>{
-        const prog=progs.find(p=>p.id===pid);
-        const master=mProgs.find(m=>m.id===prog?.master_id);
-        const bal=runningBals[pid]||0;
-        if(metric==="inr") total+=bal*(master?.inr_per_point||0);
-        else total+=bal;
+      entIds.forEach(eid=>{
+        const ent=entities.find(e=>e.id===eid);
+        const m=masters.find(x=>x.id===ent?.master_id);
+        total+=metric==="inr"?(run[eid]||0)*(m?.inr_per_point||0):(run[eid]||0);
       });
       return{date,value:total};
     });
+  },[txns,entities,masters,ownerF,entityF,period,metric,entityType]);
 
-    return points;
-  },[txns,progs,mProgs,ownerF,progF,period,metric]);
-
-  // SVG chart
-  const W=600,H=160,PL=52,PR=16,PT=12,PB=32;
-  const cW=W-PL-PR, cH=H-PT-PB;
-
+  const W=600,H=150,PL=48,PR=12,PT=10,PB=28;
+  const cW=W-PL-PR,cH=H-PT-PB;
   const vals=series.map(s=>s.value);
-  const minV=Math.min(...vals,0);
-  const maxV=Math.max(...vals,1);
-  const range=maxV-minV||1;
-
+  const minV=Math.min(...vals,0),maxV=Math.max(...vals,1),range=maxV-minV||1;
   const toX=i=>PL+(i/(series.length-1||1))*cW;
   const toY=v=>PT+cH-((v-minV)/range)*cH;
-
   const pathD=series.map((s,i)=>`${i===0?"M":"L"}${toX(i).toFixed(1)},${toY(s.value).toFixed(1)}`).join(" ");
   const areaD=series.length>1?`${pathD} L${toX(series.length-1).toFixed(1)},${(PT+cH).toFixed(1)} L${toX(0).toFixed(1)},${(PT+cH).toFixed(1)} Z`:"";
-
-  // Y axis ticks
-  const yTicks=4;
+  const yTicks=3;
   const yTickVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
   const fmtTick=v=>metric==="inr"?inrFmt(v):(v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(0)+"K":Math.round(v).toString());
-
-  // X axis labels — show ~4 evenly spaced dates
-  const xLabelIdxs=series.length<=1?[0]:
-    [0,Math.floor(series.length/3),Math.floor(2*series.length/3),series.length-1].filter((v,i,a)=>a.indexOf(v)===i);
-  const fmtDate=d=>{
-    const dt=new Date(d);
-    return dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
-  };
-
-  const selStyle={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 8px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
-  const periodBtnStyle=active=>({padding:"3px 9px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut2,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"});
-
-  // Prog options for filter
-  const progOptions=progs
-    .filter(p=>ownerF==="all"||p.owner_id===ownerF)
-    .map(p=>{const m=mProgs.find(x=>x.id===p.master_id);return{id:p.id,name:p.nickname||m?.name||"Program"};});
-
+  const xIdxs=series.length<=1?[0]:[0,Math.floor((series.length-1)/2),series.length-1];
+  const fmtDate=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
   const isEmpty=series.length<2||vals.every(v=>v===0);
+  const latestVal=vals[vals.length-1]||0;
+  const gradId=`g${entityType}`;
+
+  const selSt={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 7px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
+  const pBtnSt=active=>({padding:"3px 8px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut2,fontFamily:"'Manrope',sans-serif"});
+
+  const entOptions=entities
+    .filter(e=>ownerF==="all"||e.owner_id===ownerF)
+    .map(e=>{const m=masters.find(x=>x.id===e.master_id);return{id:e.id,name:e.nickname||m?.name||"—"};});
 
   return(
-    <Card style={{marginBottom:16}}>
-      {/* Header */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
+    <Card style={{marginTop:12}}>
+      {/* Controls row */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
         <div>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Points Value Over Time</div>
-          {!isEmpty&&<div className="pv-num" style={{fontSize:22,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em"}}>
-            {metric==="inr"?inrFmt(vals[vals.length-1]||0):(vals[vals.length-1]||0).toLocaleString("en-IN")}
-            <span style={{fontSize:11,color:mut,fontWeight:400,marginLeft:6}}>{metric==="inr"?"est. value":"pts"}</span>
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:3}}>Points over time</div>
+          {!isEmpty&&<div className="pv-num" style={{fontSize:17,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em"}}>
+            {metric==="inr"?inrFmt(latestVal):latestVal.toLocaleString("en-IN")}
+            <span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:5}}>{metric==="inr"?"est. value":"pts"}</span>
           </div>}
         </div>
-        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-          {/* Metric toggle */}
-          <div style={{display:"flex",gap:3,background:surf3,borderRadius:8,padding:3}}>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{display:"flex",gap:2,background:surf3,borderRadius:7,padding:2}}>
             {["points","inr"].map(m=>(
-              <button key={m} onClick={()=>setMetric(m)} style={{...periodBtnStyle(metric===m),borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,boxShadow:metric===m?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
-                {m==="inr"?"₹ Value":"Points"}
+              <button key={m} onClick={()=>setMetric(m)} style={{padding:"2px 8px",borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,fontSize:10,fontWeight:metric===m?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif",boxShadow:metric===m?"0 1px 2px rgba(0,0,0,0.07)":"none"}}>
+              {m==="inr"?"₹":"Pts"}
               </button>
             ))}
           </div>
-          {/* Owner filter */}
-          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setProgF("all");}} style={selStyle}>
-            <option value="all">All owners</option>
+          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setEntityF("all");}} style={selSt}>
+            <option value="all">All</option>
             {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-          {/* Program filter */}
-          <select value={progF} onChange={e=>setProgF(e.target.value)} style={selStyle}>
-            <option value="all">All programs</option>
-            {progOptions.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          <select value={entityF} onChange={e=>setEntityF(e.target.value)} style={selSt}>
+            <option value="all">All</option>
+            {entOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
       </div>
-
-      {/* Period selector */}
-      <div style={{display:"flex",gap:4,marginBottom:16}}>
+      {/* Period pills */}
+      <div style={{display:"flex",gap:3,marginBottom:10}}>
         {["1m","3m","6m","1y","3y","LT"].map(p=>(
-          <button key={p} onClick={()=>setPeriod(p)} style={periodBtnStyle(period===p)}>{p==="LT"?"All time":p}</button>
+          <button key={p} onClick={()=>setPeriod(p)} style={pBtnSt(period===p)}>{p==="LT"?"All":p}</button>
         ))}
       </div>
-
-      {/* Chart */}
-      {isEmpty?(
-        <div style={{height:160,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:12,fontWeight:400}}>
-          No transaction history yet — add transactions to see your portfolio trend.
-        </div>
-      ):(
-        <div style={{overflowX:"auto"}}>
-          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",minWidth:300,height:"auto",display:"block"}}>
-            <defs>
-              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={acc} stopOpacity="0.12"/>
-                <stop offset="100%" stopColor={acc} stopOpacity="0"/>
-              </linearGradient>
-            </defs>
-            {/* Grid lines */}
-            {yTickVals.map((v,i)=>(
-              <line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>
-            ))}
-            {/* Y axis labels */}
-            {yTickVals.map((v,i)=>(
-              <text key={i} x={PL-6} y={toY(v)+4} textAnchor="end" fontSize="9" fill={mut} fontFamily="Manrope,sans-serif" fontWeight="400">{fmtTick(v)}</text>
-            ))}
-            {/* X axis labels */}
-            {xLabelIdxs.map((idx)=>(
-              <text key={idx} x={toX(idx)} y={H-6} textAnchor="middle" fontSize="9" fill={mut} fontFamily="Manrope,sans-serif" fontWeight="400">{fmtDate(series[idx].date)}</text>
-            ))}
-            {/* Area fill */}
-            {areaD&&<path d={areaD} fill="url(#chartGrad)"/>}
-            {/* Line */}
-            {pathD&&<path d={pathD} fill="none" stroke={acc} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
-            {/* End dot */}
-            {series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="3" fill={acc}/>}
-          </svg>
-        </div>
-      )}
+      {/* SVG */}
+      {isEmpty
+        ?<div style={{height:100,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11,fontWeight:400}}>Add transactions to see trend</div>
+        :<svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
+          <defs>
+            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity="0.10"/>
+              <stop offset="100%" stopColor={color} stopOpacity="0"/>
+            </linearGradient>
+          </defs>
+          {yTickVals.map((v,i)=><line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>)}
+          {yTickVals.map((v,i)=><text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmtTick(v)}</text>)}
+          {xIdxs.map(idx=><text key={idx} x={toX(idx)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtDate(series[idx].date)}</text>)}
+          {areaD&&<path d={areaD} fill={`url(#${gradId})`}/>}
+          {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+          <circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>
+        </svg>
+      }
     </Card>
   );
 }
@@ -537,43 +481,55 @@ function Overview({db,owners,onNavigate}){
       })}
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
-        <Card>
-          <OvList
-            title="Loyalty Programs"
-            onNav={()=>onNavigate("my-programs")}
-            owners={owners}
-            filterOptions={[
-              {value:"Airline",label:"Airline"},
-              {value:"Hotel",label:"Hotel"},
-              {value:"Retail",label:"Retail"},
-              {value:"Dining",label:"Dining"},
-              {value:"Fuel",label:"Fuel"},
-              {value:"Other",label:"Other"},
-            ]}
-            items={fProgs.map(p=>{
-              const m=gmp(p.master_id);
-              return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),ownerId:p.owner_id,cat:m?.category||"Other"};
-            })}
+        {/* LEFT COL — Loyalty Programs */}
+        <div>
+          <Card>
+            <OvList
+              title="Loyalty Programs"
+              onNav={()=>onNavigate("my-programs")}
+              owners={owners}
+              filterOptions={[
+                {value:"Airline",label:"Airline"},
+                {value:"Hotel",label:"Hotel"},
+                {value:"Retail",label:"Retail"},
+                {value:"Dining",label:"Dining"},
+                {value:"Fuel",label:"Fuel"},
+                {value:"Other",label:"Other"},
+              ]}
+              items={fProgs.map(p=>{
+                const m=gmp(p.master_id);
+                return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),ownerId:p.owner_id,cat:m?.category||"Other"};
+              })}
+            />
+          </Card>
+          <PortfolioChart
+            txns={txns} entities={progs} masters={mp} owners={owners}
+            entityType="program" accentColor={acc}
           />
-        </Card>
-        <Card>
-          <OvList
-            title="Credit Cards"
-            onNav={()=>onNavigate("my-cards")}
-            owners={owners}
-            filterOptions={[
-              ...([...new Set(fCards.map(c=>gmc(c.master_id)?.bank).filter(Boolean))].sort().map(b=>({value:"bank:"+b,label:b}))),
-              ...([...new Set(fCards.map(c=>gmc(c.master_id)?.network).filter(Boolean))].sort().map(n=>({value:"net:"+n,label:n}))),
-            ]}
-            items={fCards.map(c=>{
-              const m=gmc(c.master_id);
-              return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),ownerId:c.owner_id,cat:"bank:"+(m?.bank||""),catBank:m?.bank||"",catNet:m?.network||""};
-            })}
+        </div>
+        {/* RIGHT COL — Credit Cards */}
+        <div>
+          <Card>
+            <OvList
+              title="Credit Cards"
+              onNav={()=>onNavigate("my-cards")}
+              owners={owners}
+              filterOptions={[
+                ...([...new Set(fCards.map(c=>gmc(c.master_id)?.bank).filter(Boolean))].sort().map(b=>({value:"bank:"+b,label:b}))),
+                ...([...new Set(fCards.map(c=>gmc(c.master_id)?.network).filter(Boolean))].sort().map(n=>({value:"net:"+n,label:n}))),
+              ]}
+              items={fCards.map(c=>{
+                const m=gmc(c.master_id);
+                return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),ownerId:c.owner_id,cat:"bank:"+(m?.bank||""),catBank:m?.bank||"",catNet:m?.network||""};
+              })}
+            />
+          </Card>
+          <PortfolioChart
+            txns={txns} entities={cards} masters={mc} owners={owners}
+            entityType="card" accentColor={txt}
           />
-        </Card>
+        </div>
       </div>
-
-      <PointsChart txns={txns} progs={progs} mProgs={mp} owners={owners}/>
 
       {transfers.length>0&&(
         <Card>
