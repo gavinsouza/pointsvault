@@ -237,12 +237,20 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const latestVal=vals[vals.length-1]||0;
   const gradId=`g${entityType}`;
 
-  const selSt={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 7px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
-  const pBtnSt=active=>({padding:"3px 8px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut2,fontFamily:"'Manrope',sans-serif"});
+  const [hover,setHover]=useState(null); // {idx,x,y,value,date}
 
-  const entOptions=entities
-    .filter(e=>ownerF==="all"||e.owner_id===ownerF)
-    .map(e=>{const m=masters.find(x=>x.id===e.master_id);return{id:e.id,name:e.nickname||m?.name||"—"};});
+  const handleMouseMove=e=>{
+    const svg=e.currentTarget;
+    const rect=svg.getBoundingClientRect();
+    const mx=((e.clientX-rect.left)/rect.width)*W;
+    if(mx<PL||mx>W-PR) return setHover(null);
+    const rawIdx=(mx-PL)/cW*(series.length-1);
+    const idx=Math.round(Math.max(0,Math.min(series.length-1,rawIdx)));
+    const pt=series[idx];
+    setHover({idx,x:toX(idx),y:toY(pt.value),value:pt.value,date:pt.date});
+  };
+
+  const ttW=110,ttH=42;
 
   return(
     <Card style={{marginTop:12}}>
@@ -250,17 +258,18 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
         <div>
           <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:3}}>Points over time</div>
-          {!isEmpty&&<div className="pv-num" style={{fontSize:17,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em"}}>
-            {metric==="inr"?inrFmt(latestVal):latestVal.toLocaleString("en-IN")}
+          {!isEmpty&&<div className="pv-num" style={{fontSize:17,fontWeight:700,color:hover?color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em",transition:"color 0.1s"}}>
+            {metric==="inr"?inrFmt(hover?hover.value:latestVal):(hover?hover.value:latestVal).toLocaleString("en-IN")}
             <span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:5}}>{metric==="inr"?"est. value":"pts"}</span>
+            {hover&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:8}}>{fmtDate(hover.date)}</span>}
           </div>}
         </div>
         <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
           <div style={{display:"flex",gap:2,background:surf3,borderRadius:7,padding:2}}>
             {["points","inr"].map(m=>(
               <button key={m} onClick={()=>setMetric(m)} style={{padding:"2px 8px",borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,fontSize:10,fontWeight:metric===m?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif",boxShadow:metric===m?"0 1px 2px rgba(0,0,0,0.07)":"none"}}>
-              {m==="inr"?"₹":"Pts"}
-              </button>
+            {m==="inr"?"₹":"Pts"}
+            </button>
             ))}
           </div>
           <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setEntityF("all");}} style={selSt}>
@@ -282,7 +291,12 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
       {/* SVG */}
       {isEmpty
         ?<div style={{height:100,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11,fontWeight:400}}>Add transactions to see trend</div>
-        :<svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",height:"auto",display:"block"}}>
+        :<svg
+          viewBox={`0 0 ${W} ${H}`}
+          style={{width:"100%",height:"auto",display:"block",cursor:"crosshair"}}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={()=>setHover(null)}
+        >
           <defs>
             <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor={color} stopOpacity="0.10"/>
@@ -294,7 +308,25 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
           {xIdxs.map(idx=><text key={idx} x={toX(idx)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtDate(series[idx].date)}</text>)}
           {areaD&&<path d={areaD} fill={`url(#${gradId})`}/>}
           {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
-          <circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>
+          {/* Hover crosshair */}
+          {hover&&<>
+            <line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={color} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.5"/>
+            <circle cx={hover.x} cy={hover.y} r="3.5" fill={surf} stroke={color} strokeWidth="1.5"/>
+            {/* Tooltip box */}
+            {(()=>{
+              const tx=Math.min(hover.x+8, W-PR-ttW-4);
+              const ty=Math.max(PT+2, hover.y-ttH-6);
+              return <>
+                <rect x={tx} y={ty} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75" style={{filter:"drop-shadow(0 1px 4px rgba(0,0,0,0.08))"}}/>
+                <text x={tx+8} y={ty+14} fontSize="8" fill={mut} fontFamily="Manrope" fontWeight="400">{fmtDate(hover.date)}</text>
+                <text x={tx+8} y={ty+28} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700" style={{fontVariantNumeric:"tabular-nums"}}>
+                  {metric==="inr"?inrFmt(hover.value):hover.value.toLocaleString("en-IN")}
+                </text>
+              </>;
+            })()}
+          </>}
+          {/* End dot (when not hovering) */}
+          {!hover&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
         </svg>
       }
     </Card>
@@ -453,9 +485,9 @@ function Overview({db,owners,onNavigate}){
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
         {[
-          {label:"Credit Cards",value:tCP.toLocaleString("en-IN"),unit:"pts",sub:fCards.length+" cards"+(cInr>0?" · "+inrFmt(cInr):""),nav:"my-cards",dark:true},
+          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:null,nav:null,accent:grn,dark:true,breakdownCC:tCP,breakdownLP:tPP},
+          {label:"Credit Cards",value:tCP.toLocaleString("en-IN"),unit:"pts",sub:fCards.length+" cards"+(cInr>0?" · "+inrFmt(cInr):""),nav:"my-cards"},
           {label:"Loyalty Programs",value:tPP.toLocaleString("en-IN"),unit:"pts",sub:fProgs.length+" programs"+(pInr>0?" · "+inrFmt(pInr):""),nav:"my-programs"},
-          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:null,nav:null,accent:grn,breakdownCC:tCP,breakdownLP:tPP},
           {label:"Vouchers",value:String(actV),unit:"",sub:"active vouchers",nav:"vouchers"},
         ].map((s,i)=>(
           <div key={i} style={{background:s.dark?txt:surf,border:s.dark?"none":`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:s.dark?"none":"0 1px 2px rgba(0,0,0,0.04)"}}>
@@ -464,8 +496,8 @@ function Overview({db,owners,onNavigate}){
             {s.unit&&<div style={{fontSize:11,fontWeight:500,color:s.dark?"rgba(255,255,255,0.35)":mut,marginTop:3,letterSpacing:"0.06em",textTransform:"uppercase"}}>{s.unit}</div>}
             {s.sub&&<div style={{fontSize:12,color:s.dark?"rgba(255,255,255,0.45)":mut,marginTop:8,fontWeight:400}}>{s.sub}</div>}
             {s.breakdownCC!==undefined&&<div style={{marginTop:8}}>
-              <div className="pv-num" style={{fontSize:11,color:mut,fontWeight:400}}>{s.breakdownCC.toLocaleString("en-IN")} CC pts</div>
-              <div className="pv-num" style={{fontSize:11,color:mut,fontWeight:400,marginTop:2}}>{s.breakdownLP.toLocaleString("en-IN")} loyalty pts</div>
+              <div className="pv-num" style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:400}}>{s.breakdownCC.toLocaleString("en-IN")} CC pts</div>
+              <div className="pv-num" style={{fontSize:11,color:"rgba(255,255,255,0.5)",fontWeight:400,marginTop:2}}>{s.breakdownLP.toLocaleString("en-IN")} Loyalty pts</div>
             </div>}
             {s.nav&&<button onClick={()=>onNavigate(s.nav)} style={{marginTop:14,background:"none",border:`1px solid ${s.dark?"rgba(255,255,255,0.25)":bdr}`,cursor:"pointer",fontSize:11,color:s.dark?"rgba(255,255,255,0.7)":mut2,fontWeight:500,padding:"5px 12px",borderRadius:7,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"}}>View all</button>}
           </div>
@@ -910,7 +942,12 @@ function MyCards({db,owners}){
     if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
     const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:ob,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null};
-    await db.from("my_cards").insert(p);
+    const {data}=await db.from("my_cards").insert(p);
+    const newId=data&&data[0]?.id;
+    if(newId){
+      const today=new Date().toISOString().split("T")[0];
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
+    }
     setShow(false); load();
   };
 
@@ -1126,18 +1163,12 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
-                <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
-                  <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>--</td>
-                  <td style={{padding:"9px 10px",color:mut}}><em style={{fontSize:12,fontWeight:600}}>Opening Balance</em></td>
-                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:acc}}>+{ob.toLocaleString()}</td>
-                  <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>0</td>
-                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:acc}}>{ob.toLocaleString()}</td>
-                </tr>
+
               </tbody>
             </table>
           </div>
@@ -1203,7 +1234,12 @@ function MyPrograms({db,owners}){
     if(!f.master_id) return alert("Select a master program");
     if(!f.owner_id) return alert("Select an owner");
     const ob=parseInt(f.opening_balance)||0;
-    await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:ob,expiry_date:f.expiry_date||null});
+    const {data}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:ob,expiry_date:f.expiry_date||null});
+    const newId=data&&data[0]?.id;
+    if(newId){
+      const today=new Date().toISOString().split("T")[0];
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
+    }
     setShow(false);load();
   };
 
@@ -1409,18 +1445,12 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
-                <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
-                  <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>--</td>
-                  <td style={{padding:"9px 10px",color:mut}}><em style={{fontSize:12,fontWeight:600}}>Opening Balance</em></td>
-                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:acc}}>+{ob.toLocaleString()}</td>
-                  <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>0</td>
-                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:acc}}>{ob.toLocaleString()}</td>
-                </tr>
+
               </tbody>
             </table>
           </div>
