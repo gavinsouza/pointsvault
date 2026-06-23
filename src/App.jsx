@@ -173,7 +173,59 @@ function Setup({onDone}){
   );
 }
 
-// Overview
+// ── OvList — sortable overview list panel ─────────────────────────────────────
+function OvList({title,items,sortOptions,onNav}){
+  const [sort,setSort]=useState(sortOptions[0].value);
+
+  const sorted=[...items].sort((a,b)=>{
+    if(sort==="balance")  return (b.balance||0)-(a.balance||0);
+    if(sort==="owner")    return (a.sortOwner||"").localeCompare(b.sortOwner||"");
+    if(sort==="category") return (a.sortCat||"").localeCompare(b.sortCat||"");
+    if(sort==="bank")     return (a.sortBank||"").localeCompare(b.sortBank||"");
+    if(sort==="network")  return (a.sortNetwork||"").localeCompare(b.sortNetwork||"");
+    if(sort==="name")     return (a.name||"").localeCompare(b.name||"");
+    return 0;
+  }).slice(0,6);
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,gap:8}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",flexShrink:0}}>{title}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <select
+            value={sort}
+            onChange={e=>setSort(e.target.value)}
+            style={{fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"}}
+          >
+            {sortOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:500,padding:0,fontFamily:"'Manrope',sans-serif",flexShrink:0}}>View all</button>
+        </div>
+      </div>
+      {items.length===0
+        ?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"16px 0"}}>None yet</div>
+        :sorted.map(item=>(
+          <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
+              <LogoCircle url={item.logo} name={item.name} size={32}/>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{item.name}</div>
+                {item.sub&&<div style={{fontSize:10,color:mut,marginTop:1,fontWeight:400}}>{item.sub}</div>}
+              </div>
+            </div>
+            <div style={{textAlign:"right",flexShrink:0,marginLeft:10}}>
+              <div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(item.balance||0).toLocaleString("en-IN")}</div>
+              {item.inrVal>0&&<div style={{fontSize:10,color:grn,marginTop:1,fontWeight:500}}>{inrFmt(item.inrVal)}</div>}
+            </div>
+          </div>
+        ))
+      }
+      {items.length>6&&<div style={{fontSize:10,color:mut,textAlign:"center",paddingTop:10,fontWeight:400}}>{items.length-6} more · <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:10,fontWeight:500,padding:0}}>view all</button></div>}
+    </div>
+  );
+}
+
+// ── Overview ───────────────────────────────────────────────────────────────────
 function Overview({db,owners,onNavigate}){
   const [cards,setCards]=useState([]);
   const [progs,setProgs]=useState([]);
@@ -251,14 +303,18 @@ function Overview({db,owners,onNavigate}){
         {[
           {label:"Credit Cards",value:tCP.toLocaleString("en-IN"),unit:"pts",sub:fCards.length+" cards"+(cInr>0?" · "+inrFmt(cInr):""),nav:"my-cards",dark:true},
           {label:"Loyalty Programs",value:tPP.toLocaleString("en-IN"),unit:"pts",sub:fProgs.length+" programs"+(pInr>0?" · "+inrFmt(pInr):""),nav:"my-programs"},
-          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:(tCP+tPP).toLocaleString("en-IN")+" points",nav:null,accent:grn},
+          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:null,nav:null,accent:grn,breakdownCC:tCP,breakdownLP:tPP},
           {label:"Vouchers",value:String(actV),unit:"",sub:"active vouchers",nav:"vouchers"},
         ].map((s,i)=>(
           <div key={i} style={{background:s.dark?txt:surf,border:s.dark?"none":`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:s.dark?"none":"0 1px 2px rgba(0,0,0,0.04)"}}>
             <div style={{fontSize:10,fontWeight:500,color:s.dark?"rgba(255,255,255,0.45)":mut,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:14}}>{s.label}</div>
             <div className="pv-num" style={{fontSize:28,fontWeight:700,color:s.dark?"#fff":s.accent||txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{s.value}</div>
             {s.unit&&<div style={{fontSize:11,fontWeight:500,color:s.dark?"rgba(255,255,255,0.35)":mut,marginTop:3,letterSpacing:"0.06em",textTransform:"uppercase"}}>{s.unit}</div>}
-            <div style={{fontSize:12,color:s.dark?"rgba(255,255,255,0.45)":mut,marginTop:8,fontWeight:400}}>{s.sub}</div>
+            {s.sub&&<div style={{fontSize:12,color:s.dark?"rgba(255,255,255,0.45)":mut,marginTop:8,fontWeight:400}}>{s.sub}</div>}
+            {s.breakdownCC!==undefined&&<div style={{marginTop:8}}>
+              <div className="pv-num" style={{fontSize:11,color:mut,fontWeight:400}}>{s.breakdownCC.toLocaleString("en-IN")} CC pts</div>
+              <div className="pv-num" style={{fontSize:11,color:mut,fontWeight:400,marginTop:2}}>{s.breakdownLP.toLocaleString("en-IN")} loyalty pts</div>
+            </div>}
             {s.nav&&<button onClick={()=>onNavigate(s.nav)} style={{marginTop:14,background:"none",border:`1px solid ${s.dark?"rgba(255,255,255,0.25)":bdr}`,cursor:"pointer",fontSize:11,color:s.dark?"rgba(255,255,255,0.7)":mut2,fontWeight:500,padding:"5px 12px",borderRadius:7,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"}}>View all</button>}
           </div>
         ))}
@@ -274,52 +330,37 @@ function Overview({db,owners,onNavigate}){
 
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <Card>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Loyalty Programs</div>
-            <button onClick={()=>onNavigate("my-programs")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,padding:0}}>View All</button>
-          </div>
-          {fProgs.length===0?<div style={{color:mut,fontSize:13,textAlign:"center",padding:"16px 0"}}>No programs yet</div>:
-            [...fProgs].sort((a,b)=>(b.points_balance||0)-(a.points_balance||0)).slice(0,5).map(p=>{
-              const m=gmp(p.master_id); const iv=(p.points_balance||0)*(m?.inr_per_point||0);
-              return(<div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={36}/>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:txt}}>{p.nickname||m?.name}</div>
-                    <div style={{fontSize:11,color:mut}}>{own(p.owner_id)}{p.tier&&" | "+p.tier}</div>
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div className="pv-num" style={{fontSize:13,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
-                  {iv>0&&<div style={{fontSize:11,color:grn}}>{inrFmt(iv)}</div>}
-                </div>
-              </div>);
-            })
-          }
+          <OvList
+            title="Loyalty Programs"
+            onNav={()=>onNavigate("my-programs")}
+            sortOptions={[
+              {value:"balance",label:"Balance"},
+              {value:"owner",label:"Owner"},
+              {value:"category",label:"Category"},
+              {value:"name",label:"Name"},
+            ]}
+            items={fProgs.map(p=>{
+              const m=gmp(p.master_id);
+              return{id:p.id,logo:m?.logo_url,name:p.nickname||m?.name,sub:own(p.owner_id)+(p.tier?" · "+p.tier:""),balance:p.points_balance||0,inrVal:(p.points_balance||0)*(m?.inr_per_point||0),sortOwner:own(p.owner_id),sortCat:m?.category||""};
+            })}
+          />
         </Card>
         <Card>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Credit Cards</div>
-            <button onClick={()=>onNavigate("my-cards")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,padding:0}}>View All</button>
-          </div>
-          {fCards.length===0?<div style={{color:mut,fontSize:13,textAlign:"center",padding:"16px 0"}}>No cards yet</div>:
-            [...fCards].sort((a,b)=>(b.points_balance||0)-(a.points_balance||0)).slice(0,5).map(c=>{
-              const m=gmc(c.master_id); const iv=(c.points_balance||0)*(m?.inr_per_point||0);
-              return(<div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={36}/>
-                  <div>
-                    <div style={{fontSize:13,fontWeight:600,color:txt}}>{c.nickname||m?.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> .... {c.last4}</span>}</div>
-                    <div style={{fontSize:11,color:mut}}>{own(c.owner_id)}{m?.network&&" | "+m.network}</div>
-                  </div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                  <div className="pv-num" style={{fontSize:13,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
-                  {iv>0&&<div style={{fontSize:11,color:grn}}>{inrFmt(iv)}</div>}
-                </div>
-              </div>);
-            })
-          }
+          <OvList
+            title="Credit Cards"
+            onNav={()=>onNavigate("my-cards")}
+            sortOptions={[
+              {value:"balance",label:"Balance"},
+              {value:"owner",label:"Owner"},
+              {value:"bank",label:"Bank"},
+              {value:"network",label:"Network"},
+              {value:"name",label:"Name"},
+            ]}
+            items={fCards.map(c=>{
+              const m=gmc(c.master_id);
+              return{id:c.id,logo:m?.logo_url,name:(c.nickname||m?.name||"")+(c.last4?" ·· "+c.last4:""),sub:own(c.owner_id)+(m?.network?" · "+m.network:""),balance:c.points_balance||0,inrVal:(c.points_balance||0)*(m?.inr_per_point||0),sortOwner:own(c.owner_id),sortBank:m?.bank||"",sortNetwork:m?.network||""};
+            })}
+          />
         </Card>
       </div>
 
