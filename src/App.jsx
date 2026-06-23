@@ -42,17 +42,33 @@ function createClient(url, key) {
   };
 }
 
-const bg="#fafaf9", surf="#ffffff", surf2="#f4f4f2", surf3="#edede9";
-const bdr="#e8e8e4", bdr2="#d4d4cf";
-const txt="#111110", mut="#a0a09a", mut2="#6b6b66";
-const acc="#c49a3c", grn="#1a7a4a", red="#c13333";
+// ── Design tokens: private-banking premium ────────────────────────────────────
+const bg   = "#f5f5f3";          // warm off-white background
+const surf = "#ffffff";           // card surface
+const surf2= "#f9f9f8";          // secondary surface
+const surf3= "#f0efed";          // tertiary / hover
+const bdr  = "#e9e8e5";          // primary border — thin, barely visible
+const bdr2 = "#d8d6d2";          // stronger border
+const txt  = "#0e0e0d";          // near-black primary text
+const mut  = "#8a8883";          // secondary text — warm grey
+const mut2 = "#5c5a57";          // tertiary text
+const acc  = "#b07d3a";          // restrained gold — not flashy
+const grn  = "#2d6a4f";          // muted forest green for positive values
+const red  = "#9b2335";          // muted burgundy for negative
+const amb  = "#8a6914";          // amber for warnings
 
-const inp={width:"100%",padding:"9px 12px",background:surf,border:`1.5px solid ${bdr}`,borderRadius:8,color:txt,fontSize:13,outline:"none",boxSizing:"border-box",marginBottom:12,fontFamily:"inherit"};
-const pbtn={display:"inline-flex",alignItems:"center",gap:6,padding:"9px 18px",borderRadius:8,border:`1.5px solid ${txt}`,cursor:"pointer",fontSize:13,fontWeight:600,background:txt,color:"#fff",letterSpacing:"0.01em"};
-const gbtn={...pbtn,background:surf,color:mut2,border:`1.5px solid ${bdr}`};
-const dbtn={...pbtn,background:surf,color:red,border:`1.5px solid ${bdr}`};
+// Font: Manrope — all weights 400/500/600/700
+// tabular-nums via font-variant-numeric on number elements
 
-function lbl(t){return <div style={{fontSize:11,color:mut,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:5}}>{t}</div>;}
+const inp={width:"100%",padding:"10px 14px",background:surf,border:`1px solid ${bdr}`,borderRadius:10,color:txt,fontSize:13,fontWeight:400,outline:"none",boxSizing:"border-box",marginBottom:14,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.01em",transition:"border-color 0.15s"};
+const pbtn={display:"inline-flex",alignItems:"center",gap:7,padding:"10px 20px",borderRadius:10,border:`1px solid ${txt}`,cursor:"pointer",fontSize:13,fontWeight:600,background:txt,color:"#fff",letterSpacing:"-0.01em",fontFamily:"'Manrope',sans-serif",transition:"opacity 0.15s"};
+const gbtn={...pbtn,background:surf,color:mut2,border:`1px solid ${bdr}`};
+const dbtn={...pbtn,background:surf,color:red,border:`1px solid ${bdr}`};
+
+// Tabular number style — apply to all financial figures
+const num={fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"};
+
+function lbl(t){return <div style={{fontSize:10,color:mut,fontWeight:500,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:6,fontFamily:"'Manrope',sans-serif"}}>{t}</div>;}
 function inrFmt(v){if(v>=100000)return"₹"+(v/100000).toFixed(1)+"L";if(v>=1000)return"₹"+(v/1000).toFixed(1)+"K";return"₹"+Math.round(v).toLocaleString("en-IN");}
 function ordinal(n){const s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);}
 
@@ -60,10 +76,10 @@ function Modal({show,onClose,title,children,wide=false}){
   if(!show) return null;
   return(
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(17,17,16,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20,backdropFilter:"blur(3px)"}}>
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:24,width:"100%",maxWidth:wide?640:480,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 16px 48px rgba(17,17,16,0.12)"}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-          <span style={{fontSize:16,fontWeight:700,color:txt}}>{title}</span>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:20,lineHeight:1,padding:"0 4px"}}>x</button>
+      <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:20,padding:"28px 28px 24px",width:"100%",maxWidth:wide?660:500,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 8px 40px rgba(0,0,0,0.10)"}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+          <span style={{fontSize:15,fontWeight:600,color:txt,letterSpacing:"-0.02em",fontFamily:"'Manrope',sans-serif"}}>{title}</span>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:18,lineHeight:1,padding:"2px 6px",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
         {children}
       </div>
@@ -72,15 +88,15 @@ function Modal({show,onClose,title,children,wide=false}){
 }
 
 function Card({children,style={}}){
-  return <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:12,padding:"18px 20px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",...style}}>{children}</div>;
+  return <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:"0 1px 2px rgba(0,0,0,0.04),0 0 0 0 transparent",...style}}>{children}</div>;
 }
 
 function Hdr({title,sub,action}){
   return(
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:32}}>
       <div>
-        <div style={{fontSize:26,fontWeight:800,color:txt,letterSpacing:"-0.03em"}}>{title}</div>
-        {sub&&<div style={{fontSize:13,color:mut,marginTop:4}}>{sub}</div>}
+        <div style={{fontSize:24,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{title}</div>
+        {sub&&<div style={{fontSize:13,color:mut,marginTop:5,fontWeight:400}}>{sub}</div>}
       </div>
       {action}
     </div>
@@ -143,8 +159,8 @@ function Setup({onDone}){
     <div style={{minHeight:"100vh",background:`linear-gradient(135deg,${bg},#f0ede8)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"Inter,system-ui,sans-serif"}}>
       <div style={{maxWidth:420,width:"100%"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
-          <div style={{fontSize:28,fontWeight:900,color:txt,letterSpacing:"-0.04em"}}>PointsVault</div>
-          <div style={{fontSize:13,color:mut,marginTop:6}}>Your loyalty and rewards dashboard</div>
+          <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
+          <div style={{fontSize:12,color:mut,marginTop:6,fontWeight:400,letterSpacing:"0.01em"}}>Private Rewards Management</div>
         </div>
         <Card style={{padding:28}}>
           {lbl("Supabase Project URL")}<input style={inp} placeholder="https://xxxx.supabase.co" value={url} onChange={e=>setUrl(e.target.value)}/>
@@ -215,8 +231,8 @@ function Overview({db,owners,onNavigate}){
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <div style={{fontSize:26,fontWeight:800,color:txt,letterSpacing:"-0.03em"}}>Overview</div>
-          <div style={{fontSize:13,color:mut,marginTop:4}}>Your points and rewards at a glance</div>
+          <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Overview</div>
+          <div style={{fontSize:12,color:mut,marginTop:5,fontWeight:400}}>Your rewards portfolio at a glance</div>
         </div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={ownerF} onChange={e=>setOwnerF(e.target.value)}>
@@ -232,29 +248,20 @@ function Overview({db,owners,onNavigate}){
       </div>
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
-        <div style={{background:txt,borderRadius:12,padding:"18px 20px",color:"#fff",position:"relative",overflow:"hidden"}}>
-          <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.5)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>CC Rewards</div>
-          <div style={{fontSize:26,fontWeight:800,letterSpacing:"-0.03em"}}>{tCP.toLocaleString("en-IN")}</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:4}}>{fCards.length} cards{cInr>0&&" | "+inrFmt(cInr)}</div>
-          <button onClick={()=>onNavigate("my-cards")} style={{marginTop:10,background:"rgba(255,255,255,0.15)",border:"none",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:600,padding:"4px 10px",borderRadius:6}}>View All</button>
-        </div>
-        <div style={{background:acc,borderRadius:12,padding:"18px 20px",color:"#fff",position:"relative",overflow:"hidden"}}>
-          <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Loyalty Points</div>
-          <div style={{fontSize:26,fontWeight:800,letterSpacing:"-0.03em"}}>{tPP.toLocaleString("en-IN")}</div>
-          <div style={{fontSize:11,color:"rgba(255,255,255,0.6)",marginTop:4}}>{fProgs.length} programs{pInr>0&&" | "+inrFmt(pInr)}</div>
-          <button onClick={()=>onNavigate("my-programs")} style={{marginTop:10,background:"rgba(255,255,255,0.2)",border:"none",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:600,padding:"4px 10px",borderRadius:6}}>View All</button>
-        </div>
-        <Card>
-          <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Portfolio Value</div>
-          <div style={{fontSize:26,fontWeight:800,color:tInr>0?grn:txt,letterSpacing:"-0.03em"}}>{tInr>0?inrFmt(tInr):"--"}</div>
-          <div style={{fontSize:11,color:mut,marginTop:4}}>{(tCP+tPP).toLocaleString("en-IN")} total pts</div>
-        </Card>
-        <Card>
-          <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Vouchers</div>
-          <div style={{fontSize:26,fontWeight:800,color:txt,letterSpacing:"-0.03em"}}>{actV}</div>
-          <div style={{fontSize:11,color:mut,marginTop:4}}>active</div>
-          <button onClick={()=>onNavigate("vouchers")} style={{marginTop:10,background:surf2,border:"none",cursor:"pointer",fontSize:11,color:mut2,fontWeight:600,padding:"4px 10px",borderRadius:6}}>View All</button>
-        </Card>
+        {[
+          {label:"Credit Cards",value:tCP.toLocaleString("en-IN"),unit:"pts",sub:fCards.length+" cards"+(cInr>0?" · "+inrFmt(cInr):""),nav:"my-cards",dark:true},
+          {label:"Loyalty Programs",value:tPP.toLocaleString("en-IN"),unit:"pts",sub:fProgs.length+" programs"+(pInr>0?" · "+inrFmt(pInr):""),nav:"my-programs"},
+          {label:"Portfolio Value",value:tInr>0?inrFmt(tInr):"—",unit:"",sub:(tCP+tPP).toLocaleString("en-IN")+" points",nav:null,accent:grn},
+          {label:"Vouchers",value:String(actV),unit:"",sub:"active vouchers",nav:"vouchers"},
+        ].map((s,i)=>(
+          <div key={i} style={{background:s.dark?txt:surf,border:s.dark?"none":`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:s.dark?"none":"0 1px 2px rgba(0,0,0,0.04)"}}>
+            <div style={{fontSize:10,fontWeight:500,color:s.dark?"rgba(255,255,255,0.45)":mut,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:14}}>{s.label}</div>
+            <div className="pv-num" style={{fontSize:28,fontWeight:700,color:s.dark?"#fff":s.accent||txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{s.value}</div>
+            {s.unit&&<div style={{fontSize:11,fontWeight:500,color:s.dark?"rgba(255,255,255,0.35)":mut,marginTop:3,letterSpacing:"0.06em",textTransform:"uppercase"}}>{s.unit}</div>}
+            <div style={{fontSize:12,color:s.dark?"rgba(255,255,255,0.45)":mut,marginTop:8,fontWeight:400}}>{s.sub}</div>
+            {s.nav&&<button onClick={()=>onNavigate(s.nav)} style={{marginTop:14,background:"none",border:`1px solid ${s.dark?"rgba(255,255,255,0.25)":bdr}`,cursor:"pointer",fontSize:11,color:s.dark?"rgba(255,255,255,0.7)":mut2,fontWeight:500,padding:"5px 12px",borderRadius:7,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"}}>View all</button>}
+          </div>
+        ))}
       </div>
 
       {fProgs.filter(p=>{ const d=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null; return d!==null&&d<=30; }).map(p=>{
@@ -268,7 +275,7 @@ function Overview({db,owners,onNavigate}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Loyalty Programs</div>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Loyalty Programs</div>
             <button onClick={()=>onNavigate("my-programs")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,padding:0}}>View All</button>
           </div>
           {fProgs.length===0?<div style={{color:mut,fontSize:13,textAlign:"center",padding:"16px 0"}}>No programs yet</div>:
@@ -283,7 +290,7 @@ function Overview({db,owners,onNavigate}){
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:txt}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:13,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
                   {iv>0&&<div style={{fontSize:11,color:grn}}>{inrFmt(iv)}</div>}
                 </div>
               </div>);
@@ -292,7 +299,7 @@ function Overview({db,owners,onNavigate}){
         </Card>
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Credit Cards</div>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Credit Cards</div>
             <button onClick={()=>onNavigate("my-cards")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,padding:0}}>View All</button>
           </div>
           {fCards.length===0?<div style={{color:mut,fontSize:13,textAlign:"center",padding:"16px 0"}}>No cards yet</div>:
@@ -307,7 +314,7 @@ function Overview({db,owners,onNavigate}){
                   </div>
                 </div>
                 <div style={{textAlign:"right"}}>
-                  <div style={{fontSize:13,fontWeight:700,color:txt}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:13,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
                   {iv>0&&<div style={{fontSize:11,color:grn}}>{inrFmt(iv)}</div>}
                 </div>
               </div>);
@@ -319,7 +326,7 @@ function Overview({db,owners,onNavigate}){
       {transfers.length>0&&(
         <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Recent Transfers</div>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Recent Transfers</div>
             <button onClick={()=>onNavigate("transfer-history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,padding:0}}>View All</button>
           </div>
           <div style={{overflowX:"auto"}}>
@@ -445,7 +452,7 @@ function Catalog({db}){
   const delPart=async id=>{if(confirm("Delete?")){await db.from("master_partners").delete(id);load();}};
   const gName=(type,id)=>type==="card"?mCards.find(m=>m.id===id)?.name||"--":mProgs.find(m=>m.id===id)?.name||"--";
   const gLogo=(type,id)=>type==="card"?mCards.find(m=>m.id===id)?.logo_url:mProgs.find(m=>m.id===id)?.logo_url;
-  const tb=t=>({padding:"8px 16px",borderRadius:8,border:`1px solid ${tab===t?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:tab===t?600:400,background:tab===t?txt:"transparent",color:tab===t?"#fff":mut2,transition:"all 0.15s"});
+  const tb=t=>({padding:"8px 18px",borderRadius:20,border:`1px solid ${tab===t?txt:bdr}`,cursor:"pointer",fontSize:11,fontWeight:tab===t?600:500,background:tab===t?txt:"transparent",color:tab===t?"#fff":mut2,transition:"all 0.15s",letterSpacing:"0.01em",fontFamily:"'Manrope',sans-serif"});
 
   return(
     <div>
@@ -465,15 +472,15 @@ function Catalog({db}){
             {mCards.length===0?<Empty icon="CC" msg="No master cards yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {mCards.map(c=>(
-                  <Card key={c.id} style={{borderTop:`2px solid ${acc}`,position:"relative"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-                      <LogoCircle url={c.logo_url} name={c.name} size={44}/>
+                  <Card key={c.id} style={{position:"relative"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                      <LogoCircle url={c.logo_url} name={c.name} size={40}/>
                       <div>
-                        <div style={{fontSize:15,fontWeight:700,color:txt}}>{c.name}</div>
-                        <div style={{fontSize:12,color:mut}}>{c.bank&&c.bank+" | "}{c.network}</div>
+                        <div style={{fontSize:13,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{c.name}</div>
+                        <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{c.bank&&c.bank+" · "}{c.network}</div>
                       </div>
                     </div>
-                    <div style={{fontSize:12,color:mut}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" | Rs"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" | Rs"+Number(c.annual_fee).toLocaleString()+" fee"}</div>
+                    <div style={{fontSize:11,color:mut,fontWeight:400}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" · ₹"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" · ₹"+Number(c.annual_fee).toLocaleString()+" p.a."}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
                       <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar",billing_year_start:c.billing_year_start||"",fee_charge_date:c.fee_charge_date||""});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delCard(c.id)}>Del</button>
@@ -492,15 +499,15 @@ function Catalog({db}){
             {mProgs.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {mProgs.map(p=>(
-                  <Card key={p.id} style={{borderTop:`2px solid ${acc}`,position:"relative"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
-                      <LogoCircle url={p.logo_url} name={p.name} size={44}/>
+                  <Card key={p.id} style={{position:"relative"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+                      <LogoCircle url={p.logo_url} name={p.name} size={40}/>
                       <div>
-                        <div style={{fontSize:15,fontWeight:700,color:txt}}>{p.name}</div>
-                        <div style={{fontSize:12,color:mut}}>{p.category}</div>
+                        <div style={{fontSize:13,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{p.name}</div>
+                        <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{p.category}</div>
                       </div>
                     </div>
-                    <div style={{fontSize:12,color:mut}}>{p.inr_per_point>0&&"Rs"+p.inr_per_point+"/pt"}{p.expiry_rule&&" | "+p.expiry_rule}</div>
+                    <div style={{fontSize:11,color:mut,fontWeight:400}}>{p.inr_per_point>0&&"₹"+p.inr_per_point+"/pt"}{p.expiry_rule&&" · "+p.expiry_rule}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
                       <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(p);setFP({name:p.name,category:p.category||"Airline",points_currency:p.points_currency||"pts",inr_per_point:String(p.inr_per_point||""),expiry_rule:p.expiry_rule||""});setLogoFile(null);setLogoPrev(p.logo_url);setShowProg(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delProg(p.id)}>Del</button>
@@ -728,22 +735,22 @@ function MyCards({db,owners}){
             const iv=(c.points_balance||0)*(m?.inr_per_point||0);
             const fee=c.fee_override?c.fee_override_value:m?.annual_fee;
             return(
-              <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:12,padding:"16px 18px",cursor:"pointer",position:"relative",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.2s",borderTop:`2px solid ${acc}`}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.08)";e.currentTarget.style.transform="translateY(-2px)";}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.transform="none";}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
-                  <div style={{minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nickname||m?.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> .... {c.last4}</span>}</div>
-                    <div style={{fontSize:11,color:mut}}>{owner?.name||"--"} · {m?.network||""}</div>
+              <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",position:"relative",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,border-color 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
+                onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+                  <LogoCircle url={m?.logo_url} name={m?.name} size={40}/>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.nickname||m?.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> ·· {c.last4}</span>}</div>
+                    <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{m?.network&&" · "+m.network}</div>
                   </div>
                 </div>
-                <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.02em"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
-                <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>{m?.points_currency||"pts"}</div>
-                {iv>0&&<div style={{fontSize:12,fontWeight:600,color:grn,marginBottom:6}}>{inrFmt(iv)}</div>}
-                <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${bdr}`,paddingTop:8,fontSize:11,color:mut}}>
-                  <span>{c.stmt_date&&"Stmt: "+ordinal(c.stmt_date)}</span>
-                  <span>{fee>0&&"Rs"+Number(fee).toLocaleString()+" fee"}</span>
+                <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+                <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>{m?.points_currency||"pts"}</div>
+                {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
+                <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:mut,fontWeight:400}}>
+                  <span>{c.stmt_date?"Statement "+ordinal(c.stmt_date):""}</span>
+                  <span>{fee>0?"₹"+Number(fee).toLocaleString()+" p.a.":""}</span>
                 </div>
               </div>
             );
@@ -847,18 +854,18 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <button onClick={onBack} style={{...gbtn,padding:"6px 14px",fontSize:12,marginBottom:20}}>Back</button>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||"")});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
       </div>
-      <Card style={{borderTop:`3px solid ${acc}`,marginBottom:16}}>
+      <Card style={{marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
             <LogoCircle url={master?.logo_url} name={master?.name} size={56}/>
             <div>
-              <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>{card.nickname||master?.name}</div>
+              <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||master?.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&".... "+card.last4+" · "}{owner?.name||"--"} · {master?.bank||""} {master?.network||""}</div>
             </div>
           </div>
@@ -871,19 +878,19 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             card.stmt_date&&{label:"Statement",value:ordinal(card.stmt_date)},
             fee>0&&{label:"Annual Fee",value:"Rs"+Number(fee).toLocaleString("en-IN"),color:red},
           ].filter(Boolean).map((s,i)=>(
-            <div key={i} style={{background:surf2,borderRadius:8,padding:"10px 14px",minWidth:100,border:`1px solid ${bdr}`}}>
-              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:600}}>{s.label}</div>
-              <div style={{fontSize:16,fontWeight:700,color:s.color||txt}}>{s.value}</div>
+            <div key={i} style={{background:surf2,borderRadius:12,padding:"14px 18px",minWidth:110,border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{s.label}</div>
+              <div className="pv-num" style={{fontSize:15,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.01em"}}>{s.value}</div>
             </div>
           ))}
         </div>
       </Card>
       {partners.length>0&&(
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>Transfer Partners</div>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer Partners</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {partners.map(p=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:surf2,borderRadius:8,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,borderRadius:12,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={32}/>
                   <div style={{fontSize:13,fontWeight:600,color:txt}}>{gName(p.to_type,p.to_id)}</div>
@@ -899,7 +906,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         </Card>
       )}
       <Card>
-        <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Points History</div>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:16}}>Points History</div>
         {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -910,10 +917,10 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
                 {disp.map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
-                    <td style={{padding:"9px 10px",color:txt}}>{t.description||"--"}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>{t.opening.toLocaleString()}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
+                    <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
                 <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
@@ -1021,21 +1028,22 @@ function MyPrograms({db,owners}){
             const days=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null;
             const exp=days!==null&&days<=60;
             return(
-              <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:12,padding:"16px 18px",cursor:"pointer",position:"relative",boxShadow:"0 1px 3px rgba(0,0,0,0.04)",transition:"all 0.2s",borderTop:`2px solid ${acc}`}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.08)";e.currentTarget.style.transform="translateY(-2px)";}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.04)";e.currentTarget.style.transform="none";}}>
-                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
-                  <div style={{minWidth:0}}>
-                    <div style={{fontSize:14,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nickname||m?.name}</div>
-                    <div style={{fontSize:11,color:mut}}>{owner?.name||"--"}{p.membership_number&&" | #"+p.membership_number}</div>
+              <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",position:"relative",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,border-color 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
+                onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+                  <LogoCircle url={m?.logo_url} name={m?.name} size={40}/>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{p.nickname||m?.name}</div>
+                    <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
                   </div>
                 </div>
-                <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.02em"}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
-                <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:6}}>points</div>
-                {iv>0&&<div style={{fontSize:12,fontWeight:600,color:grn,marginBottom:6}}>{inrFmt(iv)}</div>}
-                {p.expiry_date&&<div style={{fontSize:11,color:exp?red:mut,borderTop:`1px solid ${bdr}`,paddingTop:8}}>{exp?"! ":""}{days>0?days+"d left":"Expired"} · {new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>}
-                <div style={{position:"absolute",bottom:11,right:14,fontSize:11,color:acc,fontWeight:500}}>View</div>
+                <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
+                <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>points</div>
+                {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
+                <div style={{borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:exp?red:mut,fontWeight:400}}>
+                  {p.expiry_date?(exp?"⚠ ":"")+new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})+(days!==null?" · "+days+"d":""):""}
+                </div>
               </div>
             );
           })}
@@ -1129,18 +1137,18 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-        <button onClick={onBack} style={{...gbtn,padding:"6px 14px",fontSize:12,marginBottom:20}}>Back</button>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:prog.owner_id,nickname:prog.nickname||"",membership_number:prog.membership_number||"",tier:prog.tier||"",opening_balance:String(prog.opening_balance||""),expiry_date:prog.expiry_date||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
       </div>
-      <Card style={{borderTop:`3px solid ${acc}`,marginBottom:16}}>
+      <Card style={{marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
             <LogoCircle url={master?.logo_url} name={master?.name} size={56}/>
             <div>
-              <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>{prog.nickname||master?.name}</div>
+              <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{prog.nickname||master?.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:2}}>{owner?.name||"--"} · {master?.category||""}{prog.tier&&" · "+prog.tier}{prog.membership_number&&" · #"+prog.membership_number}</div>
             </div>
           </div>
@@ -1152,9 +1160,9 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
             iv>0&&{label:"INR Value",value:inrFmt(iv),color:grn},
             days!==null&&{label:"Expiry",value:days>0?days+"d left":"Expired",color:exp?red:mut},
           ].filter(Boolean).map((s,i)=>(
-            <div key={i} style={{background:surf2,borderRadius:8,padding:"10px 14px",minWidth:100,border:`1px solid ${bdr}`}}>
-              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:600}}>{s.label}</div>
-              <div style={{fontSize:16,fontWeight:700,color:s.color||txt}}>{s.value}</div>
+            <div key={i} style={{background:surf2,borderRadius:12,padding:"14px 18px",minWidth:110,border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{s.label}</div>
+              <div className="pv-num" style={{fontSize:15,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.01em"}}>{s.value}</div>
             </div>
           ))}
         </div>
@@ -1162,10 +1170,10 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       </Card>
       {partners.length>0&&(
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>Transfer Partners</div>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer Partners</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {partners.map(p=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",background:surf2,borderRadius:8,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,borderRadius:12,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={32}/>
                   <div style={{fontSize:13,fontWeight:600,color:txt}}>{gName(p.to_type,p.to_id)}</div>
@@ -1181,7 +1189,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
         </Card>
       )}
       <Card>
-        <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Points History</div>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:16}}>Points History</div>
         {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -1192,10 +1200,10 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
                 {disp.map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
-                    <td style={{padding:"9px 10px",color:txt}}>{t.description||"--"}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>{t.opening.toLocaleString()}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
+                    <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:red}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
                 <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
@@ -1397,11 +1405,11 @@ function TransferPoints({db,owners}){
         {partner&&sentPts>0&&(
           <div style={{background:surf2,border:`1px solid ${bdr}`,borderRadius:10,padding:"14px 16px",marginBottom:16}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,marginBottom:14}}>
-              <div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>You Send</div><div style={{fontSize:22,fontWeight:800,color:red}}>{sentPts.toLocaleString()} pts</div></div>
+              <div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:500,letterSpacing:"0.09em",marginBottom:5}}>You Send</div><div className="pv-num" style={{fontSize:22,fontWeight:700,color:red,fontFamily:"'Manrope',sans-serif"}}>{sentPts.toLocaleString()} pts</div></div>
               <div style={{fontSize:20,color:mut}}>to</div>
               <div>
-                <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>They Receive</div>
-                <div style={{fontSize:22,fontWeight:800,color:grn}}>{totalRec.toLocaleString()} pts</div>
+                <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:500,letterSpacing:"0.09em",marginBottom:5}}>They Receive</div>
+                <div className="pv-num" style={{fontSize:22,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>{totalRec.toLocaleString()} pts</div>
                 {bonusPts>0&&<div style={{fontSize:11,color:mut}}>{ratioRec.toLocaleString()} ratio + {bonusPts.toLocaleString()} bonus</div>}
               </div>
             </div>
@@ -1498,9 +1506,9 @@ function TransferHistory({db,owners}){
                     <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{new Date(l.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}{l.cross_owner&&<span style={{marginLeft:6,fontSize:10,color:acc,fontWeight:600}}>cross</span>}</td>
                     <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.from_name||"--"}</td>
                     <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.to_name||"--"}</td>
-                    <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(l.points_sent||0).toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(l.points_sent||0).toLocaleString()}</td>
                     <td style={{padding:"10px 12px",textAlign:"center"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{l.ratio_from}:{l.ratio_to}</span></td>
-                    <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{(l.points_received||0).toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{(l.points_received||0).toLocaleString()}</td>
                     <td style={{padding:"10px 12px",textAlign:"right",color:l.bonus_miles>0?acc:mut}}>{l.bonus_miles>0?"+"+l.bonus_miles.toLocaleString():"--"}</td>
                     <td style={{padding:"10px 12px",textAlign:"center"}}><button style={{...dbtn,padding:"3px 7px",fontSize:11}} onClick={e=>{e.stopPropagation();del(l.id);}}>x</button></td>
                   </tr>
@@ -1584,14 +1592,14 @@ function Vouchers({db,owners}){
             const d=days(v.expiry_date); const exp=d!==null&&d<30&&!v.redeemed;
             const owner=owners.find(o=>o.id===v.owner_id);
             return(
-              <div key={v.id} style={{background:surf,border:`1px solid ${exp?"#fde68a":bdr}`,borderRadius:12,padding:"16px 18px",opacity:v.redeemed?0.55:1,position:"relative",overflow:"hidden"}}>
-                <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:v.redeemed?bdr2:exp?acc:grn,borderRadius:"12px 12px 0 0"}}/>
+              <div key={v.id} style={{background:surf,border:`1px solid ${exp?amb+"55":bdr}`,borderRadius:18,padding:"20px 22px",opacity:v.redeemed?0.5:1,position:"relative",overflow:"hidden"}}>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:v.redeemed?bdr:exp?amb:grn,borderRadius:"18px 18px 0 0",opacity:0.5}}/>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginTop:4,marginBottom:10}}>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:600,color:txt}}>{v.program}</div>
                     {v.description&&<div style={{fontSize:11,color:mut,marginTop:1}}>{v.description}</div>}
                   </div>
-                  <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:v.redeemed?surf2:exp?"#fef3c7":grn+"12",color:v.redeemed?mut:exp?"#92400e":grn,marginLeft:8,flexShrink:0,letterSpacing:"0.04em"}}>{v.redeemed?"USED":exp?"EXPIRING":"ACTIVE"}</span>
+                  <span style={{fontSize:10,fontWeight:500,padding:"3px 10px",borderRadius:20,border:`1px solid ${v.redeemed?bdr:exp?amb+"44":grn+"33"}`,background:"transparent",color:v.redeemed?mut:exp?amb:grn,marginLeft:8,flexShrink:0,letterSpacing:"0.07em",fontFamily:"'Manrope',sans-serif"}}>{v.redeemed?"USED":exp?"EXPIRING":"ACTIVE"}</span>
                 </div>
                 {owner&&<div style={{fontSize:11,color:mut,marginBottom:6}}>Owner: <span style={{color:txt,fontWeight:500}}>{owner.name}</span></div>}
                 {v.value&&<div style={{fontSize:18,fontWeight:700,color:txt,marginBottom:6}}>{v.value}</div>}
@@ -1670,7 +1678,7 @@ function Settings({db,owners,reloadOwners,onDisconnect}){
       <div style={{maxWidth:520}}>
         <Card style={{marginBottom:16}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Owners</div>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Owners</div>
             <button style={{...gbtn,padding:"6px 14px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Owner</button>
           </div>
           {owners.length===0?<div style={{color:mut,fontSize:13}}>No owners yet</div>:owners.map(o=>(
@@ -1681,13 +1689,13 @@ function Settings({db,owners,reloadOwners,onDisconnect}){
           ))}
         </Card>
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>Database Connection</div>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Database Connection</div>
           <div style={{fontSize:12,color:mut,marginBottom:4}}>Connected to</div>
           <div style={{fontSize:12,color:txt,fontFamily:"monospace",background:surf2,padding:"8px 12px",borderRadius:8,marginBottom:16,wordBreak:"break-all",border:`1px solid ${bdr}`}}>{localStorage.getItem("pv_u")}</div>
           <button style={dbtn} onClick={()=>{localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");onDisconnect();}}>Disconnect</button>
         </Card>
         <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"18px 20px"}}>
-          <div style={{fontSize:11,fontWeight:700,color:red,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.08em"}}>Danger Zone</div>
+          <div style={{fontSize:10,fontWeight:500,color:red,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.09em"}}>Danger Zone</div>
           <div style={{fontSize:13,color:mut,marginBottom:14}}>Permanently delete all data and reset PointsVault to blank.</div>
           <button style={{...dbtn,background:red,color:"#fff",border:"none",opacity:resetting?0.6:1}} onClick={resetting?undefined:resetAll}>{resetting?"Deleting...":"Reset All Data"}</button>
         </div>
@@ -1731,37 +1739,42 @@ export default function App(){
   if(!db) return <Setup onDone={c=>{setDb(c);loadOwners(c);}}/>;
 
   return(
-    <div style={{minHeight:"100vh",background:bg,color:txt,fontFamily:"'Inter',system-ui,sans-serif",fontSize:14}}>
+    <div style={{minHeight:"100vh",background:bg,color:txt,fontFamily:"'Manrope',system-ui,sans-serif",fontSize:14,fontWeight:400}}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-        *{box-sizing:border-box;}
-        body{background:${bg};font-family:'Inter',system-ui,sans-serif;}
-        @media(max-width:640px){.desk-nav{display:none!important}.mob-hdr{display:flex!important}.main-wrap{margin-left:0!important;padding:16px!important;padding-top:68px!important}}
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+        body{background:${bg};font-family:'Manrope',system-ui,sans-serif;font-weight:400;color:${txt};}
+        @media(max-width:640px){.desk-nav{display:none!important}.mob-hdr{display:flex!important}.main-wrap{margin-left:0!important;padding:20px 16px 80px!important;padding-top:72px!important}}
         @media(min-width:641px){.mob-hdr{display:none!important}}
-        input:focus,select:focus{border-color:${acc}!important;box-shadow:0 0 0 3px ${acc}20;}
-        input,select,button{font-family:inherit;}
+        input,select,textarea{font-family:'Manrope',sans-serif!important;}
+        button{font-family:'Manrope',sans-serif!important;}
+        input:focus,select:focus{border-color:${txt}!important;box-shadow:none!important;outline:none;}
+        input::placeholder{color:${mut};opacity:0.7;}
         tr:hover td{background:${surf2};}
-        ::-webkit-scrollbar{width:4px;height:4px;}
+        ::-webkit-scrollbar{width:3px;height:3px;}
+        ::-webkit-scrollbar-track{background:transparent;}
         ::-webkit-scrollbar-thumb{background:${bdr2};border-radius:10px;}
+        .pv-num{font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
       `}</style>
-      <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:216,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10,boxShadow:"1px 0 8px rgba(0,0,0,0.04)"}}>
-        <div style={{padding:"24px 20px 20px",borderBottom:`1px solid ${bdr}`}}>
-          <div style={{fontSize:17,fontWeight:800,color:txt,letterSpacing:"-0.03em"}}>PointsVault</div>
-          <div style={{fontSize:10,color:mut,marginTop:3,letterSpacing:"0.1em",textTransform:"uppercase"}}>Rewards Tracker</div>
+      <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:224,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10}}>
+        <div style={{padding:"32px 24px 28px"}}>
+          <div style={{fontSize:15,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
+          <div style={{fontSize:10,color:mut,marginTop:4,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500}}>Wealth Tracker</div>
         </div>
-        <div style={{flex:1,paddingTop:8,overflowY:"auto"}}>
+        <div style={{flex:1,overflowY:"auto",padding:"0 12px"}}>
           {TABS.map(t=>(
-            <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:9,padding:"10px 20px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderLeft:tab===t.id?`2px solid ${acc}`:"2px solid transparent",transition:"all 0.12s"}}>
+            <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",padding:"9px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
               {t.label}
             </div>
           ))}
         </div>
-        <div style={{padding:"12px 20px 20px",borderTop:`1px solid ${bdr}`}}>
-          <div style={{fontSize:10,color:mut,letterSpacing:"0.08em",textTransform:"uppercase"}}>Synced with Supabase</div>
+        <div style={{padding:"20px 24px 28px",borderTop:`1px solid ${bdr}`}}>
+          <div style={{fontSize:10,color:mut,letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500}}>Secured · Supabase</div>
         </div>
       </nav>
       <div className="mob-hdr" style={{display:"none",position:"fixed",top:0,left:0,right:0,height:56,background:surf,borderBottom:`1px solid ${bdr}`,alignItems:"center",justifyContent:"space-between",padding:"0 16px",zIndex:100}}>
-        <div style={{fontSize:15,fontWeight:800,color:txt}}>PointsVault</div>
+        <div style={{fontSize:14,fontWeight:700,color:txt,letterSpacing:"-0.02em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
         <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",color:txt,fontSize:22,padding:"0 4px"}}>menu</button>
       </div>
       {menuOpen&&(
@@ -1769,7 +1782,7 @@ export default function App(){
           {TABS.map(t=><div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"12px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>)}
         </div>
       )}
-      <main className="main-wrap" style={{marginLeft:216,padding:"32px 36px 80px",minHeight:"100vh"}}>
+      <main className="main-wrap" style={{marginLeft:224,padding:"44px 48px 100px",minHeight:"100vh",background:bg}}>
         {tab==="overview"         &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="catalog"          &&<Catalog db={db}/>}
         {tab==="my-cards"         &&<MyCards db={db} owners={owners}/>}
