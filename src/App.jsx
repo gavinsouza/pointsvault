@@ -122,34 +122,34 @@ CREATE TABLE IF NOT EXISTS transfer_log (
   created_at timestamptz DEFAULT now()
 );`;
 
-// ── Theme: premium light ─────────────────────────────────────────────────────
-const bg    = "#f8f6f2";         // warm cream background
-const surf  = "#ffffff";         // white card surface
-const surf2 = "#f3f0eb";         // off-white elevated
-const surf3 = "#ebe7e0";         // hover state
-const bdr   = "#e8e3da";         // warm border
-const bdr2  = "#d9d3c8";         // stronger border
-const txt   = "#1a1410";         // near-black warm text
-const mut   = "#9e998f";         // muted warm gray
-const mut2  = "#706b61";         // secondary text
-const acc   = "#b5862a";         // warm gold accent
-const acc2  = "#8b5cf6";         // soft purple
-const grn   = "#059669";         // emerald green
-const red   = "#dc2626";         // red
-const gold  = "#b5862a";         // gold (same as acc)
+// ── Theme: monochrome + gold ─────────────────────────────────────────────────
+const bg    = "#fafaf9";         // near-white
+const surf  = "#ffffff";         // white
+const surf2 = "#f4f4f2";         // light gray surface
+const surf3 = "#edede9";         // hover
+const bdr   = "#e8e8e4";         // light border
+const bdr2  = "#d4d4cf";         // stronger border
+const txt   = "#111110";         // near-black
+const mut   = "#a0a09a";         // muted gray
+const mut2  = "#6b6b66";         // secondary
+const acc   = "#c49a3c";         // gold
+const acc2  = "#9a7c2e";         // darker gold
+const grn   = "#1a7a4a";         // muted green (sparingly)
+const red   = "#c13333";         // muted red (sparingly)
+const gold  = "#c49a3c";         // gold alias
 
 const inp = {
   width:"100%", padding:"10px 14px",
   background:surf, border:`1.5px solid ${bdr}`,
-  borderRadius:10, color:txt, fontSize:13,
+  borderRadius:8, color:txt, fontSize:13,
   outline:"none", boxSizing:"border-box", marginBottom:12,
-  transition:"border-color 0.2s, box-shadow 0.2s",
+  transition:"border-color 0.15s",
   fontFamily:"inherit",
 };
-const pbtn = { display:"inline-flex", alignItems:"center", gap:7, padding:"10px 20px", borderRadius:10, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, background:txt, color:"#fff", boxShadow:`0 2px 8px rgba(0,0,0,0.15)`, letterSpacing:"0.01em" };
-const gbtn = { ...pbtn, background:surf2, color:mut2, boxShadow:"none", border:`1.5px solid ${bdr}` };
-const dbtn = { ...pbtn, background:"#fef2f2", color:red, boxShadow:"none", border:"1.5px solid #fecaca" };
-const sbtn = { ...pbtn, background:"#ecfdf5", color:grn, boxShadow:"none", border:"1.5px solid #a7f3d0" };
+const pbtn = { display:"inline-flex", alignItems:"center", gap:7, padding:"9px 18px", borderRadius:8, border:`1.5px solid ${txt}`, cursor:"pointer", fontSize:13, fontWeight:600, background:txt, color:"#fff", letterSpacing:"0.01em" };
+const gbtn = { ...pbtn, background:surf, color:mut2, border:`1.5px solid ${bdr}` };
+const dbtn = { ...pbtn, background:surf, color:red, border:`1.5px solid ${bdr}` };
+const sbtn = { ...pbtn, background:surf, color:grn, border:`1.5px solid ${bdr}` };
 
 function lbl(t) {
   return <div style={{fontSize:11,color:mut,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:5}}>{t}</div>;
@@ -164,31 +164,35 @@ function ordinal(n) {
   const s = ["th","st","nd","rd"], v = n % 100;
   return n + (s[(v-20)%10] || s[v] || s[0]);
 }
+function progLabel(name, last4OrNum) {
+  if (!last4OrNum) return name;
+  return `${name} (${last4OrNum})`;
+}
 
 // ── Logo components ───────────────────────────────────────────────────────────
 function LogoCircle({ url, name, color="#b5862a", size=40 }) {
   const [imgErr, setImgErr] = useState(false);
   const initials = (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
-  const showImg = url && url.length > 0 && !imgErr;
+  const showImg = url && url.length > 10 && !imgErr;
   return (
-    <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${showImg?bdr:color+"33"}`,background:showImg?surf2:color+"15",display:"flex",alignItems:"center",justifyContent:"center",position:"relative"}}>
+    <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${showImg?bdr:color+"33"}`,background:showImg?surf2:color+"15",display:"flex",alignItems:"center",justifyContent:"center"}}>
       {showImg ? (
         <img
           src={url}
           alt={name||""}
-          style={{width:"100%",height:"100%",objectFit:"contain",padding:size*0.06,display:"block"}}
+          style={{width:"100%",height:"100%",objectFit:"contain",padding:size*0.07,display:"block"}}
           onError={()=>setImgErr(true)}
-          onLoad={()=>setImgErr(false)}
-          crossOrigin="anonymous"
         />
       ) : (
-        <span style={{fontSize:size*0.33,fontWeight:700,color:color,lineHeight:1,userSelect:"none"}}>{initials}</span>
+        <span style={{fontSize:size*0.33,fontWeight:700,color,lineHeight:1,userSelect:"none"}}>{initials}</span>
       )}
     </div>
   );
 }
 
 function LogoUpload({ current, onUpload, size=56 }) {
+  const fileRef = useState(null);
+  const inputRef = { current: null };
   const handleFile = async (file) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) return alert("Please upload an image file (PNG, JPG, SVG)");
@@ -198,25 +202,31 @@ function LogoUpload({ current, onUpload, size=56 }) {
     reader.onerror = () => alert("Could not read file");
     reader.readAsDataURL(file);
   };
+  const triggerInput = () => {
+    const el = document.querySelector(".pv-logo-input:not([data-used])");
+    if (el) el.click();
+  };
   return (
     <div>
       <div style={{fontSize:11,color:mut,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:8}}>Logo (optional)</div>
       <div style={{display:"flex",alignItems:"center",gap:12}}>
         <div style={{width:size,height:size,borderRadius:14,border:`2px dashed ${bdr2}`,background:surf2,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",cursor:"pointer",flexShrink:0}}
-          onClick={()=>document.getElementById("logo-upload-input").click()}>
+          onClick={e=>{e.currentTarget.nextElementSibling?.querySelector("input")?.click()}}>
           {current
             ? <img src={current} alt="logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
             : <span style={{fontSize:22}}>🖼️</span>
           }
         </div>
-        <div>
-          <button type="button" style={{...gbtn,padding:"7px 14px",fontSize:12}} onClick={()=>document.getElementById("logo-upload-input").click()}>
-            {current ? "Change Logo" : "Upload Logo"}
-          </button>
-          {current && <button type="button" style={{...dbtn,padding:"7px 14px",fontSize:12,marginLeft:8}} onClick={()=>onUpload(null,null)}>Remove</button>}
-          <div style={{fontSize:11,color:mut,marginTop:5}}>PNG, JPG, SVG · max 500KB</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",gap:8,alignItems:"center"}}>
+            <label style={{...gbtn,padding:"7px 14px",fontSize:12,cursor:"pointer"}}>
+              {current ? "Change Logo" : "Upload Logo"}
+              <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+            </label>
+            {current && <button type="button" style={{...dbtn,padding:"7px 14px",fontSize:12}} onClick={()=>onUpload(null,null)}>Remove</button>}
+          </div>
+          <div style={{fontSize:11,color:mut}}>PNG, JPG · min 32×32px · max 2MB</div>
         </div>
-        <input id="logo-upload-input" type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
       </div>
     </div>
   );
@@ -241,7 +251,7 @@ function SortBar({ options, value, onChange }) {
     <div style={{display:"flex",gap:6,marginBottom:20,flexWrap:"wrap"}}>
       {options.map(o=>(
         <button key={o.value} onClick={()=>onChange(o.value)}
-          style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${value===o.value?acc:bdr}`,cursor:"pointer",fontSize:12,fontWeight:value===o.value?700:400,background:value===o.value?acc+"10":"transparent",color:value===o.value?acc:mut,transition:"all 0.15s"}}>
+          style={{padding:"5px 12px",borderRadius:10,border:`1.5px solid ${value===o.value?acc:bdr}`,cursor:"pointer",fontSize:12,fontWeight:value===o.value?700:400,background:value===o.value?acc+"10":"transparent",color:value===o.value?acc:mut,transition:"all 0.15s"}}>
           {o.label}
         </button>
       ))}
@@ -253,7 +263,7 @@ function Modal({ show, onClose, title, children }) {
   if (!show) return null;
   return (
     <div onClick={e=>e.target===e.currentTarget&&onClose()} style={{position:"fixed",inset:0,background:"rgba(26,26,46,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20,backdropFilter:"blur(4px)"}}>
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:20,padding:28,width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(26,26,46,0.15)"}}>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:10,padding:28,width:"100%",maxWidth:480,maxHeight:"90vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(26,26,46,0.15)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:22}}>
           <span style={{fontSize:17,fontWeight:700,color:txt}}>{title}</span>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:22,lineHeight:1,padding:"0 4px"}}>×</button>
@@ -268,11 +278,11 @@ function BackBtn({ onClick }) {
   return <button onClick={onClick} style={{...gbtn,padding:"7px 14px",fontSize:12,marginBottom:20}}>← Back</button>;
 }
 
-function StatBox({ label, value, sub, color=acc }) {
+function StatBox({ label, value, sub, color=txt }) {
   return (
-    <div style={{background:surf2,borderRadius:12,padding:"12px 16px",flex:1,minWidth:110,border:`1.5px solid ${bdr}`}}>
-      <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:5,fontWeight:700}}>{label}</div>
-      <div style={{fontSize:20,fontWeight:800,color,letterSpacing:"-0.02em"}}>{value}</div>
+    <div style={{background:surf2,borderRadius:10,padding:"12px 16px",flex:1,minWidth:110,border:`1px solid ${bdr}`}}>
+      <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:5,fontWeight:600}}>{label}</div>
+      <div style={{fontSize:20,fontWeight:700,color,letterSpacing:"-0.02em"}}>{value}</div>
       {sub&&<div style={{fontSize:11,color:mut,marginTop:2}}>{sub}</div>}
     </div>
   );
@@ -296,7 +306,7 @@ function Setup({ onDone }) {
           <div style={{fontSize:32,fontWeight:900,color:acc,letterSpacing:"-0.04em"}}>PointsVault</div>
           <div style={{fontSize:14,color:mut,marginTop:6}}>Your loyalty &amp; cards dashboard</div>
         </div>
-        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:20,padding:28,boxShadow:"0 8px 32px rgba(79,70,229,0.08)"}}>
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:10,padding:28,boxShadow:"0 8px 32px rgba(79,70,229,0.08)"}}>
           {lbl("Supabase Project URL")}<input style={inp} placeholder="https://xxxx.supabase.co" value={url} onChange={e=>setUrl(e.target.value)}/>
           {lbl("Anon Public Key")}<input style={inp} type="password" placeholder="eyJ..." value={key} onChange={e=>setKey(e.target.value)}/>
           {msg&&<div style={{color:red,fontSize:12,marginBottom:12,padding:"8px 12px",background:"#fef2f2",borderRadius:8}}>{msg}</div>}
@@ -383,8 +393,8 @@ function PointsTable({ txns, openingBalance }) {
               <td style={{padding:"10px 12px",textAlign:"right",color:txt,fontWeight:600}}>{t.closing.toLocaleString()}</td>
             </tr>
           ))}
-          <tr style={{borderTop:`2px solid ${bdr}`,background:acc+"06"}}>
-            <td style={{padding:"10px 12px",color:mut}} colSpan={2}><em style={{color:acc,fontSize:12,fontWeight:600}}>Opening Balance</em></td>
+          <tr style={{borderTop:`2px solid ${bdr}`,background:surf2}}>
+            <td style={{padding:"10px 12px",color:mut}} colSpan={2}><em style={{color:mut2,fontSize:12,fontWeight:600}}>Opening Balance</em></td>
             <td/><td/>
             <td style={{padding:"10px 12px",textAlign:"right",fontWeight:700,color:acc}}>{(openingBalance||0).toLocaleString()}</td>
           </tr>
@@ -486,13 +496,13 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
         </div>
       </div>
 
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"22px 24px",borderTop:`4px solid ${card.color||acc}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"22px 24px",borderTop:`4px solid ${card.color||acc}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
             <LogoCircle url={card.logo_url} name={card.name} color={card.color||acc} size={52}/>
             <div>
               <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{card.name}</div>
-              <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank}{card.last4?` ···· ${card.last4}`:""} · <span style={{color:nc[card.network]||acc,fontWeight:600}}>{card.network}</span></div>
+              <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank}{card.last4?` ···· ${card.last4}`:""} · <span style={{fontWeight:500}}>{card.network}</span></div>
             </div>
           </div>
           <button style={pbtn} onClick={()=>{ setF(tf); setShowTxn(true); }}>+ Add Transaction</button>
@@ -505,9 +515,9 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
         </div>
       </div>
 
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.06em"}}>Transfer Partners</div>
+          <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Transfer Partners</div>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowPartner(true)}>+ Add Partner</button>
         </div>
         {partners.length===0?<div style={{color:mut,fontSize:13}}>No partners configured yet</div>:(
@@ -527,8 +537,8 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
         )}
       </div>
 
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"18px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-        <div style={{fontSize:13,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Points History</div>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"18px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Points History</div>
         {busy?<div style={{color:mut,padding:20,textAlign:"center"}}>Loading…</div>:<PointsTable txns={txns} openingBalance={openingBalance}/>}
       </div>
 
@@ -552,10 +562,7 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
           <div>{lbl("Bank")}<input style={inp} value={ef.bank||""} onChange={eup("bank")}/></div>
           <div>{lbl("Last 4")}<input style={inp} maxLength={4} value={ef.last4||""} onChange={eup("last4")}/></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Network")}<select style={inp} value={ef.network||"Visa"} onChange={eup("network")}>{nets.map(n=><option key={n}>{n}</option>)}</select></div>
-          <div>{lbl("Color")}<input style={{...inp,padding:"5px 8px",cursor:"pointer"}} type="color" value={ef.color||"#4f46e5"} onChange={eup("color")}/></div>
-        </div>
+        {lbl("Network")}<select style={inp} value={ef.network||"Visa"} onChange={eup("network")}>{nets.map(n=><option key={n}>{n}</option>)}</select>
         <div style={{background:"#fefce8",border:"1.5px solid #fde68a",borderRadius:10,padding:"10px 14px",marginBottom:12}}>
           <div style={{fontSize:11,color:"#92400e",fontWeight:700,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.06em"}}>⚠ Opening Balance</div>
           <div style={{fontSize:12,color:"#78350f",marginBottom:8}}>Editing this rewrites the opening balance only — it does not affect recorded transactions.</div>
@@ -589,7 +596,7 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const cats=["Airline","Hotel","Retail","Dining","Fuel","Other"];
-  const cc={Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const cc={Airline:acc,Hotel:acc,Retail:acc,Dining:acc,Fuel:acc,Other:acc};
   const [ef,setEf]=useState({});
   const eup=k=>e=>setEf(p=>({...p,[k]:e.target.value}));
 
@@ -637,7 +644,7 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
     } else if(editLogoPreview===null && prog.logo_url){
       logo_url=null;
     }
-    const p={name:ef.name.trim(),category:ef.category,tier:ef.tier,color:ef.color,expiry_date:ef.expiry_date||null,expiry_rule:ef.expiry_rule,inr_per_point:parseFloat(ef.inr_per_point)||0,opening_balance:newOpening,points_balance:newBalance,logo_url};
+    const p={name:ef.name.trim(),category:ef.category,tier:ef.tier,color:acc,expiry_date:ef.expiry_date||null,expiry_rule:ef.expiry_rule,inr_per_point:parseFloat(ef.inr_per_point)||0,opening_balance:newOpening,points_balance:newBalance,logo_url,loyalty_number:ef.loyalty_number||null};
     const {error}=await db.from("loyalty_programs").update(prog.id,p);
     if(error) return alert("Error: "+JSON.stringify(error));
     setProg(x=>({...x,...p})); setEditLogoFile(null); setEditLogoPreview(null); setShowEdit(false);
@@ -661,13 +668,17 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
         </div>
       </div>
 
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"22px 24px",borderTop:`4px solid ${prog.color||acc2}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"22px 24px",borderTop:`4px solid ${prog.color||acc2}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
             <LogoCircle url={prog.logo_url} name={prog.name} color={prog.color||acc2} size={52}/>
             <div>
               <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{prog.name}</div>
-              <div style={{fontSize:13,color:mut,marginTop:3}}><span style={{color:cc[prog.category]||acc2,fontWeight:600}}>{prog.category}</span>{prog.tier&&<span style={{color:acc2}}> · {prog.tier}</span>}</div>
+              <div style={{fontSize:13,color:mut,marginTop:3}}>
+                <span style={{fontWeight:500,color:mut}}>{prog.category}</span>
+                {prog.tier&&<span> · {prog.tier}</span>}
+                {prog.loyalty_number&&<span style={{color:mut}}> · #{prog.loyalty_number}</span>}
+              </div>
             </div>
           </div>
           <button style={pbtn} onClick={()=>{ setF(tf); setShowTxn(true); }}>+ Add Transaction</button>
@@ -680,9 +691,9 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
         {prog.expiry_rule&&<div style={{fontSize:12,color:mut,marginTop:10}}>{prog.expiry_rule}</div>}
       </div>
 
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{fontSize:13,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.06em"}}>Transfer Partners</div>
+          <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Transfer Partners</div>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowPartner(true)}>+ Add Partner</button>
         </div>
         {partners.length===0?<div style={{color:mut,fontSize:13}}>No partners configured yet</div>:(
@@ -702,8 +713,8 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
         )}
       </div>
 
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"18px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-        <div style={{fontSize:13,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.06em",marginBottom:14}}>Points History</div>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"18px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:14}}>Points History</div>
         {busy?<div style={{color:mut,padding:20,textAlign:"center"}}>Loading…</div>:<PointsTable txns={txns} openingBalance={openingBalance}/>}
       </div>
 
@@ -732,10 +743,8 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
           <div style={{fontSize:12,color:"#78350f",marginBottom:8}}>Editing this rewrites the opening balance only — does not affect recorded transactions.</div>
           {lbl("Points Opening Balance")}<input style={inp} type="number" value={ef.opening_balance||""} onChange={eup("opening_balance")}/>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("INR per Point")}<input style={inp} type="number" step="0.01" placeholder="0.50" value={ef.inr_per_point||""} onChange={eup("inr_per_point")}/></div>
-          <div>{lbl("Color")}<input style={{...inp,padding:"5px 8px",cursor:"pointer"}} type="color" value={ef.color||"#7c3aed"} onChange={eup("color")}/></div>
-        </div>
+        {lbl("INR per Point")}<input style={inp} type="number" step="0.01" placeholder="0.50" value={ef.inr_per_point||""} onChange={eup("inr_per_point")}/>
+        {lbl("Loyalty / Membership Number")}<input style={inp} placeholder="XXXX-XXXX-XXXX" value={ef.loyalty_number||""} onChange={eup("loyalty_number")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Expiry Date")}<input style={inp} type="date" value={ef.expiry_date||""} onChange={eup("expiry_date")}/></div>
           <div style={{display:"flex",flexDirection:"column"}}>{lbl("Expiry Rule")}<input style={inp} value={ef.expiry_rule||""} onChange={eup("expiry_rule")}/></div>
@@ -751,6 +760,7 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
 // ── CC Chart Section ──────────────────────────────────────────────────────────
 function CCChartSection({ rows, acc, surf, surf2, bdr, bdr2, txt, mut, grn, nc }) {
   const [view, setView] = useState("bank");
+  const [hideZero, setHideZero] = useState(true);
   const views = [
     {id:"bank",   label:"By Bank"},
     {id:"card",   label:"By Card"},
@@ -779,25 +789,24 @@ function CCChartSection({ rows, acc, surf, surf2, bdr, bdr2, txt, mut, grn, nc }
   if (data.length === 0) return null;
   return (
     <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>Distribution</div>
-        <div style={{display:"flex",gap:4}}>
+        <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
           {views.map(v=>(
-            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
+            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
               {v.label}
             </button>
           ))}
+          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut,marginLeft:4}}>
+            <input type="checkbox" checked={hideZero} onChange={e=>setHideZero(e.target.checked)} style={{accentColor:acc,cursor:"pointer"}}/>
+            Hide zero
+          </label>
         </div>
       </div>
-      {data.map(([label,val],i)=>(
-        <div key={label} style={{marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-            <div style={{fontSize:12,fontWeight:500,color:txt}}>{label}</div>
-            <div style={{fontSize:12,fontWeight:600,color:txt}}>{isInr ? inrFmt(val) : val.toLocaleString("en-IN")}</div>
-          </div>
-          <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${(val/max)*100}%`,background:barColors[i%barColors.length],borderRadius:10,transition:"width 0.4s ease"}}/>
-          </div>
+      {data.filter(([,v])=>!hideZero||v>0).map(([label,val],i)=>(
+        <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${bdr}`}}>
+          <div style={{fontSize:13,fontWeight:500,color:txt}}>{label}</div>
+          <div style={{fontSize:13,fontWeight:600,color:isInr?grn:txt}}>{isInr ? inrFmt(val) : val.toLocaleString("en-IN")}</div>
         </div>
       ))}
     </div>
@@ -807,7 +816,8 @@ function CCChartSection({ rows, acc, surf, surf2, bdr, bdr2, txt, mut, grn, nc }
 // ── LP Chart Section ──────────────────────────────────────────────────────────
 function LPChartSection({ rows, acc, acc2, surf, surf2, bdr, bdr2, txt, mut, grn }) {
   const [view, setView] = useState("category");
-  const catColors2 = {Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const [hideZero, setHideZero] = useState(true);
+  const catColors2 = {Airline:acc,Hotel:acc,Retail:acc,Dining:acc,Fuel:acc,Other:acc};
   const cats = ["Airline","Hotel","Retail","Dining","Fuel","Other"];
   const barColors = ["#b5862a","#1d4ed8","#059669","#ea580c","#dc2626","#8b5cf6","#0891b2","#64748b"];
 
@@ -851,28 +861,24 @@ function LPChartSection({ rows, acc, acc2, surf, surf2, bdr, bdr2, txt, mut, grn
 
   return (
     <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"18px 22px",marginBottom:20,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:11,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>Distribution</div>
-        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
           {views.map(v=>(
-            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
+            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
               {v.label}
             </button>
           ))}
+          <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut,marginLeft:4}}>
+            <input type="checkbox" checked={hideZero} onChange={e=>setHideZero(e.target.checked)} style={{accentColor:acc,cursor:"pointer"}}/>
+            Hide zero
+          </label>
         </div>
       </div>
-      {data.map(([label,val],i)=>(
-        <div key={label} style={{marginBottom:10}}>
-          <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-            <div style={{fontSize:12,fontWeight:500,color:txt,display:"flex",alignItems:"center",gap:6}}>
-              {view==="category"&&<div style={{width:7,height:7,borderRadius:2,background:catColors2[label]||acc2,flexShrink:0}}/>}
-              {label}
-            </div>
-            <div style={{fontSize:12,fontWeight:600,color:txt}}>{isInr ? inrFmt(val) : val.toLocaleString("en-IN")}</div>
-          </div>
-          <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
-            <div style={{height:"100%",width:`${(val/max)*100}%`,background:getColor(label,i),borderRadius:10,transition:"width 0.4s ease"}}/>
-          </div>
+      {data.filter(([,v])=>!hideZero||v>0).map(([label,val],i)=>(
+        <div key={label} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${bdr}`}}>
+          <div style={{fontSize:13,fontWeight:500,color:txt}}>{label}</div>
+          <div style={{fontSize:13,fontWeight:600,color:isInr?grn:txt}}>{isInr ? inrFmt(val) : val.toLocaleString("en-IN")}</div>
         </div>
       ))}
     </div>
@@ -887,7 +893,7 @@ function Cards({ db }) {
   const [detail,setDetail]=useState(null); const [msg,setMsg]=useState("");
   const [search,setSearch]=useState(""); const [sort,setSort]=useState("name");
   const [logoFile,setLogoFile]=useState(null); const [logoPreview,setLogoPreview]=useState(null);
-  const empty={name:"",bank:"",last4:"",network:"Visa",opening_balance:"",points_currency:"pts",inr_per_point:"",stmt_date:"",annual_fee:"",color:"#b5862a"};
+  const empty={name:"",bank:"",last4:"",network:"Visa",opening_balance:"",points_currency:"pts",inr_per_point:"",stmt_date:"",annual_fee:""};
   const [f,setF]=useState(empty);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const nets=["Visa","Mastercard","Amex","Diners","RuPay","Other"];
@@ -908,7 +914,7 @@ function Cards({ db }) {
       if(ue) console.error("Logo upload error:",ue,"status:",status);
       else logo_url=db.storage.getPublicUrl("logos",path);
     }
-    const p={name:f.name.trim(),bank:f.bank,last4:f.last4,network:f.network,color:f.color,points_currency:f.points_currency,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,annual_fee:parseFloat(f.annual_fee)||0,stmt_date:parseInt(f.stmt_date)||null,logo_url};
+    const p={name:f.name.trim(),bank:f.bank,last4:f.last4,network:f.network,color:acc,points_currency:f.points_currency,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,annual_fee:parseFloat(f.annual_fee)||0,stmt_date:parseInt(f.stmt_date)||null,logo_url};
     const {error}=await db.from("cc_cards").insert(p);
     if(error) return alert("Error: "+JSON.stringify(error));
     setLogoFile(null); setLogoPreview(null); setShow(false); load();
@@ -943,17 +949,17 @@ function Cards({ db }) {
 
       {/* Stat row */}
       {rows.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:24}}>
-        <div style={{background:txt,borderRadius:16,padding:"16px 18px",color:"#fff"}}>
+        <div style={{background:txt,borderRadius:12,padding:"16px 18px",color:"#fff"}}>
           <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.5)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Total Points</div>
           <div style={{fontSize:24,fontWeight:800,letterSpacing:"-0.03em"}}>{total.toLocaleString("en-IN")}</div>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.45)",marginTop:4}}>{rows.length} cards</div>
         </div>
-        {totalInr>0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        {totalInr>0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Est. Value</div>
           <div style={{fontSize:24,fontWeight:800,color:grn,letterSpacing:"-0.03em"}}>{inrFmt(totalInr)}</div>
           <div style={{fontSize:11,color:mut,marginTop:4}}>across all cards</div>
         </div>}
-        {banks2[0]&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        {banks2[0]&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Top Bank</div>
           <div style={{fontSize:16,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>{banks2[0][0]}</div>
           <div style={{fontSize:11,color:acc,marginTop:4,fontWeight:600}}>{banks2[0][1].toLocaleString("en-IN")} pts</div>
@@ -978,7 +984,7 @@ function Cards({ db }) {
                 onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)"; e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.borderColor=c.color||acc; }}
                 onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)"; e.currentTarget.style.transform="none"; e.currentTarget.style.borderColor=bdr; }}>
                 {/* color accent bar */}
-                <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:c.color||acc,borderRadius:"14px 14px 0 0"}}/>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:acc,borderRadius:"14px 14px 0 0"}}/>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,marginTop:4}}>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
                     <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={34}/>
@@ -987,7 +993,7 @@ function Cards({ db }) {
                       <div style={{fontSize:11,color:mut,marginTop:1}}>{c.bank}{c.last4?` ···· ${c.last4}`:""}</div>
                     </div>
                   </div>
-                  <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:(nc[c.network]||acc)+"15",color:nc[c.network]||acc,letterSpacing:"0.04em"}}>{c.network}</span>
+                  <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:10,background:(nc[c.network]||acc)+"15",color:nc[c.network]||acc,letterSpacing:"0.04em"}}>{c.network}</span>
                 </div>
                 <div style={{marginBottom:12}}>
                   <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.02em",lineHeight:1}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
@@ -1015,10 +1021,7 @@ function Cards({ db }) {
           <div>{lbl("Bank")}<input style={inp} placeholder="HDFC" value={f.bank} onChange={up("bank")}/></div>
           <div>{lbl("Last 4 Digits")}<input style={inp} placeholder="4242" maxLength={4} value={f.last4} onChange={up("last4")}/></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Network")}<select style={inp} value={f.network} onChange={up("network")}>{nets.map(n=><option key={n}>{n}</option>)}</select></div>
-          <div>{lbl("Card Color")}<input style={{...inp,padding:"5px 8px",cursor:"pointer"}} type="color" value={f.color} onChange={up("color")}/></div>
-        </div>
+        {lbl("Network")}<select style={inp} value={f.network} onChange={up("network")}>{nets.map(n=><option key={n}>{n}</option>)}</select>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Points Opening Balance")}<input style={inp} type="number" placeholder="0" value={f.opening_balance} onChange={up("opening_balance")}/></div>
           <div>{lbl("Points Unit")}<input style={inp} placeholder="pts / miles" value={f.points_currency} onChange={up("points_currency")}/></div>
@@ -1041,11 +1044,11 @@ function Loyalty({ db }) {
   const [detail,setDetail]=useState(null);
   const [search,setSearch]=useState(""); const [sort,setSort]=useState("name");
   const [logoFile,setLogoFile]=useState(null); const [logoPreview,setLogoPreview]=useState(null);
-  const empty={name:"",category:"Airline",opening_balance:"",inr_per_point:"",expiry_date:"",expiry_rule:"",tier:"",color:"#b5862a"};
+  const empty={name:"",category:"Airline",opening_balance:"",inr_per_point:"",expiry_date:"",expiry_rule:"",tier:"",loyalty_number:""};
   const [f,setF]=useState(empty);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const cats=["Airline","Hotel","Retail","Dining","Fuel","Other"];
-  const cc={Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const cc={Airline:acc,Hotel:acc,Retail:acc,Dining:acc,Fuel:acc,Other:acc};
 
   const load=async()=>{ setBusy(true); const [{data:l},{data:c}]=await Promise.all([db.from("loyalty_programs").select(),db.from("cc_cards").select()]); setRows(l||[]); setCards(c||[]); setBusy(false); };
   useEffect(()=>{ load(); },[]);
@@ -1062,7 +1065,7 @@ function Loyalty({ db }) {
       if(ue) console.error("Logo upload error:",ue,"status:",status);
       else logo_url=db.storage.getPublicUrl("logos",path);
     }
-    const p={name:f.name.trim(),category:f.category,tier:f.tier,color:f.color,expiry_date:f.expiry_date||null,expiry_rule:f.expiry_rule,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,logo_url};
+    const p={name:f.name.trim(),category:f.category,tier:f.tier,color:acc,expiry_date:f.expiry_date||null,expiry_rule:f.expiry_rule,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,logo_url,loyalty_number:f.loyalty_number||null};
     const {error}=await db.from("loyalty_programs").insert(p);
     if(error) return alert("Error: "+JSON.stringify(error));
     setLogoFile(null); setLogoPreview(null); setShow(false); load();
@@ -1081,7 +1084,7 @@ function Loyalty({ db }) {
   rows.forEach(l=>{ const c=l.category||"Other"; catBreak[c]=(catBreak[c]||0)+(l.points_balance||0); });
   const catList = Object.entries(catBreak).sort((a,b)=>b[1]-a[1]);
   const maxCat = catList[0]?.[1]||1;
-  const catColors2 = {Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
+  const catColors2 = {Airline:acc,Hotel:acc,Retail:acc,Dining:acc,Fuel:acc,Other:acc};
   const totalLPts = rows.reduce((a,l)=>a+(l.points_balance||0),0);
   const exp30 = rows.filter(l=>{ if(!l.expiry_date) return false; const d=Math.round((new Date(l.expiry_date)-new Date())/86400000); return d>=0&&d<=30; });
   const exp90 = rows.filter(l=>{ if(!l.expiry_date) return false; const d=Math.round((new Date(l.expiry_date)-new Date())/86400000); return d>=0&&d<=90; });
@@ -1098,22 +1101,22 @@ function Loyalty({ db }) {
 
       {/* Stat row */}
       {rows.length>0&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:24}}>
-        <div style={{background:acc,borderRadius:16,padding:"16px 18px",color:"#fff"}}>
+        <div style={{background:acc,borderRadius:12,padding:"16px 18px",color:"#fff"}}>
           <div style={{fontSize:10,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Total Points</div>
           <div style={{fontSize:24,fontWeight:800,letterSpacing:"-0.03em"}}>{totalLPts.toLocaleString("en-IN")}</div>
           <div style={{fontSize:11,color:"rgba(255,255,255,0.5)",marginTop:4}}>{rows.length} programs</div>
         </div>
-        {totalInr>0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        {totalInr>0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Est. Value</div>
           <div style={{fontSize:24,fontWeight:800,color:grn,letterSpacing:"-0.03em"}}>{inrFmt(totalInr)}</div>
           <div style={{fontSize:11,color:mut,marginTop:4}}>across all programs</div>
         </div>}
-        {exp30.length>0&&<div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:16,padding:"16px 18px"}}>
+        {exp30.length>0&&<div style={{background:"#fffbeb",border:"1.5px solid #fde68a",borderRadius:12,padding:"16px 18px"}}>
           <div style={{fontSize:10,fontWeight:600,color:"#92400e",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Expiring Soon</div>
           <div style={{fontSize:24,fontWeight:800,color:red,letterSpacing:"-0.03em"}}>{exp30.length}</div>
           <div style={{fontSize:11,color:"#b45309",marginTop:4}}>within 30 days</div>
         </div>}
-        {exp90.length>0&&exp30.length===0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        {exp90.length>0&&exp30.length===0&&<div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"16px 18px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:8}}>Expiring (90d)</div>
           <div style={{fontSize:24,fontWeight:800,color:gold,letterSpacing:"-0.03em"}}>{exp90.length}</div>
           <div style={{fontSize:11,color:mut,marginTop:4}}>programs</div>
@@ -1134,16 +1137,16 @@ function Loyalty({ db }) {
               style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",position:"relative",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",transition:"all 0.2s"}}
               onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)"; e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.borderColor=p.color||acc2; }}
               onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)"; e.currentTarget.style.transform="none"; e.currentTarget.style.borderColor=bdr; }}>
-              <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:p.color||acc2,borderRadius:"14px 14px 0 0"}}/>
+              <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:acc,borderRadius:"14px 14px 0 0"}}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,marginTop:4}}>
                 <div style={{display:"flex",gap:10,alignItems:"center"}}>
                   <LogoCircle url={p.logo_url} name={p.name} color={p.color||acc2} size={34}/>
                   <div>
                     <div style={{fontSize:14,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{p.name}</div>
-                    {p.tier&&<div style={{fontSize:11,color:p.color||acc2,fontWeight:600,marginTop:1}}>{p.tier}</div>}
+                    <div style={{fontSize:11,color:mut,marginTop:1}}>{p.tier&&<span style={{fontWeight:600,color:acc}}>{p.tier}</span>}{p.tier&&p.loyalty_number&&" · "}{p.loyalty_number&&<span>#{p.loyalty_number}</span>}</div>
                   </div>
                 </div>
-                <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:(cc[p.category]||acc2)+"15",color:cc[p.category]||acc2,letterSpacing:"0.04em"}}>{p.category}</span>
+                <span style={{fontSize:10,fontWeight:500,padding:"2px 8px",borderRadius:10,background:surf2,color:mut,border:`1px solid ${bdr}`,letterSpacing:"0.04em"}}>{p.category}</span>
               </div>
               <div style={{marginBottom:10}}>
                 <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.02em",lineHeight:1}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
@@ -1152,7 +1155,7 @@ function Loyalty({ db }) {
               {p.inr_per_point>0&&<div style={{fontSize:12,fontWeight:600,color:grn,marginBottom:8}}>{inrFmt(inrVal)}</div>}
               <div style={{borderTop:`1px solid ${bdr}`,paddingTop:8,marginTop:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 {p.expiry_date
-                  ? <div style={{fontSize:11,color:exp?red:mut}}>{exp?"⚠ ":""}{d>0?`${d}d left`:"Expired"} · {new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                  ? <div style={{fontSize:11,color:exp?"#c13333":mut}}>{exp?"⚠ ":""}{d>0?`${d}d left`:"Expired"} · {new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
                   : <div/>
                 }
                 <div style={{fontSize:11,color:acc2,fontWeight:500}}>View →</div>
@@ -1174,11 +1177,9 @@ function Loyalty({ db }) {
           <div>{lbl("Points Opening Balance")}<input style={inp} type="number" placeholder="0" value={f.opening_balance} onChange={up("opening_balance")}/></div>
           <div>{lbl("INR per Point")}<input style={inp} type="number" step="0.01" placeholder="0.50" value={f.inr_per_point} onChange={up("inr_per_point")}/></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Expiry Date")}<input style={inp} type="date" value={f.expiry_date||""} onChange={up("expiry_date")}/></div>
-          <div>{lbl("Color")}<input style={{...inp,padding:"5px 8px",cursor:"pointer"}} type="color" value={f.color} onChange={up("color")}/></div>
-        </div>
+        {lbl("Expiry Date")}<input style={inp} type="date" value={f.expiry_date||""} onChange={up("expiry_date")}/>
         {lbl("Expiry Rule")}<input style={inp} placeholder="Points expire 3 years from earn date" value={f.expiry_rule} onChange={up("expiry_rule")}/>
+        {lbl("Loyalty / Membership Number")}<input style={inp} placeholder="XXXX-XXXX-XXXX" value={f.loyalty_number||""} onChange={up("loyalty_number")}/>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>Add Program</button>
       </Modal>
     </div>
@@ -1254,7 +1255,7 @@ function TransferPoints({ db }) {
           </div>
         </div>
       )}
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:24,maxWidth:560,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:24,maxWidth:560,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         {/* FROM — populates based on to if set, otherwise shows all valid sources */}
         <div style={{marginBottom:18}}>
           <div style={{fontSize:11,color:acc,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>From</div>
@@ -1387,7 +1388,7 @@ function Transfers({ db }) {
       {busy?<div style={{color:mut,padding:40,textAlign:"center"}}>Loading…</div>:filtered.length===0?(
         <div style={{textAlign:"center",padding:60,color:mut}}><div style={{fontSize:32,marginBottom:10}}>↔️</div><div>{search?"No routes match your search":"No transfer routes yet"}</div></div>
       ):Object.entries(grouped).map(([from,routes])=>(
-        <div key={from} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 20px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div key={from} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"18px 20px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:11,fontWeight:700,color:acc,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.07em"}}>{from}</div>
           {routes.map(r=>(
             <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1.5px solid ${bdr}`,marginBottom:8,flexWrap:"wrap",gap:8}}>
@@ -1436,6 +1437,23 @@ function Transfers({ db }) {
   );
 }
 
+// ── VoucherSecret ─────────────────────────────────────────────────────────────
+function VoucherSecret({ label, value, accent, surf2, isPin=false }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+      <span style={{color:mut}}>{label}:</span>
+      <span style={{fontFamily:"monospace",fontWeight:600,color:visible?accent:mut,background:visible?accent+"10":surf2,padding:"1px 6px",borderRadius:4,letterSpacing:"0.08em",minWidth:60,display:"inline-block"}}>
+        {visible ? value : "•".repeat(Math.min(value.length,8))}
+      </span>
+      <button onClick={()=>setVisible(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"0 2px",lineHeight:1}} title={visible?"Hide":"Show"}>
+        {visible ? "🙈" : "👁"}
+      </button>
+    </div>
+  );
+}
+
+
 // ── Vouchers ──────────────────────────────────────────────────────────────────
 function Vouchers({ db }) {
   const [rows,setRows]=useState([]); const [busy,setBusy]=useState(true);
@@ -1462,7 +1480,7 @@ function Vouchers({ db }) {
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24,flexWrap:"wrap",gap:10}}>
         <div><div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>Vouchers</div><div style={{fontSize:13,color:mut,marginTop:3}}>{rows.filter(v=>!v.redeemed).length} active · {rows.filter(v=>v.redeemed).length} redeemed</div></div>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          {["active","redeemed","all"].map(t=><button key={t} onClick={()=>setFilter(t)} style={{padding:"7px 12px",borderRadius:20,border:`1.5px solid ${filter===t?acc:bdr}`,cursor:"pointer",fontSize:12,fontWeight:filter===t?700:400,background:filter===t?acc+"10":"transparent",color:filter===t?acc:mut,textTransform:"capitalize"}}>{t}</button>)}
+          {["active","redeemed","all"].map(t=><button key={t} onClick={()=>setFilter(t)} style={{padding:"7px 12px",borderRadius:10,border:`1.5px solid ${filter===t?acc:bdr}`,cursor:"pointer",fontSize:12,fontWeight:filter===t?700:400,background:filter===t?acc+"10":"transparent",color:filter===t?acc:mut,textTransform:"capitalize"}}>{t}</button>)}
           <button style={pbtn} onClick={()=>{ setEdit(null); setF({...empty}); setShow(true); }}>+ Add</button>
         </div>
       </div>
@@ -1479,7 +1497,7 @@ function Vouchers({ db }) {
                   <div style={{fontSize:13,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{v.program}</div>
                   {v.description&&<div style={{fontSize:11,color:mut,marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.description}</div>}
                 </div>
-                <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:20,background:v.redeemed?surf2:exp?"#fef3c7":`${grn}15`,color:v.redeemed?mut:exp?"#92400e":grn,marginLeft:8,flexShrink:0,letterSpacing:"0.04em"}}>
+                <span style={{fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:10,background:v.redeemed?surf2:exp?"#fef3c7":`${grn}15`,color:v.redeemed?mut:exp?"#92400e":grn,marginLeft:8,flexShrink:0,letterSpacing:"0.04em"}}>
                   {v.redeemed?"USED":exp?"EXPIRING":"ACTIVE"}
                 </span>
               </div>
@@ -1489,8 +1507,8 @@ function Vouchers({ db }) {
                 {d!==null&&<span style={{fontWeight:600}}> · {d>0?`${d}d left`:"Expired"}</span>}
               </div>}
               {v.received_from&&<div style={{fontSize:11,color:mut,marginBottom:4}}>From: <span style={{color:txt,fontWeight:500}}>{v.received_from}</span></div>}
-              {v.voucher_code&&<div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}><span style={{color:mut}}>Code:</span><span style={{fontFamily:"monospace",fontWeight:600,color:acc,background:acc+"10",padding:"1px 6px",borderRadius:4,letterSpacing:"0.08em"}}>{v.voucher_code}</span></div>}
-              {v.voucher_pin&&<div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}><span style={{color:mut}}>PIN:</span><span style={{fontFamily:"monospace",fontWeight:600,color:txt,background:surf2,padding:"1px 6px",borderRadius:4}}>{v.voucher_pin}</span></div>}
+              {v.voucher_code&&<VoucherSecret label="Code" value={v.voucher_code} accent={acc} surf2={surf2}/>}
+              {v.voucher_pin&&<VoucherSecret label="PIN" value={v.voucher_pin} accent={acc} surf2={surf2} isPin/>}
               {v.notes&&<div style={{fontSize:11,color:mut,marginBottom:10,fontStyle:"italic"}}>{v.notes}</div>}
               <div style={{display:"flex",gap:6,borderTop:`1px solid ${bdr}`,paddingTop:10,alignItems:"center"}}>
                 <button onClick={()=>toggle(v)} style={{padding:"5px 12px",borderRadius:8,border:`1px solid ${bdr}`,cursor:"pointer",fontSize:11,fontWeight:600,background:v.redeemed?surf2:txt,color:v.redeemed?mut:"#fff",letterSpacing:"0.02em",transition:"all 0.15s"}}>{v.redeemed?"Restore":"Mark Used"}</button>
@@ -1522,17 +1540,37 @@ function Vouchers({ db }) {
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 function Settings({ onDisconnect }) {
+  const [resetting, setResetting] = useState(false);
+  const resetAll = async () => {
+    const conf = window.prompt("This will permanently delete ALL data — cards, programs, vouchers, transactions and transfers.\n\nType DELETE to confirm:");
+    if (conf !== "DELETE") return;
+    setResetting(true);
+    const u = localStorage.getItem("pv_u");
+    const k = localStorage.getItem("pv_k");
+    const h = { apikey:k, Authorization:`Bearer ${k}`, "Content-Type":"application/json" };
+    for (const t of ["point_transactions","transfer_log","transfer_partners","vouchers","cc_cards","loyalty_programs"]) {
+      await fetch(`${u}/rest/v1/${t}?created_at=gte.2000-01-01`, { method:"DELETE", headers:h }).catch(()=>{});
+    }
+    setResetting(false);
+    alert("All data deleted.");
+    window.location.reload();
+  };
   return (
     <div>
       <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em",marginBottom:24}}>Settings</div>
       <div style={{maxWidth:520}}>
-        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:11,fontWeight:700,color:acc,marginBottom:12,textTransform:"uppercase",letterSpacing:"0.07em"}}>Database Connection</div>
           <div style={{fontSize:12,color:mut,marginBottom:4}}>Connected to</div>
           <div style={{fontSize:12,color:txt,fontFamily:"monospace",background:surf2,padding:"8px 12px",borderRadius:8,marginBottom:16,wordBreak:"break-all",border:`1.5px solid ${bdr}`}}>{localStorage.getItem("pv_u")}</div>
           <button style={dbtn} onClick={()=>{ localStorage.removeItem("pv_u"); localStorage.removeItem("pv_k"); onDisconnect(); }}>Disconnect</button>
         </div>
-        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+        <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"20px 22px",marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:red,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em"}}>Danger Zone</div>
+          <div style={{fontSize:13,color:mut,marginBottom:16}}>Permanently delete all data and reset PointsVault to blank. Cannot be undone.</div>
+          <button style={{...dbtn,background:red,color:"#fff",opacity:resetting?0.6:1}} onClick={resetting?undefined:resetAll}>{resetting?"Deleting…":"🗑 Reset All Data"}</button>
+        </div>
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"20px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
           <div style={{fontSize:11,fontWeight:700,color:acc,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>Setup SQL</div>
           <div style={{fontSize:12,color:mut,marginBottom:10}}>Run in Supabase → SQL Editor. Includes ALTER statements for existing tables.</div>
           <pre style={{fontSize:10,color:mut,background:surf2,padding:14,borderRadius:10,overflowX:"auto",lineHeight:1.7,margin:0,whiteSpace:"pre-wrap",border:`1.5px solid ${bdr}`}}>{SETUP_SQL}</pre>
@@ -1733,7 +1771,7 @@ Return only the JSON array starting with [ and ending with ].`;
         <div style={{maxWidth:680}}>
 
           {/* Step 1 — Card + Mode */}
-          <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+          <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
             <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 1 — Select Card &amp; Format</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:0}}>
               <div>
@@ -1758,7 +1796,7 @@ Return only the JSON array starting with [ and ending with ].`;
 
           {/* Step 2 — Claude API key (PDF only) */}
           {mode === "pdf" && (
-            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 2 — Claude API Key</div>
               <div style={{fontSize:12,color:mut,marginBottom:10}}>
                 Your key is saved locally in the browser. Get one free at <a href="https://console.anthropic.com" target="_blank" rel="noreferrer" style={{color:acc}}>console.anthropic.com</a>
@@ -1771,7 +1809,7 @@ Return only the JSON array starting with [ and ending with ].`;
 
           {/* Step 3 — Upload */}
           {status === "idle" && (
-            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>
                 {mode === "pdf" ? "Step 3" : "Step 2"} — Upload File
               </div>
@@ -1802,7 +1840,7 @@ Return only the JSON array starting with [ and ending with ].`;
 
           {/* Parsing spinner */}
           {status === "parsing" && (
-            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"40px 22px",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"40px 22px",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:28,marginBottom:12}}>⏳</div>
               <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:6}}>
                 {mode==="pdf"?"Claude is reading your statement…":"Parsing CSV…"}
@@ -1815,7 +1853,7 @@ Return only the JSON array starting with [ and ending with ].`;
 
           {/* Preview */}
           {status === "preview" && (
-            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"20px 22px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
                 <div>
                   <div style={{fontSize:14,fontWeight:700,color:txt}}>{parsed.length} transactions found</div>
@@ -1850,7 +1888,7 @@ Return only the JSON array starting with [ and ending with ].`;
                         <td style={{padding:"9px 10px",color:txt,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
                         <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount).toLocaleString("en-IN")}</td>
                         <td style={{padding:"9px 10px",textAlign:"center"}}>
-                          <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:20,background:t.type==="credit"?grn+"18":red+"12",color:t.type==="credit"?grn:red}}>{t.type}</span>
+                          <span style={{fontSize:11,fontWeight:700,padding:"2px 8px",borderRadius:10,background:t.type==="credit"?grn+"18":red+"12",color:t.type==="credit"?grn:red}}>{t.type}</span>
                         </td>
                         <td style={{padding:"9px 10px",textAlign:"right",color:t.points>0?acc:mut,fontWeight:t.points>0?700:400}}>{t.points>0?"+"+t.points:"-"}</td>
                       </tr>
@@ -1874,7 +1912,7 @@ Return only the JSON array starting with [ and ending with ].`;
           )}
 
           {status === "importing" && (
-            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"40px 22px",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+            <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,padding:"40px 22px",textAlign:"center",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
               <div style={{fontSize:28,marginBottom:12}}>💾</div>
               <div style={{fontSize:15,fontWeight:700,color:txt}}>Saving transactions…</div>
             </div>
@@ -1889,17 +1927,17 @@ Return only the JSON array starting with [ and ending with ].`;
 function TransferHistory({ db }) {
   const [logs, setLogs] = useState([]);
   const [busy, setBusy] = useState(true);
+  const [err, setErr] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("date");
   const [detail, setDetail] = useState(null);
+  const [hideZero, setHideZero] = useState(false);
 
   const load = async () => {
-    setBusy(true);
-    try {
-      const { data, error } = await db.from("transfer_log").select();
-      if (error) { console.error("transfer_log error:", error); }
-      setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
-    } catch(e) { console.error("transfer_log exception:", e); }
+    setBusy(true); setErr("");
+    const { data, error } = await db.from("transfer_log").select();
+    if (error) setErr(JSON.stringify(error));
+    setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
     setBusy(false);
   };
   useEffect(() => { load(); }, []);
@@ -1928,9 +1966,10 @@ function TransferHistory({ db }) {
   const totalBonus = filtered.reduce((a, l) => a + (l.bonus_miles || 0), 0);
 
   return (
-    <div style={{minHeight:"60vh",background:bg,color:txt}}>
+    <div>
       <div style={{fontSize:30,fontWeight:800,color:txt,letterSpacing:"-0.04em",lineHeight:1.1,marginBottom:6}}>Transfer History</div>
       <div style={{fontSize:14,color:mut,marginBottom:24}}>All point transfers across your cards and programs</div>
+      {err&&<div style={{color:red,fontSize:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8,marginBottom:16}}>{err}</div>}
 
       {/* Summary stats */}
       {logs.length > 0 && (
@@ -1963,7 +2002,7 @@ function TransferHistory({ db }) {
       ) : filtered.length === 0 ? (
         <div style={{textAlign:"center",padding:40,color:mut}}>No transfers match your search.</div>
       ) : (
-        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:12,boxShadow:"0 2px 8px rgba(0,0,0,0.04)",overflow:"hidden"}}>
           {/* Desktop table */}
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -2081,6 +2120,7 @@ function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, ac
   const [view, setView] = useState("points");
   const [search, setSearch] = useState("");
   const [sortDir, setSortDir] = useState("desc");
+  const [hideZero, setHideZero] = useState(true);
 
   const catColors = {Airline:"#1d4ed8",Hotel:"#b45309",Retail:"#059669",Dining:"#ea580c",Fuel:"#dc2626",Other:acc2};
   const ncColors  = {Visa:"#1a1f71",Mastercard:"#dc2626",Amex:"#0066b3",Diners:"#2c2c8c",RuPay:"#ea580c",Other:acc};
@@ -2097,13 +2137,17 @@ function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, ac
     const all = [
       ...cards.map(c=>({
         name: c.name, type:"card", bank: c.bank||"Other",
-        cat: "CC", color: c.color||acc,
+        cat: "CC", color: acc,
+        logo_url: c.logo_url,
+        sub: c.last4 ? `···· ${c.last4}` : (c.bank||""),
         points: c.points_balance||0,
         inr: (c.points_balance||0)*(c.inr_per_point||0),
       })),
       ...loyalties.map(l=>({
         name: l.name, type:"loyalty", bank: "—",
-        cat: l.category||"Other", color: catColors[l.category]||acc2,
+        cat: l.category||"Other", color: acc,
+        logo_url: l.logo_url,
+        sub: l.loyalty_number ? `#${l.loyalty_number}` : (l.category||""),
         points: l.points_balance||0,
         inr: (l.points_balance||0)*(l.inr_per_point||0),
       })),
@@ -2119,9 +2163,12 @@ function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, ac
     }
     if (view === "cat") {
       const map = {};
+      // CC cards go into "Credit Cards" bucket
+      cards.forEach(c=>{ map["Credit Cards"]=(map["Credit Cards"]||0)+(c.points_balance||0); });
       loyalties.forEach(l=>{ const c=l.category||"Other"; map[c]=(map[c]||0)+(l.points_balance||0); });
+      const catCol = {...catColors, "Credit Cards": acc};
       return Object.entries(map)
-        .map(([name,points])=>({name,points,inr:0,color:catColors[name]||acc2}))
+        .map(([name,points])=>({name,points,inr:0,color:catCol[name]||acc2}))
         .sort((a,b)=>sortDir==="desc"?b.points-a.points:a.points-b.points)
         .filter(d=>d.name.toLowerCase().includes(search.toLowerCase()));
     }
@@ -2141,7 +2188,7 @@ function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, ac
         <div style={s}>Portfolio Distribution</div>
         <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
           {views.map(v=>(
-            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:20,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
+            <button key={v.id} onClick={()=>setView(v.id)} style={{padding:"4px 10px",borderRadius:10,border:`1px solid ${view===v.id?acc:bdr}`,cursor:"pointer",fontSize:11,fontWeight:view===v.id?600:400,background:view===v.id?acc+"10":"transparent",color:view===v.id?acc:mut,transition:"all 0.15s"}}>
               {v.label}
             </button>
           ))}
@@ -2161,27 +2208,28 @@ function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, ac
         <button onClick={()=>setSortDir(d=>d==="desc"?"asc":"desc")} style={{padding:"7px 12px",borderRadius:8,border:`1px solid ${bdr}`,background:surf2,color:mut,cursor:"pointer",fontSize:11,fontWeight:500,flexShrink:0}}>
           {sortDir==="desc"?"↓ High→Low":"↑ Low→High"}
         </button>
+        <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut,flexShrink:0}}>
+          <input type="checkbox" checked={hideZero} onChange={e=>setHideZero(e.target.checked)} style={{accentColor:acc,cursor:"pointer"}}/>
+          Hide zero
+        </label>
       </div>
 
-      {data.length === 0 ? (
+      {(hideZero?data.filter(d=>(view==="inr"?d.inr:d.points)>0):data).length === 0 ? (
         <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No data yet</div>
-      ) : data.slice(0, 12).map((d,i)=>{
+      ) : (hideZero?data.filter(d=>(view==="inr"?d.inr:d.points)>0):data).slice(0, 12).map((d,i)=>{
         const val = view==="inr" ? d.inr : d.points;
-        const pct = maxVal > 0 ? (val/maxVal)*100 : 0;
         return (
-          <div key={d.name+i} style={{marginBottom:10}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
-              <div style={{display:"flex",alignItems:"center",gap:7,minWidth:0}}>
-                <div style={{width:8,height:8,borderRadius:2,background:d.color,flexShrink:0}}/>
-                <div style={{fontSize:12,fontWeight:500,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
-                {d.type&&<span style={{fontSize:9,padding:"1px 5px",borderRadius:8,background:d.type==="card"?acc+"12":acc2+"12",color:d.type==="card"?acc:acc2,flexShrink:0,fontWeight:600}}>{d.type==="card"?"CC":"LP"}</span>}
+          <div key={d.name+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
+              <LogoCircle url={d.logo_url} name={d.name} color={acc} size={28}/>
+              <div style={{minWidth:0}}>
+                <div style={{fontSize:13,fontWeight:500,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
+                {d.sub&&<div style={{fontSize:11,color:mut}}>{d.sub}</div>}
               </div>
-              <div style={{fontSize:12,fontWeight:600,color:txt,flexShrink:0,marginLeft:8}}>
-                {view==="inr" ? inrFmt(d.inr) : (d.points||0).toLocaleString("en-IN")}
-              </div>
+              {d.type&&<span style={{fontSize:10,padding:"1px 7px",borderRadius:10,background:surf2,color:mut,border:`1px solid ${bdr}`,flexShrink:0,fontWeight:500,letterSpacing:"0.04em"}}>{d.type==="card"?"CC":"LP"}</span>}
             </div>
-            <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
-              <div style={{height:"100%",width:`${pct}%`,background:d.color,borderRadius:10,transition:"width 0.4s ease"}}/>
+            <div style={{fontSize:13,fontWeight:600,color:view==="inr"?grn:txt,flexShrink:0}}>
+              {view==="inr" ? inrFmt(d.inr) : (d.points||0).toLocaleString("en-IN")}
             </div>
           </div>
         );
@@ -2259,7 +2307,7 @@ function Dashboard({ db, onNavigate }) {
     const cat = l.category || "Other";
     catMap[cat] = (catMap[cat] || 0) + (l.points_balance || 0);
   });
-  const catColors = { Airline:"#4f7fff", Hotel:"#f59e0b", Retail:"#10b981", Dining:"#f97316", Fuel:"#ef4444", Other:"#8b5cf6" };
+  const catColors = { Airline:acc, Hotel:acc, Retail:acc, Dining:acc, Fuel:acc, Other:acc };
 
   // Recent transactions (last 6)
   const recentTxns = txns.slice(0, 6);
@@ -2374,7 +2422,7 @@ function Dashboard({ db, onNavigate }) {
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14,marginBottom:24}}>
 
         {/* CC Rewards */}
-        <div style={{background:txt,borderRadius:18,padding:"20px 22px",color:"#fff",position:"relative",overflow:"hidden"}}>
+        <div style={{background:txt,borderRadius:14,padding:"20px 22px",color:"#fff",position:"relative",overflow:"hidden"}}>
           <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.5)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>CC Rewards</div>
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1}}>{totalCardPts.toLocaleString("en-IN")}</div>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",marginTop:6}}>{cards.length} active cards</div>
@@ -2384,7 +2432,7 @@ function Dashboard({ db, onNavigate }) {
         </div>
 
         {/* Loyalty Points */}
-        <div style={{background:acc,borderRadius:18,padding:"20px 22px",color:"#fff",position:"relative",overflow:"hidden"}}>
+        <div style={{background:acc,borderRadius:14,padding:"20px 22px",color:"#fff",position:"relative",overflow:"hidden"}}>
           <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Loyalty Points</div>
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1}}>{totalLoyalPts.toLocaleString("en-IN")}</div>
           <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginTop:6}}>{loyalties.length} programs</div>
@@ -2394,7 +2442,7 @@ function Dashboard({ db, onNavigate }) {
         </div>
 
         {/* Portfolio Value */}
-        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"20px 22px",position:"relative",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.05)"}}>
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"20px 22px",position:"relative",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.05)"}}>
           <div style={{fontSize:11,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Portfolio Value</div>
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",color:txt,lineHeight:1}}>{totalInr > 0 ? inrFmt(totalInr) : "—"}</div>
           <div style={{fontSize:12,color:mut,marginTop:6}}>{totalPts.toLocaleString("en-IN")} total points</div>
@@ -2402,7 +2450,7 @@ function Dashboard({ db, onNavigate }) {
         </div>
 
         {/* Vouchers */}
-        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"20px 22px",boxShadow:"0 2px 12px rgba(0,0,0,0.05)"}}>
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"20px 22px",boxShadow:"0 2px 12px rgba(0,0,0,0.05)"}}>
           <div style={{fontSize:11,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Vouchers</div>
           <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",color:txt,lineHeight:1}}>{activeVouchers}</div>
           <div style={{fontSize:12,color:mut,marginTop:6}}>active vouchers</div>
@@ -2486,9 +2534,10 @@ function Dashboard({ db, onNavigate }) {
                     <div>
                       <div style={{fontSize:13,fontWeight:600,color:txt}}>{l.name}</div>
                       <div style={{fontSize:11,color:mut,marginTop:1}}>
-                        {l.tier&&<span style={{color:l.color||acc2,fontWeight:600}}>{l.tier} · </span>}
+                        {l.tier&&<span style={{fontWeight:600,color:acc}}>{l.tier} · </span>}
                         {expiring&&<span style={{color:red}}>⚠ {days}d · </span>}
                         {l.category}
+                        {l.loyalty_number&&<span> · #{l.loyalty_number}</span>}
                       </div>
                     </div>
                   </div>
@@ -2520,9 +2569,9 @@ function Dashboard({ db, onNavigate }) {
                   <div style={{display:"flex",alignItems:"center",gap:12}}>
                     <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={36}/>
                     <div>
-                      <div style={{fontSize:13,fontWeight:600,color:txt}}>{c.name}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:txt}}>{c.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> ···· {c.last4}</span>}</div>
                       <div style={{fontSize:11,color:mut,marginTop:1,display:"flex",gap:6,alignItems:"center"}}>
-                        <span style={{fontSize:10,fontWeight:700,padding:"1px 6px",borderRadius:10,background:(nc2[c.network]||acc)+"15",color:nc2[c.network]||acc}}>{c.network}</span>
+                        <span style={{fontSize:10,fontWeight:500,padding:"1px 6px",borderRadius:10,background:surf2,color:mut,border:`1px solid ${bdr}`}}>{c.network}</span>
                         {c.bank&&<span>{c.bank}</span>}
                       </div>
                     </div>
@@ -2681,7 +2730,7 @@ export default function App() {
         {tab==="transfers" && <Transfers db={db}/>}
         {tab==="transfer"  && <TransferPoints db={db}/>}
         {tab==="vouchers"  && <Vouchers db={db}/>}
-        {tab==="settings"  && <Settings onDisconnect={()=>setDb(null)}/>}
+        {tab==="settings"  && <Settings onDisconnect={()=>setDb(null)} db={db}/>}
         {tab==="import"    && <StatementImport db={db}/>}
         {tab==="history"   && <TransferHistory db={db}/>}
       </main>
