@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 
 function createClient(url, key) {
   const h = { apikey:key, Authorization:`Bearer ${key}`, "Content-Type":"application/json", Prefer:"return=representation" };
@@ -173,6 +173,190 @@ function Setup({onDone}){
   );
 }
 
+// ── PointsChart — SVG line chart of points value over time ────────────────────
+function PointsChart({txns,progs,mProgs,owners}){
+  const [period,setPeriod]=useState("3m");
+  const [ownerF,setOwnerF]=useState("all");
+  const [progF,setProgF]=useState("all");
+  const [metric,setMetric]=useState("points"); // points | inr
+
+  const periods={
+    "1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999
+  };
+
+  // Build daily series
+  const series=useMemo(()=>{
+    const now=new Date();
+    const cutoff=new Date(now-periods[period]*86400000);
+
+    // Filter txns by owner/prog
+    const filteredTxns=txns.filter(t=>{
+      const prog=progs.find(p=>p.id===t.entity_id);
+      if(!prog) return false;
+      if(ownerF!=="all"&&prog.owner_id!==ownerF) return false;
+      if(progF!=="all"&&prog.id!==progF) return false;
+      return t.entity_type==="program";
+    });
+
+    // Build opening balance per prog (sum of txns before cutoff)
+    const progIds=[...new Set(filteredTxns.map(t=>t.entity_id))];
+    const openingBals={};
+    progIds.forEach(pid=>{
+      const prog=progs.find(p=>p.id===pid);
+      const beforeCutoff=txns.filter(t=>t.entity_id===pid&&new Date(t.txn_date)<cutoff);
+      openingBals[pid]=(prog?.opening_balance||0)+beforeCutoff.reduce((a,t)=>a+t.points,0);
+    });
+
+    // Get all dates in range with at least one txn, plus today
+    const txnsInRange=filteredTxns.filter(t=>new Date(t.txn_date)>=cutoff);
+    const dateSet=new Set(txnsInRange.map(t=>t.txn_date));
+    // Add start and today
+    const startStr=cutoff.toISOString().split("T")[0];
+    const todayStr=now.toISOString().split("T")[0];
+    dateSet.add(startStr);dateSet.add(todayStr);
+    const dates=[...dateSet].sort();
+
+    // Running balance per prog across dates
+    const runningBals={};
+    progIds.forEach(pid=>{ runningBals[pid]=openingBals[pid]||0; });
+
+    const points=dates.map(date=>{
+      // Apply txns on this date
+      txnsInRange.filter(t=>t.txn_date===date).forEach(t=>{
+        if(runningBals[t.entity_id]!==undefined) runningBals[t.entity_id]+=t.points;
+      });
+      // Sum total value
+      let total=0;
+      progIds.forEach(pid=>{
+        const prog=progs.find(p=>p.id===pid);
+        const master=mProgs.find(m=>m.id===prog?.master_id);
+        const bal=runningBals[pid]||0;
+        if(metric==="inr") total+=bal*(master?.inr_per_point||0);
+        else total+=bal;
+      });
+      return{date,value:total};
+    });
+
+    return points;
+  },[txns,progs,mProgs,ownerF,progF,period,metric]);
+
+  // SVG chart
+  const W=600,H=160,PL=52,PR=16,PT=12,PB=32;
+  const cW=W-PL-PR, cH=H-PT-PB;
+
+  const vals=series.map(s=>s.value);
+  const minV=Math.min(...vals,0);
+  const maxV=Math.max(...vals,1);
+  const range=maxV-minV||1;
+
+  const toX=i=>PL+(i/(series.length-1||1))*cW;
+  const toY=v=>PT+cH-((v-minV)/range)*cH;
+
+  const pathD=series.map((s,i)=>`${i===0?"M":"L"}${toX(i).toFixed(1)},${toY(s.value).toFixed(1)}`).join(" ");
+  const areaD=series.length>1?`${pathD} L${toX(series.length-1).toFixed(1)},${(PT+cH).toFixed(1)} L${toX(0).toFixed(1)},${(PT+cH).toFixed(1)} Z`:"";
+
+  // Y axis ticks
+  const yTicks=4;
+  const yTickVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
+  const fmtTick=v=>metric==="inr"?inrFmt(v):(v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(0)+"K":Math.round(v).toString());
+
+  // X axis labels — show ~4 evenly spaced dates
+  const xLabelIdxs=series.length<=1?[0]:
+    [0,Math.floor(series.length/3),Math.floor(2*series.length/3),series.length-1].filter((v,i,a)=>a.indexOf(v)===i);
+  const fmtDate=d=>{
+    const dt=new Date(d);
+    return dt.toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+  };
+
+  const selStyle={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 8px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
+  const periodBtnStyle=active=>({padding:"3px 9px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:10,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut2,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.02em"});
+
+  // Prog options for filter
+  const progOptions=progs
+    .filter(p=>ownerF==="all"||p.owner_id===ownerF)
+    .map(p=>{const m=mProgs.find(x=>x.id===p.master_id);return{id:p.id,name:p.nickname||m?.name||"Program"};});
+
+  const isEmpty=series.length<2||vals.every(v=>v===0);
+
+  return(
+    <Card style={{marginBottom:16}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:16,flexWrap:"wrap",gap:10}}>
+        <div>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Points Value Over Time</div>
+          {!isEmpty&&<div className="pv-num" style={{fontSize:22,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em"}}>
+            {metric==="inr"?inrFmt(vals[vals.length-1]||0):(vals[vals.length-1]||0).toLocaleString("en-IN")}
+            <span style={{fontSize:11,color:mut,fontWeight:400,marginLeft:6}}>{metric==="inr"?"est. value":"pts"}</span>
+          </div>}
+        </div>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {/* Metric toggle */}
+          <div style={{display:"flex",gap:3,background:surf3,borderRadius:8,padding:3}}>
+            {["points","inr"].map(m=>(
+              <button key={m} onClick={()=>setMetric(m)} style={{...periodBtnStyle(metric===m),borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,boxShadow:metric===m?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
+                {m==="inr"?"₹ Value":"Points"}
+              </button>
+            ))}
+          </div>
+          {/* Owner filter */}
+          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setProgF("all");}} style={selStyle}>
+            <option value="all">All owners</option>
+            {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+          </select>
+          {/* Program filter */}
+          <select value={progF} onChange={e=>setProgF(e.target.value)} style={selStyle}>
+            <option value="all">All programs</option>
+            {progOptions.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {/* Period selector */}
+      <div style={{display:"flex",gap:4,marginBottom:16}}>
+        {["1m","3m","6m","1y","3y","LT"].map(p=>(
+          <button key={p} onClick={()=>setPeriod(p)} style={periodBtnStyle(period===p)}>{p==="LT"?"All time":p}</button>
+        ))}
+      </div>
+
+      {/* Chart */}
+      {isEmpty?(
+        <div style={{height:160,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:12,fontWeight:400}}>
+          No transaction history yet — add transactions to see your portfolio trend.
+        </div>
+      ):(
+        <div style={{overflowX:"auto"}}>
+          <svg viewBox={`0 0 ${W} ${H}`} style={{width:"100%",minWidth:300,height:"auto",display:"block"}}>
+            <defs>
+              <linearGradient id="chartGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={acc} stopOpacity="0.12"/>
+                <stop offset="100%" stopColor={acc} stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            {/* Grid lines */}
+            {yTickVals.map((v,i)=>(
+              <line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>
+            ))}
+            {/* Y axis labels */}
+            {yTickVals.map((v,i)=>(
+              <text key={i} x={PL-6} y={toY(v)+4} textAnchor="end" fontSize="9" fill={mut} fontFamily="Manrope,sans-serif" fontWeight="400">{fmtTick(v)}</text>
+            ))}
+            {/* X axis labels */}
+            {xLabelIdxs.map((idx)=>(
+              <text key={idx} x={toX(idx)} y={H-6} textAnchor="middle" fontSize="9" fill={mut} fontFamily="Manrope,sans-serif" fontWeight="400">{fmtDate(series[idx].date)}</text>
+            ))}
+            {/* Area fill */}
+            {areaD&&<path d={areaD} fill="url(#chartGrad)"/>}
+            {/* Line */}
+            {pathD&&<path d={pathD} fill="none" stroke={acc} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+            {/* End dot */}
+            {series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="3" fill={acc}/>}
+          </svg>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── OvList — filterable overview list panel ────────────────────────────────────
 function OvList({title,items,filterOptions,owners,onNav}){
   const [ownerF,setOwnerF]=useState("all");
@@ -254,6 +438,7 @@ function Overview({db,owners,onNavigate}){
   const [mp,setMp]=useState([]);
   const [transfers,setTransfers]=useState([]);
   const [vouchers,setVouchers]=useState([]);
+  const [txns,setTxns]=useState([]);
   const [busy,setBusy]=useState(true);
   const [ownerF,setOwnerF]=useState("all");
   const [catF,setCatF]=useState("all");
@@ -261,15 +446,17 @@ function Overview({db,owners,onNavigate}){
   useEffect(()=>{
     (async()=>{
       setBusy(true);
-      const [c,p,mca,mpa,tr,v]=await Promise.all([
+      const [c,p,mca,mpa,tr,v,t]=await Promise.all([
         db.from("my_cards").select(),db.from("my_programs").select(),
         db.from("master_cards").select(),db.from("master_programs").select(),
         db.from("transfer_log").select(),db.from("vouchers").select(),
+        db.from("point_transactions").select(),
       ]);
       setCards(c.data||[]); setProgs(p.data||[]);
       setMc(mca.data||[]); setMp(mpa.data||[]);
       setTransfers((tr.data||[]).sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)));
       setVouchers(v.data||[]);
+      setTxns(t.data||[]);
       setBusy(false);
     })();
   },[]);
@@ -385,6 +572,8 @@ function Overview({db,owners,onNavigate}){
           />
         </Card>
       </div>
+
+      <PointsChart txns={txns} progs={progs} mProgs={mp} owners={owners}/>
 
       {transfers.length>0&&(
         <Card>
