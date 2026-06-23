@@ -356,12 +356,17 @@ function Catalog({db}){
   const [showCard,setShowCard]=useState(false);
   const [showProg,setShowProg]=useState(false);
   const [showPart,setShowPart]=useState(false);
+  const [partSearch,setPartSearch]=useState("");
+  const [partSort,setPartSort]=useState("name");
+  const [saving,setSaving]=useState(false);
+  const [partSearch,setPartSearch]=useState("");
+  const [partSort,setPartSort]=useState("name");
   const [editItem,setEditItem]=useState(null);
   const [logoFile,setLogoFile]=useState(null);
   const [logoPrev,setLogoPrev]=useState(null);
-  const eCard={name:"",bank:"",network:"Visa",points_currency:"pts",inr_per_point:"",annual_fee:""};
-  const eProg={name:"",category:"Airline",inr_per_point:"",expiry_rule:""};
-  const ePart={from_id:"",from_type:"card",to_id:"",to_type:"program",ratio_from:"1",ratio_to:"1",min_transfer:"",max_monthly:"",transfer_time:"",notes:""};
+  const eCard={name:"",bank:"",network:"Visa",points_currency:"pts",inr_per_point:"",annual_fee:"",fee_waiver_amt:"",fee_waiver_cycle:"calendar",billing_year_start:"",fee_charge_date:""};
+  const eProg={name:"",category:"Airline",points_currency:"pts",inr_per_point:"",expiry_rule:""};
+  const ePart={from_id:"",from_type:"card",to_id:"",to_type:"program",ratio_from:"1",ratio_to:"1",min_transfer:"",max_monthly:"",transfer_time:"",notes:"",has_reverse:false,reverse_ratio_from:"1",reverse_ratio_to:"1"};
   const [fC,setFC]=useState(eCard);
   const [fP,setFP]=useState(eProg);
   const [fPt,setFPt]=useState(ePart);
@@ -388,8 +393,12 @@ function Catalog({db}){
   };
 
   const saveCard=async()=>{
+    if(saving) return;
     if(!fC.name.trim()) return alert("Name required");
-    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0};
+    const dupes=mCards.filter(c=>c.name.toLowerCase()===fC.name.trim().toLowerCase()&&(!editItem||c.id!==editItem.id));
+    if(dupes.length>0) return alert("A master card named '"+fC.name.trim()+"' already exists.");
+    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar",billing_year_start:fC.billing_year_start||null,fee_charge_date:fC.fee_charge_date||null};
+    setSaving(true);
     if(editItem){
       let logo_url=editItem.logo_url;
       if(logoFile){const u=await upLogo("cards",editItem.id);if(u) logo_url=u;}
@@ -399,12 +408,15 @@ function Catalog({db}){
       const {data}=await db.from("master_cards").insert(p);
       if(data&&data[0]&&logoFile){const u=await upLogo("cards",data[0].id);if(u) await db.from("master_cards").update(data[0].id,{logo_url:u});}
     }
+    setSaving(false);
     setShowCard(false);setEditItem(null);setLogoFile(null);setLogoPrev(null);load();
   };
 
   const saveProg=async()=>{
     if(!fP.name.trim()) return alert("Name required");
-    const p={name:fP.name.trim(),category:fP.category,inr_per_point:parseFloat(fP.inr_per_point)||0,expiry_rule:fP.expiry_rule};
+    const dupes=mProgs.filter(p=>p.name.toLowerCase()===fP.name.trim().toLowerCase()&&(!editItem||p.id!==editItem.id));
+    if(dupes.length>0) return alert("A master program named '"+fP.name.trim()+"' already exists.");
+    const p={name:fP.name.trim(),category:fP.category,points_currency:fP.points_currency||"pts",inr_per_point:parseFloat(fP.inr_per_point)||0,expiry_rule:fP.expiry_rule};
     if(editItem){
       let logo_url=editItem.logo_url;
       if(logoFile){const u=await upLogo("programs",editItem.id);if(u) logo_url=u;}
@@ -419,9 +431,14 @@ function Catalog({db}){
 
   const savePart=async()=>{
     if(!fPt.from_id||!fPt.to_id) return alert("Select both programs");
-    const p={from_id:fPt.from_id,from_type:fPt.from_type,to_id:fPt.to_id,to_type:fPt.to_type,ratio_from:parseFloat(fPt.ratio_from)||1,ratio_to:parseFloat(fPt.ratio_to)||1,min_transfer:parseInt(fPt.min_transfer)||null,max_monthly:parseInt(fPt.max_monthly)||null,transfer_time:fPt.transfer_time,notes:fPt.notes};
+    if(fPt.from_id===fPt.to_id&&fPt.from_type===fPt.to_type) return alert("From and To cannot be the same");
+    const p={from_id:fPt.from_id,from_type:fPt.from_type,to_id:fPt.to_id,to_type:fPt.to_type,ratio_from:parseFloat(fPt.ratio_from)||1,ratio_to:parseFloat(fPt.ratio_to)||1,min_transfer:parseInt(fPt.min_transfer)||null,max_monthly:parseInt(fPt.max_monthly)||null,transfer_time:fPt.transfer_time,notes:fPt.notes,has_reverse:fPt.has_reverse||false,reverse_ratio_from:parseFloat(fPt.reverse_ratio_from)||1,reverse_ratio_to:parseFloat(fPt.reverse_ratio_to)||1};
     if(editItem) await db.from("master_partners").update(editItem.id,p);
     else await db.from("master_partners").insert(p);
+    // If has_reverse, create the reverse route too
+    if(!editItem&&fPt.has_reverse){
+      await db.from("master_partners").insert({from_id:p.to_id,from_type:p.to_type,to_id:p.from_id,to_type:p.from_type,ratio_from:p.reverse_ratio_from,ratio_to:p.reverse_ratio_to,min_transfer:p.min_transfer,max_monthly:p.max_monthly,transfer_time:p.transfer_time,notes:p.notes,has_reverse:false,reverse_ratio_from:1,reverse_ratio_to:1});
+    }
     setShowPart(false);setEditItem(null);load();
   };
 
@@ -460,7 +477,7 @@ function Catalog({db}){
                     </div>
                     <div style={{fontSize:12,color:mut}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" | Rs"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" | Rs"+Number(c.annual_fee).toLocaleString()+" fee"}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
-                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||"")});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
+                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar",billing_year_start:c.billing_year_start||"",fee_charge_date:c.fee_charge_date||""});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delCard(c.id)}>Del</button>
                     </div>
                   </Card>
@@ -487,7 +504,7 @@ function Catalog({db}){
                     </div>
                     <div style={{fontSize:12,color:mut}}>{p.inr_per_point>0&&"Rs"+p.inr_per_point+"/pt"}{p.expiry_rule&&" | "+p.expiry_rule}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
-                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(p);setFP({name:p.name,category:p.category||"Airline",inr_per_point:String(p.inr_per_point||""),expiry_rule:p.expiry_rule||""});setLogoFile(null);setLogoPrev(p.logo_url);setShowProg(true);}}>Edit</button>
+                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(p);setFP({name:p.name,category:p.category||"Airline",points_currency:p.points_currency||"pts",inr_per_point:String(p.inr_per_point||""),expiry_rule:p.expiry_rule||""});setLogoFile(null);setLogoPrev(p.logo_url);setShowProg(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delProg(p.id)}>Del</button>
                     </div>
                   </Card>
@@ -498,12 +515,30 @@ function Catalog({db}){
         )}
         {tab==="partners"&&(
           <div>
-            <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,gap:10,flexWrap:"wrap"}}>
+              <div style={{display:"flex",gap:8,flex:1,minWidth:200}}>
+                <input style={{...inp,marginBottom:0,flex:1,fontSize:12}} placeholder="Search routes..." value={partSearch} onChange={e=>setPartSearch(e.target.value)}/>
+                <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"9px 10px"}} value={partSort} onChange={e=>setPartSort(e.target.value)}>
+                  <option value="name">Name A-Z</option>
+                  <option value="ratio">Ratio</option>
+                </select>
+              </div>
               <button style={pbtn} onClick={()=>{setEditItem(null);setFPt(ePart);setShowPart(true);}}>+ Add Route</button>
             </div>
             {mParts.length===0?<Empty icon="->-" msg="No transfer routes yet"/>:(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                {mParts.map(p=>(
+                {mParts
+                  .filter(p=>{
+                    const fn=gName(p.from_type,p.from_id).toLowerCase();
+                    const tn=gName(p.to_type,p.to_id).toLowerCase();
+                    const s=partSearch.toLowerCase();
+                    return !s||fn.includes(s)||tn.includes(s);
+                  })
+                  .sort((a,b)=>{
+                    if(partSort==="ratio") return (b.ratio_to/b.ratio_from)-(a.ratio_to/a.ratio_from);
+                    return gName(a.from_type,a.from_id).localeCompare(gName(b.from_type,b.from_id));
+                  })
+                  .map(p=>(
                   <Card key={p.id}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -524,7 +559,7 @@ function Catalog({db}){
                         {p.min_transfer&&<div style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:600,color:txt}}>{Number(p.min_transfer).toLocaleString()}</div><div style={{fontSize:10,color:mut,textTransform:"uppercase"}}>Min</div></div>}
                         {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:13,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:10,color:mut,textTransform:"uppercase"}}>Time</div></div>}
                         <div style={{display:"flex",gap:4}}>
-                          <button style={{...gbtn,padding:"5px 8px",fontSize:11}} onClick={()=>{setEditItem(p);setFPt({from_id:p.from_id,from_type:p.from_type,to_id:p.to_id,to_type:p.to_type,ratio_from:String(p.ratio_from||1),ratio_to:String(p.ratio_to||1),min_transfer:String(p.min_transfer||""),max_monthly:String(p.max_monthly||""),transfer_time:p.transfer_time||"",notes:p.notes||""});setShowPart(true);}}>Edit</button>
+                          <button style={{...gbtn,padding:"5px 8px",fontSize:11}} onClick={()=>{setEditItem(p);setFPt({from_id:p.from_id,from_type:p.from_type,to_id:p.to_id,to_type:p.to_type,ratio_from:String(p.ratio_from||1),ratio_to:String(p.ratio_to||1),min_transfer:String(p.min_transfer||""),max_monthly:String(p.max_monthly||""),transfer_time:p.transfer_time||"",notes:p.notes||"",has_reverse:false,reverse_ratio_from:"1",reverse_ratio_to:"1"});setShowPart(true);}}>Edit</button>
                           <button style={{...dbtn,padding:"5px 8px",fontSize:11}} onClick={()=>delPart(p.id)}>Del</button>
                         </div>
                       </div>
@@ -550,16 +585,25 @@ function Catalog({db}){
           <div>{lbl("INR per Point")}<input style={inp} type="number" step="0.01" placeholder="0.25" value={fC.inr_per_point} onChange={ucC("inr_per_point")}/></div>
         </div>
         {lbl("Annual Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={fC.annual_fee} onChange={ucC("annual_fee")}/>
-        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveCard}>{editItem?"Save Changes":"Add Card"}</button>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Fee Waiver Amt (Rs)")}<input style={inp} type="number" placeholder="0" value={fC.fee_waiver_amt} onChange={ucC("fee_waiver_amt")}/></div>
+          <div>{lbl("Waiver Cycle")}<select style={inp} value={fC.fee_waiver_cycle} onChange={ucC("fee_waiver_cycle")}><option value="calendar">Calendar Year</option><option value="billing">Billing Year</option></select></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={fC.billing_year_start} onChange={ucC("billing_year_start")}/></div>
+          <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={fC.fee_charge_date} onChange={ucC("fee_charge_date")}/></div>
+        </div>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.6:1}} onClick={saveCard}>{saving?"Saving...":editItem?"Save Changes":"Add Card"}</button>
       </Modal>
 
       <Modal show={showProg} onClose={()=>{setShowProg(false);setEditItem(null);setLogoFile(null);setLogoPrev(null);}} title={editItem?"Edit Master Program":"Add Master Program"}>
         <LogoUpload current={logoPrev} onUpload={(f,p)=>{setLogoFile(f);setLogoPrev(p);}}/>
         {lbl("Program Name *")}<input style={inp} placeholder="Air India Flying Returns" value={fP.name} onChange={ucP("name")}/>
         {lbl("Category")}<select style={inp} value={fP.category} onChange={ucP("category")}>{cats.map(c=><option key={c}>{c}</option>)}</select>
+        {lbl("Points Currency")}<input style={inp} placeholder="pts / miles / points" value={fP.points_currency||"pts"} onChange={ucP("points_currency")}/>
         {lbl("INR per Point")}<input style={inp} type="number" step="0.01" placeholder="0.50" value={fP.inr_per_point} onChange={ucP("inr_per_point")}/>
         {lbl("Expiry Rule")}<input style={inp} placeholder="Points expire 3 years from earn date" value={fP.expiry_rule} onChange={ucP("expiry_rule")}/>
-        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveProg}>{editItem?"Save Changes":"Add Program"}</button>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.6:1}} onClick={saveProg}>{saving?"Saving...":editItem?"Save Changes":"Add Program"}</button>
       </Modal>
 
       <Modal show={showPart} onClose={()=>{setShowPart(false);setEditItem(null);}} title={editItem?"Edit Route":"Add Transfer Route"} wide>
@@ -595,6 +639,23 @@ function Catalog({db}){
         </div>
         {lbl("Transfer Time")}<input style={inp} placeholder="Instant / 3-5 days" value={fPt.transfer_time} onChange={ucPt("transfer_time")}/>
         {lbl("Notes")}<input style={inp} placeholder="Any conditions" value={fPt.notes} onChange={ucPt("notes")}/>
+        {!editItem&&(
+          <div style={{background:surf2,border:`1px solid ${bdr}`,borderRadius:10,padding:"14px",marginBottom:12}}>
+            <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:txt,marginBottom:10}}>
+              <input type="checkbox" checked={fPt.has_reverse||false} onChange={e=>setFPt(p=>({...p,has_reverse:e.target.checked}))} style={{accentColor:acc}}/>
+              Also create reverse route
+            </label>
+            {fPt.has_reverse&&(
+              <>
+                <div style={{fontSize:12,color:mut,marginBottom:8}}>Reverse: {fPt.to_id?(fPt.to_type==="card"?mCards:mProgs).find(m=>m.id===fPt.to_id)?.name||"To":"To"} back to {fPt.from_id?(fPt.from_type==="card"?mCards:mProgs).find(m=>m.id===fPt.from_id)?.name||"From":"From"}</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                  <div>{lbl("Reverse Ratio From")}<input style={inp} type="number" step="0.1" value={fPt.reverse_ratio_from} onChange={ucPt("reverse_ratio_from")}/></div>
+                  <div>{lbl("Reverse Ratio To")}<input style={inp} type="number" step="0.1" value={fPt.reverse_ratio_to} onChange={ucPt("reverse_ratio_to")}/></div>
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={savePart}>{editItem?"Save Changes":"Add Route"}</button>
       </Modal>
     </div>
@@ -631,6 +692,9 @@ function MyCards({db,owners}){
   const save=async()=>{
     if(!f.master_id) return alert("Select a master card");
     if(!f.owner_id) return alert("Select an owner");
+    const master=mCards.find(m=>m.id===f.master_id);
+    const dupes=cards.filter(c=>c.master_id===f.master_id&&c.owner_id===f.owner_id&&(!f.nickname||!c.nickname));
+    if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
     const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:ob,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null};
     await db.from("my_cards").insert(p);
@@ -855,8 +919,10 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
                   </tr>
                 ))}
                 <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
-                  <td colSpan={2} style={{padding:"9px 10px"}}><em style={{fontSize:12,color:mut,fontWeight:600}}>Opening Balance</em></td>
-                  <td/><td/>
+                  <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>--</td>
+                  <td style={{padding:"9px 10px",color:mut}}><em style={{fontSize:12,fontWeight:600}}>Opening Balance</em></td>
+                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:acc}}>+{ob.toLocaleString()}</td>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>0</td>
                   <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:acc}}>{ob.toLocaleString()}</td>
                 </tr>
               </tbody>
@@ -1135,8 +1201,10 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
                   </tr>
                 ))}
                 <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
-                  <td colSpan={2} style={{padding:"9px 10px"}}><em style={{fontSize:12,color:mut,fontWeight:600}}>Opening Balance</em></td>
-                  <td/><td/>
+                  <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>--</td>
+                  <td style={{padding:"9px 10px",color:mut}}><em style={{fontSize:12,fontWeight:600}}>Opening Balance</em></td>
+                  <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:acc}}>+{ob.toLocaleString()}</td>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut}}>0</td>
                   <td style={{padding:"9px 10px",textAlign:"right",fontWeight:700,color:acc}}>{ob.toLocaleString()}</td>
                 </tr>
               </tbody>
@@ -1329,13 +1397,33 @@ function TransferPoints({db,owners}){
         </div>
         {partner&&sentPts>0&&(
           <div style={{background:surf2,border:`1px solid ${bdr}`,borderRadius:10,padding:"14px 16px",marginBottom:16}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:12,marginBottom:14}}>
               <div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>You Send</div><div style={{fontSize:22,fontWeight:800,color:red}}>{sentPts.toLocaleString()} pts</div></div>
               <div style={{fontSize:20,color:mut}}>to</div>
               <div>
                 <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>They Receive</div>
                 <div style={{fontSize:22,fontWeight:800,color:grn}}>{totalRec.toLocaleString()} pts</div>
                 {bonusPts>0&&<div style={{fontSize:11,color:mut}}>{ratioRec.toLocaleString()} ratio + {bonusPts.toLocaleString()} bonus</div>}
+              </div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,borderTop:`1px solid ${bdr}`,paddingTop:12}}>
+              <div style={{background:surf,borderRadius:8,padding:"10px 12px",border:`1px solid ${bdr}`}}>
+                <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:6}}>{fromEntity?.nickname||fromMaster?.name||"From"}</div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                  <span style={{color:mut}}>Before:</span><span style={{fontWeight:600,color:txt}}>{(fromEntity?.points_balance||0).toLocaleString()}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:3}}>
+                  <span style={{color:mut}}>After:</span><span style={{fontWeight:700,color:red}}>{((fromEntity?.points_balance||0)-sentPts).toLocaleString()}</span>
+                </div>
+              </div>
+              <div style={{background:surf,borderRadius:8,padding:"10px 12px",border:`1px solid ${bdr}`}}>
+                <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:6}}>{toEntity?.nickname||toMaster?.name||"To"}</div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
+                  <span style={{color:mut}}>Before:</span><span style={{fontWeight:600,color:txt}}>{(toEntity?.points_balance||0).toLocaleString()}</span>
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12,marginTop:3}}>
+                  <span style={{color:mut}}>After:</span><span style={{fontWeight:700,color:grn}}>{((toEntity?.points_balance||0)+totalRec).toLocaleString()}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1359,9 +1447,9 @@ function TransferHistory({db,owners}){
     setBusy(true);setErr("");
     try{
       const {data,error}=await db.from("transfer_log").select();
-      if(error){setErr("Error: "+JSON.stringify(error));setLogs([]);}
+      if(error){setErr("Load error: "+JSON.stringify(error));setLogs([]);}
       else setLogs((data||[]).sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)));
-    }catch(e){setErr(e.message);}
+    }catch(e){setErr("Exception: "+e.message);}
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
