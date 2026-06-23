@@ -359,8 +359,6 @@ function Catalog({db}){
   const [partSearch,setPartSearch]=useState("");
   const [partSort,setPartSort]=useState("name");
   const [saving,setSaving]=useState(false);
-  const [partSearch,setPartSearch]=useState("");
-  const [partSort,setPartSort]=useState("name");
   const [editItem,setEditItem]=useState(null);
   const [logoFile,setLogoFile]=useState(null);
   const [logoPrev,setLogoPrev]=useState(null);
