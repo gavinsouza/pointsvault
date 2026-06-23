@@ -1931,13 +1931,26 @@ function TransferHistory({ db }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("date");
   const [detail, setDetail] = useState(null);
-  const [hideZero, setHideZero] = useState(false);
 
   const load = async () => {
     setBusy(true); setErr("");
-    const { data, error } = await db.from("transfer_log").select();
-    if (error) setErr(JSON.stringify(error));
-    setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
+    try {
+      const { data, error } = await db.from("transfer_log").select();
+      if (error) {
+        // Table may not exist yet
+        if (error.code === "42P01" || (error.message||"").includes("does not exist")) {
+          setErr("Transfer log table not found. Please run the Setup SQL from Settings to create it.");
+        } else {
+          setErr("Error loading transfers: " + JSON.stringify(error));
+        }
+        setLogs([]);
+      } else {
+        setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
+      }
+    } catch(e) {
+      setErr("Failed to load: " + e.message);
+      setLogs([]);
+    }
     setBusy(false);
   };
   useEffect(() => { load(); }, []);
