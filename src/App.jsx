@@ -11,6 +11,9 @@ function createSupabaseClient(url, anonKey) {
       return { data: Array.isArray(data) ? data : data ? [data] : [], error: r.ok ? null : data, status: r.status };
     } catch(e) { return { data: [], error: { message: e.message }, status: 0 }; }
   };
+  const storageBase = `${url}/storage/v1`;
+  const storageH = { apikey: anonKey, Authorization: `Bearer ${anonKey}` };
+
   return {
     from: t => ({
       select: (q="") => req(`/${t}?select=*${q}`),
@@ -18,7 +21,23 @@ function createSupabaseClient(url, anonKey) {
       update: (id, row) => req(`/${t}?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(row) }),
       delete: id => req(`/${t}?id=eq.${id}`, { method: "DELETE" }),
       filter: (col, val) => req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`),
-    })
+    }),
+    storage: {
+      upload: async (bucket, path, file) => {
+        try {
+          const r = await fetch(`${storageBase}/object/${bucket}/${path}`, {
+            method: "POST",
+            headers: { ...storageH, "Content-Type": file.type, "x-upsert": "true" },
+            body: file,
+          });
+          const data = await r.json();
+          return { data, error: r.ok ? null : data };
+        } catch(e) { return { data: null, error: { message: e.message } }; }
+      },
+      getPublicUrl: (bucket, path) => {
+        return `${url}/storage/v1/object/public/${bucket}/${path}`;
+      },
+    },
   };
 }
 
@@ -63,31 +82,51 @@ ALTER TABLE cc_cards ADD COLUMN IF NOT EXISTS inr_per_point numeric DEFAULT 0;
 ALTER TABLE loyalty_programs ADD COLUMN IF NOT EXISTS opening_balance bigint DEFAULT 0;
 ALTER TABLE loyalty_programs ADD COLUMN IF NOT EXISTS inr_per_point numeric DEFAULT 0;
 ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS amount numeric DEFAULT 0;
-ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS txn_type text DEFAULT 'debit';`;
+ALTER TABLE point_transactions ADD COLUMN IF NOT EXISTS txn_type text DEFAULT 'debit';
+ALTER TABLE cc_cards ADD COLUMN IF NOT EXISTS logo_url text DEFAULT NULL;
+ALTER TABLE loyalty_programs ADD COLUMN IF NOT EXISTS logo_url text DEFAULT NULL;
+CREATE TABLE IF NOT EXISTS transfer_log (
+  id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
+  from_program text NOT NULL,
+  to_program text NOT NULL,
+  points_sent bigint NOT NULL,
+  points_received bigint NOT NULL,
+  bonus_miles bigint DEFAULT 0,
+  ratio_from numeric DEFAULT 1,
+  ratio_to numeric DEFAULT 1,
+  transfer_date date NOT NULL,
+  notes text,
+  created_at timestamptz DEFAULT now()
+);`;
 
-// ── Theme: warm light ─────────────────────────────────────────────────────────
-const bg    = "#f7f5f2";   // warm off-white
-const surf  = "#ffffff";   // white cards
-const surf2 = "#f0ede8";   // slightly darker surface
-const bdr   = "#e5e0d8";   // warm border
-const txt   = "#1a1a2e";   // near-black text
-const mut   = "#9490a0";   // muted label
-const acc   = "#4f46e5";   // indigo accent
-const acc2  = "#7c3aed";   // purple
-const grn   = "#059669";   // green
-const red   = "#dc2626";   // red
+// ── Theme: premium light ─────────────────────────────────────────────────────
+const bg    = "#f8f6f2";         // warm cream background
+const surf  = "#ffffff";         // white card surface
+const surf2 = "#f3f0eb";         // off-white elevated
+const surf3 = "#ebe7e0";         // hover state
+const bdr   = "#e8e3da";         // warm border
+const bdr2  = "#d9d3c8";         // stronger border
+const txt   = "#1a1410";         // near-black warm text
+const mut   = "#9e998f";         // muted warm gray
+const mut2  = "#706b61";         // secondary text
+const acc   = "#b5862a";         // warm gold accent
+const acc2  = "#8b5cf6";         // soft purple
+const grn   = "#059669";         // emerald green
+const red   = "#dc2626";         // red
+const gold  = "#b5862a";         // gold (same as acc)
 
 const inp = {
-  width:"100%", padding:"9px 12px",
+  width:"100%", padding:"10px 14px",
   background:surf, border:`1.5px solid ${bdr}`,
-  borderRadius:8, color:txt, fontSize:13,
+  borderRadius:10, color:txt, fontSize:13,
   outline:"none", boxSizing:"border-box", marginBottom:12,
-  transition:"border-color 0.15s",
+  transition:"border-color 0.2s, box-shadow 0.2s",
+  fontFamily:"inherit",
 };
-const pbtn = { display:"inline-flex", alignItems:"center", gap:6, padding:"9px 16px", borderRadius:8, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, background:acc, color:"#fff", boxShadow:"0 1px 3px rgba(79,70,229,0.3)" };
-const gbtn = { ...pbtn, background:surf2, color:acc, boxShadow:"0 1px 2px rgba(0,0,0,0.06)" };
-const dbtn = { ...pbtn, background:"#fef2f2", color:red, boxShadow:"none" };
-const sbtn = { ...pbtn, background:"#ecfdf5", color:grn, boxShadow:"none" };
+const pbtn = { display:"inline-flex", alignItems:"center", gap:7, padding:"10px 20px", borderRadius:10, border:"none", cursor:"pointer", fontSize:13, fontWeight:600, background:txt, color:"#fff", boxShadow:`0 2px 8px rgba(0,0,0,0.15)`, letterSpacing:"0.01em" };
+const gbtn = { ...pbtn, background:surf2, color:mut2, boxShadow:"none", border:`1.5px solid ${bdr}` };
+const dbtn = { ...pbtn, background:"#fef2f2", color:red, boxShadow:"none", border:"1.5px solid #fecaca" };
+const sbtn = { ...pbtn, background:"#ecfdf5", color:grn, boxShadow:"none", border:"1.5px solid #a7f3d0" };
 
 function lbl(t) {
   return <div style={{fontSize:11,color:mut,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:5}}>{t}</div>;
@@ -97,6 +136,57 @@ function inrFmt(v) {
   if (v >= 100000) return "₹" + (v/100000).toFixed(1) + "L";
   if (v >= 1000) return "₹" + (v/1000).toFixed(1) + "K";
   return "₹" + Math.round(v).toLocaleString("en-IN");
+}
+
+// ── Logo components ───────────────────────────────────────────────────────────
+function LogoCircle({ url, name, color="#4f7fff", size=40 }) {
+  const initials = (name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
+  if (url) {
+    return (
+      <div style={{width:size,height:size,borderRadius:size*0.28,overflow:"hidden",flexShrink:0,border:`1.5px solid ${bdr}`,background:surf2}}>
+        <img src={url} alt={name} style={{width:"100%",height:"100%",objectFit:"contain"}} onError={e=>{e.target.style.display="none";}}/>
+      </div>
+    );
+  }
+  return (
+    <div style={{width:size,height:size,borderRadius:size*0.28,background:color+"18",border:`1.5px solid ${color}33`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+      <span style={{fontSize:size*0.35,fontWeight:700,color:color}}>{initials}</span>
+    </div>
+  );
+}
+
+function LogoUpload({ current, onUpload, size=56 }) {
+  const [previewing, setPreviewing] = useState(false);
+  const handleFile = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return alert("Please upload an image file");
+    if (file.size > 500000) return alert("Image must be under 500KB");
+    const reader = new FileReader();
+    reader.onload = (e) => onUpload(file, e.target.result);
+    reader.readAsDataURL(file);
+  };
+  return (
+    <div>
+      <div style={{fontSize:11,color:mut,fontWeight:700,letterSpacing:"0.07em",textTransform:"uppercase",marginBottom:8}}>Logo (optional)</div>
+      <div style={{display:"flex",alignItems:"center",gap:12}}>
+        <div style={{width:size,height:size,borderRadius:14,border:`2px dashed ${bdr2}`,background:surf2,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",cursor:"pointer",flexShrink:0}}
+          onClick={()=>document.getElementById("logo-upload-input").click()}>
+          {current
+            ? <img src={current} alt="logo" style={{width:"100%",height:"100%",objectFit:"contain"}}/>
+            : <span style={{fontSize:22}}>🖼️</span>
+          }
+        </div>
+        <div>
+          <button type="button" style={{...gbtn,padding:"7px 14px",fontSize:12}} onClick={()=>document.getElementById("logo-upload-input").click()}>
+            {current ? "Change Logo" : "Upload Logo"}
+          </button>
+          {current && <button type="button" style={{...dbtn,padding:"7px 14px",fontSize:12,marginLeft:8}} onClick={()=>onUpload(null,null)}>Remove</button>}
+          <div style={{fontSize:11,color:mut,marginTop:5}}>PNG, JPG, SVG · max 500KB</div>
+        </div>
+        <input id="logo-upload-input" type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+      </div>
+    </div>
+  );
 }
 
 function SearchBar({ value, onChange, placeholder="Search…" }) {
@@ -167,7 +257,7 @@ function Setup({ onDone }) {
     onDone(createSupabaseClient(u,k));
   };
   return (
-    <div style={{minHeight:"100vh",background:"linear-gradient(135deg,#f7f5f2 0%,#ede8f5 100%)",display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"Inter,system-ui,sans-serif",color:txt}}>
+    <div style={{minHeight:"100vh",background:`linear-gradient(135deg, ${bg} 0%, #ede8f5 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"Inter,system-ui,sans-serif",color:txt}}>
       <div style={{maxWidth:420,width:"100%"}}>
         <div style={{textAlign:"center",marginBottom:32}}>
           <div style={{fontSize:32,fontWeight:900,color:acc,letterSpacing:"-0.04em"}}>PointsVault</div>
@@ -307,12 +397,22 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
     setShowTxn(false); setF(tf); load();
   };
 
+  const [editLogoFile,setEditLogoFile]=useState(null);
+  const [editLogoPreview,setEditLogoPreview]=useState(null);
+
   const saveEdit=async()=>{
     if(!ef.name?.trim()) return alert("Name required");
     const newOpening=parseInt(ef.opening_balance)||0;
-    // points_balance = new opening balance + sum of all recorded transactions
     const txnSum=txns.reduce((a,t)=>a+t.points,0);
     const newBalance=newOpening+txnSum;
+    let logo_url=card.logo_url||null;
+    if(editLogoFile){
+      const path=`cards/${card.id}-${Date.now()}.${editLogoFile.name.split(".").pop()}`;
+      const {error:ue}=await db.storage.upload("logos",path,editLogoFile);
+      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+    } else if(editLogoPreview===null && card.logo_url) {
+      logo_url=null;
+    }
     const p={
       name:ef.name.trim(), bank:ef.bank, last4:ef.last4, network:ef.network,
       color:ef.color, points_currency:ef.points_currency,
@@ -321,10 +421,11 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
       stmt_date:parseInt(ef.stmt_date)||null,
       opening_balance:newOpening,
       points_balance:newBalance,
+      logo_url,
     };
     const {error}=await db.from("cc_cards").update(card.id,p);
     if(error) return alert("Error: "+JSON.stringify(error));
-    setCard(c=>({...c,...p})); setShowEdit(false);
+    setCard(c=>({...c,...p})); setEditLogoFile(null); setEditLogoPreview(null); setShowEdit(false);
   };
 
   const delCard=async()=>{ if(!confirm("Delete this card?")) return; await db.from("cc_cards").delete(card.id); onDelete(); };
@@ -346,9 +447,12 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
 
       <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"22px 24px",borderTop:`4px solid ${card.color||acc}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
-          <div>
-            <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{card.name}</div>
-            <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank}{card.last4?` ···· ${card.last4}`:""} · <span style={{color:nc[card.network]||acc,fontWeight:600}}>{card.network}</span></div>
+          <div style={{display:"flex",gap:14,alignItems:"center"}}>
+            <LogoCircle url={card.logo_url} name={card.name} color={card.color||acc} size={52}/>
+            <div>
+              <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{card.name}</div>
+              <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank}{card.last4?` ···· ${card.last4}`:""} · <span style={{color:nc[card.network]||acc,fontWeight:600}}>{card.network}</span></div>
+            </div>
           </div>
           <button style={pbtn} onClick={()=>{ setF(tf); setShowTxn(true); }}>+ Add Transaction</button>
         </div>
@@ -395,7 +499,13 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
 
-      <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Card">
+      <Modal show={showEdit} onClose={()=>{ setShowEdit(false); setEditLogoFile(null); setEditLogoPreview(null); }} title="Edit Card">
+        <div style={{marginBottom:16}}>
+          <LogoUpload
+            current={editLogoPreview !== null ? editLogoPreview : card.logo_url}
+            onUpload={(file,preview)=>{ setEditLogoFile(file); setEditLogoPreview(preview); }}
+          />
+        </div>
         {lbl("Card Name *")}<input style={inp} value={ef.name||""} onChange={eup("name")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Bank")}<input style={inp} value={ef.bank||""} onChange={eup("bank")}/></div>
@@ -462,15 +572,26 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
     setShowTxn(false); setF(tf); load();
   };
 
+  const [editLogoFile,setEditLogoFile]=useState(null);
+  const [editLogoPreview,setEditLogoPreview]=useState(null);
+
   const saveEdit=async()=>{
     if(!ef.name?.trim()) return alert("Name required");
     const newOpening=parseInt(ef.opening_balance)||0;
     const txnSum=txns.reduce((a,t)=>a+t.points,0);
     const newBalance=newOpening+txnSum;
-    const p={name:ef.name.trim(),category:ef.category,tier:ef.tier,color:ef.color,expiry_date:ef.expiry_date||null,expiry_rule:ef.expiry_rule,inr_per_point:parseFloat(ef.inr_per_point)||0,opening_balance:newOpening,points_balance:newBalance};
+    let logo_url=prog.logo_url||null;
+    if(editLogoFile){
+      const path=`loyalty/${prog.id}-${Date.now()}.${editLogoFile.name.split(".").pop()}`;
+      const {error:ue}=await db.storage.upload("logos",path,editLogoFile);
+      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+    } else if(editLogoPreview===null && prog.logo_url){
+      logo_url=null;
+    }
+    const p={name:ef.name.trim(),category:ef.category,tier:ef.tier,color:ef.color,expiry_date:ef.expiry_date||null,expiry_rule:ef.expiry_rule,inr_per_point:parseFloat(ef.inr_per_point)||0,opening_balance:newOpening,points_balance:newBalance,logo_url};
     const {error}=await db.from("loyalty_programs").update(prog.id,p);
     if(error) return alert("Error: "+JSON.stringify(error));
-    setProg(x=>({...x,...p})); setShowEdit(false);
+    setProg(x=>({...x,...p})); setEditLogoFile(null); setEditLogoPreview(null); setShowEdit(false);
   };
 
   const delProg=async()=>{ if(!confirm("Delete this program?")) return; await db.from("loyalty_programs").delete(prog.id); onDelete(); };
@@ -493,9 +614,12 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
 
       <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"22px 24px",borderTop:`4px solid ${prog.color||acc2}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
-          <div>
-            <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{prog.name}</div>
-            <div style={{fontSize:13,color:mut,marginTop:3}}><span style={{color:cc[prog.category]||acc2,fontWeight:600}}>{prog.category}</span>{prog.tier&&<span style={{color:acc2}}> · {prog.tier}</span>}</div>
+          <div style={{display:"flex",gap:14,alignItems:"center"}}>
+            <LogoCircle url={prog.logo_url} name={prog.name} color={prog.color||acc2} size={52}/>
+            <div>
+              <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{prog.name}</div>
+              <div style={{fontSize:13,color:mut,marginTop:3}}><span style={{color:cc[prog.category]||acc2,fontWeight:600}}>{prog.category}</span>{prog.tier&&<span style={{color:acc2}}> · {prog.tier}</span>}</div>
+            </div>
           </div>
           <button style={pbtn} onClick={()=>{ setF(tf); setShowTxn(true); }}>+ Add Transaction</button>
         </div>
@@ -542,7 +666,13 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
 
-      <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Program">
+      <Modal show={showEdit} onClose={()=>{ setShowEdit(false); setEditLogoFile(null); setEditLogoPreview(null); }} title="Edit Program">
+        <div style={{marginBottom:16}}>
+          <LogoUpload
+            current={editLogoPreview !== null ? editLogoPreview : prog.logo_url}
+            onUpload={(file,preview)=>{ setEditLogoFile(file); setEditLogoPreview(preview); }}
+          />
+        </div>
         {lbl("Program Name *")}<input style={inp} value={ef.name||""} onChange={eup("name")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Category")}<select style={inp} value={ef.category||"Airline"} onChange={eup("category")}>{cats.map(c=><option key={c}>{c}</option>)}</select></div>
@@ -575,7 +705,8 @@ function Cards({ db }) {
   const [busy,setBusy]=useState(true); const [show,setShow]=useState(false);
   const [detail,setDetail]=useState(null); const [msg,setMsg]=useState("");
   const [search,setSearch]=useState(""); const [sort,setSort]=useState("name");
-  const empty={name:"",bank:"",last4:"",network:"Visa",opening_balance:"",points_currency:"pts",inr_per_point:"",stmt_date:"",annual_fee:"",color:"#4f46e5"};
+  const [logoFile,setLogoFile]=useState(null); const [logoPreview,setLogoPreview]=useState(null);
+  const empty={name:"",bank:"",last4:"",network:"Visa",opening_balance:"",points_currency:"pts",inr_per_point:"",stmt_date:"",annual_fee:"",color:"#b5862a"};
   const [f,setF]=useState(empty);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const nets=["Visa","Mastercard","Amex","Diners","RuPay","Other"];
@@ -589,10 +720,16 @@ function Cards({ db }) {
   const save=async()=>{
     if(!f.name.trim()) return alert("Card name required");
     const ob=parseInt(f.opening_balance)||0;
-    const p={name:f.name.trim(),bank:f.bank,last4:f.last4,network:f.network,color:f.color,points_currency:f.points_currency,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,annual_fee:parseFloat(f.annual_fee)||0,stmt_date:parseInt(f.stmt_date)||null};
+    let logo_url=null;
+    if(logoFile){
+      const path=`cards/${Date.now()}-${logoFile.name.replace(/[^a-zA-Z0-9.]/g,"-")}`;
+      const {error:ue}=await db.storage.upload("logos",path,logoFile);
+      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+    }
+    const p={name:f.name.trim(),bank:f.bank,last4:f.last4,network:f.network,color:f.color,points_currency:f.points_currency,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,annual_fee:parseFloat(f.annual_fee)||0,stmt_date:parseInt(f.stmt_date)||null,logo_url};
     const {error}=await db.from("cc_cards").insert(p);
     if(error) return alert("Error: "+JSON.stringify(error));
-    setShow(false); load();
+    setLogoFile(null); setLogoPreview(null); setShow(false); load();
   };
 
   const filtered=rows
@@ -624,8 +761,11 @@ function Cards({ db }) {
               <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 20px",borderTop:`4px solid ${c.color||acc}`,cursor:"pointer",position:"relative",boxShadow:"0 2px 8px rgba(0,0,0,0.05)",transition:"box-shadow 0.15s,transform 0.15s"}}
                 onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
                 onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.05)"; e.currentTarget.style.transform="none"; }}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
-                  <div><div style={{fontSize:15,fontWeight:700,color:txt}}>{c.name}</div><div style={{fontSize:12,color:mut}}>{c.bank}{c.last4?` ···· ${c.last4}`:""}</div></div>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:12,alignItems:"flex-start"}}>
+                  <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={36}/>
+                    <div><div style={{fontSize:15,fontWeight:700,color:txt}}>{c.name}</div><div style={{fontSize:12,color:mut}}>{c.bank}{c.last4?` ···· ${c.last4}`:""}</div></div>
+                  </div>
                   <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:(nc[c.network]||acc)+"18",color:nc[c.network]||acc}}>{c.network}</span>
                 </div>
                 <div style={{fontSize:26,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{(c.points_balance||0).toLocaleString()}</div>
@@ -641,7 +781,10 @@ function Cards({ db }) {
           })}
         </div>
       )}
-      <Modal show={show} onClose={()=>setShow(false)} title="Add Credit Card">
+      <Modal show={show} onClose={()=>{ setShow(false); setLogoFile(null); setLogoPreview(null); }} title="Add Credit Card">
+        <div style={{marginBottom:16}}>
+          <LogoUpload current={logoPreview} onUpload={(file,preview)=>{ setLogoFile(file); setLogoPreview(preview); }}/>
+        </div>
         {lbl("Card Name *")}<input style={inp} placeholder="HDFC Infinia" value={f.name} onChange={up("name")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Bank")}<input style={inp} placeholder="HDFC" value={f.bank} onChange={up("bank")}/></div>
@@ -672,7 +815,8 @@ function Loyalty({ db }) {
   const [busy,setBusy]=useState(true); const [show,setShow]=useState(false);
   const [detail,setDetail]=useState(null);
   const [search,setSearch]=useState(""); const [sort,setSort]=useState("name");
-  const empty={name:"",category:"Airline",opening_balance:"",inr_per_point:"",expiry_date:"",expiry_rule:"",tier:"",color:"#7c3aed"};
+  const [logoFile,setLogoFile]=useState(null); const [logoPreview,setLogoPreview]=useState(null);
+  const empty={name:"",category:"Airline",opening_balance:"",inr_per_point:"",expiry_date:"",expiry_rule:"",tier:"",color:"#b5862a"};
   const [f,setF]=useState(empty);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const cats=["Airline","Hotel","Retail","Dining","Fuel","Other"];
@@ -686,10 +830,16 @@ function Loyalty({ db }) {
   const save=async()=>{
     if(!f.name.trim()) return alert("Program name required");
     const ob=parseInt(f.opening_balance)||0;
-    const p={name:f.name.trim(),category:f.category,tier:f.tier,color:f.color,expiry_date:f.expiry_date||null,expiry_rule:f.expiry_rule,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob};
+    let logo_url=null;
+    if(logoFile){
+      const path=`loyalty/${Date.now()}-${logoFile.name.replace(/[^a-zA-Z0-9.]/g,"-")}`;
+      const {error:ue}=await db.storage.upload("logos",path,logoFile);
+      if(!ue) logo_url=db.storage.getPublicUrl("logos",path);
+    }
+    const p={name:f.name.trim(),category:f.category,tier:f.tier,color:f.color,expiry_date:f.expiry_date||null,expiry_rule:f.expiry_rule,inr_per_point:parseFloat(f.inr_per_point)||0,points_balance:ob,opening_balance:ob,logo_url};
     const {error}=await db.from("loyalty_programs").insert(p);
     if(error) return alert("Error: "+JSON.stringify(error));
-    setShow(false); load();
+    setLogoFile(null); setLogoPreview(null); setShow(false); load();
   };
 
   const days=d=>d?Math.round((new Date(d)-new Date())/86400000):null;
@@ -719,8 +869,11 @@ function Loyalty({ db }) {
             <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"18px 20px",borderTop:`4px solid ${p.color||acc2}`,cursor:"pointer",position:"relative",boxShadow:"0 2px 8px rgba(0,0,0,0.05)",transition:"box-shadow 0.15s,transform 0.15s"}}
               onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 6px 20px rgba(0,0,0,0.1)"; e.currentTarget.style.transform="translateY(-2px)"; }}
               onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 2px 8px rgba(0,0,0,0.05)"; e.currentTarget.style.transform="none"; }}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
-                <div><div style={{fontSize:15,fontWeight:700,color:txt}}>{p.name}</div>{p.tier&&<div style={{fontSize:12,color:acc2,fontWeight:600}}>{p.tier}</div>}</div>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:10,alignItems:"flex-start"}}>
+                <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                  <LogoCircle url={p.logo_url} name={p.name} color={p.color||acc2} size={36}/>
+                  <div><div style={{fontSize:15,fontWeight:700,color:txt}}>{p.name}</div>{p.tier&&<div style={{fontSize:12,color:acc2,fontWeight:600}}>{p.tier}</div>}</div>
+                </div>
                 <span style={{fontSize:11,fontWeight:700,padding:"3px 9px",borderRadius:20,background:(cc[p.category]||acc2)+"18",color:cc[p.category]||acc2}}>{p.category}</span>
               </div>
               <div style={{fontSize:26,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{(p.points_balance||0).toLocaleString()}</div>
@@ -732,7 +885,10 @@ function Loyalty({ db }) {
           );})}
         </div>
       )}
-      <Modal show={show} onClose={()=>setShow(false)} title="Add Loyalty Program">
+      <Modal show={show} onClose={()=>{ setShow(false); setLogoFile(null); setLogoPreview(null); }} title="Add Loyalty Program">
+        <div style={{marginBottom:16}}>
+          <LogoUpload current={logoPreview} onUpload={(file,preview)=>{ setLogoFile(file); setLogoPreview(preview); }}/>
+        </div>
         {lbl("Program Name *")}<input style={inp} placeholder="Air India Flying Returns" value={f.name} onChange={up("name")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Category")}<select style={inp} value={f.category} onChange={up("category")}>{cats.map(c=><option key={c}>{c}</option>)}</select></div>
@@ -771,7 +927,7 @@ function TransferPoints({ db }) {
   },[db]);
   useEffect(()=>{ loadAll(); },[loadAll]);
 
-  const allPrograms=[...cards.map(c=>({name:c.name,type:"card",balance:c.points_balance||0,id:c.id})),...loyalties.map(l=>({name:l.name,type:"loyalty",balance:l.points_balance||0,id:l.id}))];
+  const allPrograms=[...cards.map(c=>({name:c.name,type:"card",balance:c.points_balance||0,id:c.id,logo_url:c.logo_url,color:c.color})),...loyalties.map(l=>({name:l.name,type:"loyalty",balance:l.points_balance||0,id:l.id,logo_url:l.logo_url,color:l.color}))];
   const validFromNames=[...new Set(allPartners.map(p=>p.from_program))];
   const validToNames=[...new Set(allPartners.map(p=>p.to_program))];
   const toOptions=from?allPartners.filter(p=>p.from_program===from).map(p=>p.to_program):validToNames;
@@ -798,6 +954,7 @@ function TransferPoints({ db }) {
     await db.from(tbl_to).update(toObj.id,{points_balance:(toObj.points_balance||0)+totalReceived});
     await db.from("point_transactions").insert({program_name:from,program_type:fromProg.type,points:-sentPts,description:`Transfer to ${to}${notes?` — ${notes}`:""}`,txn_date:txnDate});
     await db.from("point_transactions").insert({program_name:to,program_type:toProg.type,points:totalReceived,description:`Transfer from ${from}${bonusPts?` (+${bonusPts} bonus)`:""}${notes?` — ${notes}`:""}`,txn_date:txnDate});
+    await db.from("transfer_log").insert({from_program:from,to_program:to,points_sent:sentPts,points_received:ratioReceived,bonus_miles:bonusPts,ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,transfer_date:txnDate,notes:notes||null});
     setDone({from,to,sent:sentPts,received:ratioReceived,bonus:bonusPts,total:totalReceived});
     setFrom(""); setTo(""); setPts(""); setBonusMiles(""); setNotes("");
     await loadAll();
@@ -822,27 +979,56 @@ function TransferPoints({ db }) {
         </div>
       )}
       <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:24,maxWidth:560,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
+        {/* FROM — populates based on to if set, otherwise shows all valid sources */}
         <div style={{marginBottom:18}}>
           <div style={{fontSize:11,color:acc,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>From</div>
           {lbl("Program")}
-          <select style={inp} value={from} onChange={e=>{ setFrom(e.target.value); if(to){ const valid=allPartners.filter(p=>p.from_program===e.target.value).map(p=>p.to_program); if(!valid.includes(to)) setTo(""); } }}>
+          <select style={inp} value={from} onChange={e=>{
+            setFrom(e.target.value);
+            // If to is set and new from can't transfer to it, clear to
+            if(to){
+              const valid=allPartners.filter(p=>p.from_program===e.target.value).map(p=>p.to_program);
+              if(!valid.includes(to)) setTo("");
+            }
+          }}>
             <option value="">— select source —</option>
-            {allPrograms.filter(p=>to?fromOptions.includes(p.name):validFromNames.includes(p.name)).map(p=>(
-              <option key={p.name} value={p.name}>{p.name} ({p.balance.toLocaleString()} pts)</option>
-            ))}
+            {allPrograms
+              .filter(p => to
+                ? allPartners.some(r=>r.from_program===p.name&&r.to_program===to)
+                : validFromNames.includes(p.name)
+              )
+              .map(p=>(
+                <option key={p.name} value={p.name}>{p.name} ({p.balance.toLocaleString()} pts)</option>
+              ))}
           </select>
           {fromProg&&<div style={{fontSize:12,color:mut,marginTop:-8,marginBottom:8}}>Available: <span style={{color:txt,fontWeight:600}}>{fromProg.balance.toLocaleString()} pts</span></div>}
+          {!from&&to&&<div style={{fontSize:11,color:acc,marginTop:-8,marginBottom:8}}>Showing only programs that can transfer to {to}</div>}
         </div>
+
+        {/* TO — populates based on from if set, otherwise shows all valid destinations */}
         <div style={{marginBottom:18}}>
           <div style={{fontSize:11,color:grn,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>To</div>
           {lbl("Program")}
-          <select style={inp} value={to} onChange={e=>{ setTo(e.target.value); if(from){ const valid=allPartners.filter(p=>p.to_program===e.target.value).map(p=>p.from_program); if(!valid.includes(from)) setFrom(""); } }} disabled={!from}>
+          <select style={inp} value={to} onChange={e=>{
+            setTo(e.target.value);
+            // If from is set and it can't transfer to new to, clear from
+            if(from){
+              const valid=allPartners.filter(p=>p.to_program===e.target.value).map(p=>p.from_program);
+              if(!valid.includes(from)) setFrom("");
+            }
+          }}>
             <option value="">— select destination —</option>
-            {allPrograms.filter(p=>from?toOptions.includes(p.name):validToNames.includes(p.name)).map(p=>(
-              <option key={p.name} value={p.name}>{p.name} ({p.balance.toLocaleString()} pts)</option>
-            ))}
+            {allPrograms
+              .filter(p => from
+                ? allPartners.some(r=>r.from_program===from&&r.to_program===p.name)
+                : validToNames.includes(p.name)
+              )
+              .map(p=>(
+                <option key={p.name} value={p.name}>{p.name} ({p.balance.toLocaleString()} pts)</option>
+              ))}
           </select>
-          {!from&&<div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:8}}>Select source first</div>}
+          {!to&&from&&<div style={{fontSize:11,color:grn,marginTop:-8,marginBottom:8}}>Showing only programs {from} can transfer to</div>}
+          {!from&&!to&&<div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:8}}>Select either From or To first to filter options</div>}
           {toProg&&<div style={{fontSize:12,color:mut,marginTop:-8,marginBottom:8}}>Current: <span style={{color:txt,fontWeight:600}}>{toProg.balance.toLocaleString()} pts</span></div>}
         </div>
         {partner&&(
@@ -1255,7 +1441,7 @@ Return only the JSON array starting with [ and ending with ].`;
 
           {/* Step 1 — Card + Mode */}
           <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,padding:"20px 22px",marginBottom:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-            <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 1 — Select Card & Format</div>
+            <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:14}}>Step 1 — Select Card &amp; Format</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:0}}>
               <div>
                 {lbl("Credit Card")}
@@ -1406,8 +1592,629 @@ Return only the JSON array starting with [ and ending with ].`;
   );
 }
 
+// ── Transfer History ──────────────────────────────────────────────────────────
+function TransferHistory({ db }) {
+  const [logs, setLogs] = useState([]);
+  const [busy, setBusy] = useState(true);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState("date");
+  const [detail, setDetail] = useState(null);
+
+  const load = async () => {
+    setBusy(true);
+    const { data } = await db.from("transfer_log").select();
+    setLogs((data || []).sort((a, b) => new Date(b.transfer_date) - new Date(a.transfer_date)));
+    setBusy(false);
+  };
+  useEffect(() => { load(); }, []);
+
+  const del = async (id) => {
+    if (!confirm("Delete this transfer record? This does not reverse the point balances.")) return;
+    await db.from("transfer_log").delete(id);
+    load();
+  };
+
+  const filtered = logs
+    .filter(l =>
+      l.from_program.toLowerCase().includes(search.toLowerCase()) ||
+      l.to_program.toLowerCase().includes(search.toLowerCase()) ||
+      (l.notes || "").toLowerCase().includes(search.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sort === "sent") return b.points_sent - a.points_sent;
+      if (sort === "received") return b.points_received - a.points_received;
+      if (sort === "from") return a.from_program.localeCompare(b.from_program);
+      return new Date(b.transfer_date) - new Date(a.transfer_date);
+    });
+
+  const totalSent = filtered.reduce((a, l) => a + (l.points_sent || 0), 0);
+  const totalReceived = filtered.reduce((a, l) => a + (l.points_received || 0) + (l.bonus_miles || 0), 0);
+  const totalBonus = filtered.reduce((a, l) => a + (l.bonus_miles || 0), 0);
+
+  return (
+    <div>
+      <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em",marginBottom:6}}>Transfer History</div>
+      <div style={{fontSize:13,color:mut,marginBottom:24}}>All point transfers across your cards and programs</div>
+
+      {/* Summary stats */}
+      {logs.length > 0 && (
+        <div style={{display:"flex",gap:12,marginBottom:24,flexWrap:"wrap"}}>
+          <StatBox label="Total Transfers" value={logs.length.toString()} color={acc}/>
+          <StatBox label="Total Sent" value={totalSent.toLocaleString()} color={red}/>
+          <StatBox label="Total Received" value={totalReceived.toLocaleString()} color={grn}/>
+          {totalBonus > 0 && <StatBox label="Bonus Miles Earned" value={totalBonus.toLocaleString()} color={acc2}/>}
+        </div>
+      )}
+
+      <SearchBar value={search} onChange={setSearch} placeholder="Search by program or notes..."/>
+      <SortBar
+        options={[
+          {value:"date", label:"Date ↓"},
+          {value:"from", label:"From A–Z"},
+          {value:"sent", label:"Points Sent ↓"},
+          {value:"received", label:"Points Received ↓"},
+        ]}
+        value={sort}
+        onChange={setSort}
+      />
+
+      {busy ? <div style={{color:mut,padding:40,textAlign:"center"}}>Loading...</div>
+      : logs.length === 0 ? (
+        <div style={{textAlign:"center",padding:60,color:mut}}>
+          <div style={{fontSize:32,marginBottom:10}}>↔️</div>
+          <div>No transfers yet. Use Transfer Points to move points between programs.</div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div style={{textAlign:"center",padding:40,color:mut}}>No transfers match your search.</div>
+      ) : (
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:16,boxShadow:"0 2px 8px rgba(0,0,0,0.04)",overflow:"hidden"}}>
+          {/* Desktop table */}
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{background:surf2,color:mut,fontSize:11,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
+                  <th style={{padding:"10px 16px",textAlign:"left",fontWeight:700}}>Date</th>
+                  <th style={{padding:"10px 16px",textAlign:"left",fontWeight:700}}>From</th>
+                  <th style={{padding:"10px 16px",textAlign:"left",fontWeight:700}}>To</th>
+                  <th style={{padding:"10px 16px",textAlign:"right",fontWeight:700}}>Sent</th>
+                  <th style={{padding:"10px 16px",textAlign:"right",fontWeight:700}}>Ratio</th>
+                  <th style={{padding:"10px 16px",textAlign:"right",fontWeight:700}}>Received</th>
+                  <th style={{padding:"10px 16px",textAlign:"right",fontWeight:700}}>Bonus</th>
+                  <th style={{padding:"10px 16px",textAlign:"left",fontWeight:700}}>Notes</th>
+                  <th style={{padding:"10px 16px",textAlign:"center",fontWeight:700}}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((l, idx) => {
+                  const totalRec = (l.points_received || 0) + (l.bonus_miles || 0);
+                  const efficiency = l.points_sent > 0 ? ((totalRec / l.points_sent) * 100).toFixed(0) : 0;
+                  return (
+                    <tr key={l.id} style={{borderBottom:`1px solid ${bdr}`,cursor:"pointer"}} onClick={()=>setDetail(detail?.id===l.id?null:l)}>
+                      <td style={{padding:"12px 16px",color:mut,whiteSpace:"nowrap"}}>
+                        {new Date(l.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+                      </td>
+                      <td style={{padding:"12px 16px"}}>
+                        <div style={{fontWeight:600,color:txt}}>{l.from_program}</div>
+                      </td>
+                      <td style={{padding:"12px 16px"}}>
+                        <div style={{fontWeight:600,color:txt}}>{l.to_program}</div>
+                      </td>
+                      <td style={{padding:"12px 16px",textAlign:"right",fontWeight:700,color:red}}>
+                        {(l.points_sent||0).toLocaleString()}
+                      </td>
+                      <td style={{padding:"12px 16px",textAlign:"right"}}>
+                        <span style={{fontSize:12,fontWeight:700,color:acc,background:acc+"10",padding:"2px 8px",borderRadius:20}}>
+                          {l.ratio_from}:{l.ratio_to}
+                        </span>
+                      </td>
+                      <td style={{padding:"12px 16px",textAlign:"right",fontWeight:700,color:grn}}>
+                        {(l.points_received||0).toLocaleString()}
+                      </td>
+                      <td style={{padding:"12px 16px",textAlign:"right"}}>
+                        {l.bonus_miles > 0
+                          ? <span style={{fontWeight:700,color:acc2}}>+{l.bonus_miles.toLocaleString()}</span>
+                          : <span style={{color:mut}}>—</span>
+                        }
+                      </td>
+                      <td style={{padding:"12px 16px",color:mut,fontSize:12}}>{l.notes||"—"}</td>
+                      <td style={{padding:"12px 16px",textAlign:"center"}}>
+                        <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();del(l.id);}}>✕</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Expanded detail row */}
+          {detail && (
+            <div style={{background:acc+"06",borderTop:`2px solid ${acc}22`,padding:"16px 20px"}}>
+              <div style={{fontSize:12,fontWeight:700,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:12}}>Transfer Detail</div>
+              <div style={{display:"flex",gap:24,flexWrap:"wrap",alignItems:"flex-start"}}>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontSize:13,color:mut,marginBottom:4}}>Flow</div>
+                  <div style={{fontSize:15,fontWeight:700,color:txt}}>
+                    {detail.from_program} → {detail.to_program}
+                  </div>
+                  <div style={{fontSize:12,color:mut,marginTop:2}}>
+                    {new Date(detail.transfer_date).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+                  <div style={{textAlign:"center",background:surf,borderRadius:10,padding:"10px 16px",border:`1.5px solid ${bdr}`}}>
+                    <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Sent</div>
+                    <div style={{fontSize:20,fontWeight:900,color:red}}>{(detail.points_sent||0).toLocaleString()}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",fontSize:18,color:mut}}>→</div>
+                  <div style={{textAlign:"center",background:surf,borderRadius:10,padding:"10px 16px",border:`1.5px solid ${bdr}`}}>
+                    <div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Ratio Pts</div>
+                    <div style={{fontSize:20,fontWeight:900,color:grn}}>{(detail.points_received||0).toLocaleString()}</div>
+                  </div>
+                  {detail.bonus_miles > 0 && <>
+                    <div style={{display:"flex",alignItems:"center",fontSize:18,color:mut}}>+</div>
+                    <div style={{textAlign:"center",background:surf,borderRadius:10,padding:"10px 16px",border:`1.5px solid ${acc}33`}}>
+                      <div style={{fontSize:10,color:acc2,textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Bonus Miles</div>
+                      <div style={{fontSize:20,fontWeight:900,color:acc2}}>{detail.bonus_miles.toLocaleString()}</div>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",fontSize:18,color:mut}}>=</div>
+                    <div style={{textAlign:"center",background:surf,borderRadius:10,padding:"10px 16px",border:`1.5px solid ${grn}44`}}>
+                      <div style={{fontSize:10,color:grn,textTransform:"uppercase",fontWeight:700,marginBottom:4}}>Total Received</div>
+                      <div style={{fontSize:20,fontWeight:900,color:grn}}>{((detail.points_received||0)+(detail.bonus_miles||0)).toLocaleString()}</div>
+                    </div>
+                  </>}
+                </div>
+                {detail.notes && (
+                  <div style={{flex:1,minWidth:150}}>
+                    <div style={{fontSize:13,color:mut,marginBottom:4}}>Notes</div>
+                    <div style={{fontSize:13,color:txt}}>{detail.notes}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+// ── Dashboard ────────────────────────────────────────────────────────────────
+function Dashboard({ db, onNavigate }) {
+  const [cards, setCards] = useState([]);
+  const [loyalties, setLoyalties] = useState([]);
+  const [txns, setTxns] = useState([]);
+  const [vouchers, setVouchers] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [busy, setBusy] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      setBusy(true);
+      const [c, l, t, v, tr] = await Promise.all([
+        db.from("cc_cards").select(),
+        db.from("loyalty_programs").select(),
+        db.from("point_transactions").select(),
+        db.from("vouchers").select(),
+        db.from("transfer_log").select(),
+      ]);
+      setCards(c.data || []);
+      setLoyalties(l.data || []);
+      setTxns((t.data || []).sort((a, b) => new Date(b.txn_date) - new Date(a.txn_date)));
+      setVouchers(v.data || []);
+      setTransfers(tr.data || []);
+      setBusy(false);
+    })();
+  }, []);
+
+  // ── computed values ─────────────────────────────────────────────────────────
+  const totalCardPts = cards.reduce((a, c) => a + (c.points_balance || 0), 0);
+  const totalLoyalPts = loyalties.reduce((a, l) => a + (l.points_balance || 0), 0);
+  const totalPts = totalCardPts + totalLoyalPts;
+
+  const cardInr = cards.reduce((a, c) => a + (c.points_balance || 0) * (c.inr_per_point || 0), 0);
+  const loyalInr = loyalties.reduce((a, l) => a + (l.points_balance || 0) * (l.inr_per_point || 0), 0);
+  const totalInr = cardInr + loyalInr;
+
+  const activeVouchers = vouchers.filter(v => !v.redeemed).length;
+
+  const now = new Date();
+  const expiring30 = loyalties.filter(l => {
+    if (!l.expiry_date) return false;
+    const d = Math.round((new Date(l.expiry_date) - now) / 86400000);
+    return d >= 0 && d <= 30;
+  });
+  const expiring90 = loyalties.filter(l => {
+    if (!l.expiry_date) return false;
+    const d = Math.round((new Date(l.expiry_date) - now) / 86400000);
+    return d >= 0 && d <= 90;
+  });
+
+  // Bank comparison
+  const bankMap = {};
+  cards.forEach(c => {
+    const bank = c.bank || "Other";
+    bankMap[bank] = (bankMap[bank] || 0) + (c.points_balance || 0);
+  });
+  const banks = Object.entries(bankMap).sort((a, b) => b[1] - a[1]);
+  const topBank = banks[0];
+  const maxBankPts = banks[0]?.[1] || 1;
+
+  // Category breakdown for loyalty
+  const catMap = {};
+  loyalties.forEach(l => {
+    const cat = l.category || "Other";
+    catMap[cat] = (catMap[cat] || 0) + (l.points_balance || 0);
+  });
+  const catColors = { Airline:"#4f7fff", Hotel:"#f59e0b", Retail:"#10b981", Dining:"#f97316", Fuel:"#ef4444", Other:"#8b5cf6" };
+
+  // Recent transactions (last 6)
+  const recentTxns = txns.slice(0, 6);
+
+  // Portfolio split for donut (cards vs loyalty)
+  const donutData = [
+    { label: "Credit Cards", value: totalCardPts, color: "#1a1410" },
+    { label: "Loyalty", value: totalLoyalPts, color: "#b5862a" },
+  ];
+
+  // Simple SVG donut chart
+  const DonutChart = ({ data, size = 140 }) => {
+    const total = data.reduce((a, d) => a + d.value, 0);
+    if (total === 0) return (
+      <svg width={size} height={size} viewBox="0 0 140 140">
+        <circle cx="70" cy="70" r="52" fill="none" stroke="#e8e3da" strokeWidth="18"/>
+      </svg>
+    );
+    const r = 52; const cx = 70; const cy = 70;
+    const circumference = 2 * Math.PI * r;
+    let offset = 0;
+    const segments = data.map(d => {
+      const pct = d.value / total;
+      const dash = pct * circumference;
+      const seg = { ...d, dash, offset, pct };
+      offset += dash;
+      return seg;
+    });
+    return (
+      <svg width={size} height={size} viewBox="0 0 140 140" style={{transform:"rotate(-90deg)"}}>
+        {segments.map((s, i) => (
+          <circle key={i} cx={cx} cy={cy} r={r} fill="none"
+            stroke={s.color} strokeWidth="18"
+            strokeDasharray={`${s.dash} ${circumference - s.dash}`}
+            strokeDashoffset={-s.offset}
+            strokeLinecap="round"
+          />
+        ))}
+      </svg>
+    );
+  };
+
+  // Simple SVG area sparkline
+  const Sparkline = ({ values, color, height=50, width=160 }) => {
+    if (!values || values.length < 2) return null;
+    const max = Math.max(...values);
+    const min = Math.min(...values);
+    const range = max - min || 1;
+    const pts = values.map((v, i) => {
+      const x = (i / (values.length - 1)) * width;
+      const y = height - ((v - min) / range) * (height - 8) - 4;
+      return `${x},${y}`;
+    });
+    const areaPath = `M${pts[0]} ${pts.map((p, i) => i === 0 ? "" : `L${p}`).join(" ")} L${width},${height} L0,${height} Z`;
+    const linePath = `M${pts.join(" L")}`;
+    return (
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+        <defs>
+          <linearGradient id="spkgrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.2"/>
+            <stop offset="100%" stopColor={color} stopOpacity="0"/>
+          </linearGradient>
+        </defs>
+        <path d={areaPath} fill="url(#spkgrad)"/>
+        <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round"/>
+      </svg>
+    );
+  };
+
+  // Build monthly txn totals for sparkline (last 6 months)
+  const monthlyTotals = (() => {
+    const map = {};
+    txns.forEach(t => {
+      const m = t.txn_date?.slice(0, 7);
+      if (m) map[m] = (map[m] || 0) + (t.points > 0 ? t.points : 0);
+    });
+    const months = Object.keys(map).sort().slice(-6);
+    return months.map(m => map[m] || 0);
+  })();
+
+  const s = { // section header style
+    fontSize: 11, fontWeight: 700, color: mut, letterSpacing: "0.1em",
+    textTransform: "uppercase", marginBottom: 16,
+  };
+
+  const card = (children, style = {}) => (
+    <div style={{
+      background: surf, borderRadius: 18, border: `1.5px solid ${bdr}`,
+      padding: "22px 24px",
+      boxShadow: "0 1px 4px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04)",
+      ...style
+    }}>{children}</div>
+  );
+
+  if (busy) return (
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"60vh",flexDirection:"column",gap:12}}>
+      <div style={{fontSize:28}}>⏳</div>
+      <div style={{color:mut,fontSize:14}}>Loading your portfolio…</div>
+    </div>
+  );
+
+  return (
+    <div style={{fontFamily:"'Inter',system-ui,sans-serif"}}>
+
+      {/* ── Header ── */}
+      <div style={{marginBottom:32}}>
+        <div style={{fontSize:30,fontWeight:800,color:txt,letterSpacing:"-0.04em",lineHeight:1.1}}>Overview</div>
+        <div style={{fontSize:14,color:mut,marginTop:6}}>Your points, miles &amp; rewards at a glance</div>
+      </div>
+
+      {/* ── Top stat row ── */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:14,marginBottom:24}}>
+
+        {/* CC Rewards */}
+        <div style={{background:txt,borderRadius:18,padding:"20px 22px",color:"#fff",position:"relative",overflow:"hidden"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.5)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>CC Rewards</div>
+          <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1}}>{totalCardPts.toLocaleString("en-IN")}</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",marginTop:6}}>{cards.length} active cards</div>
+          {cardInr > 0 && <div style={{fontSize:13,color:gold,marginTop:4,fontWeight:600}}>{inrFmt(cardInr)}</div>}
+          <div style={{position:"absolute",right:16,top:16,opacity:0.08,fontSize:48}}>💳</div>
+        </div>
+
+        {/* Loyalty Points */}
+        <div style={{background:acc,borderRadius:18,padding:"20px 22px",color:"#fff",position:"relative",overflow:"hidden"}}>
+          <div style={{fontSize:11,fontWeight:600,color:"rgba(255,255,255,0.6)",letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Loyalty Points</div>
+          <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",lineHeight:1}}>{totalLoyalPts.toLocaleString("en-IN")}</div>
+          <div style={{fontSize:12,color:"rgba(255,255,255,0.5)",marginTop:6}}>{loyalties.length} programs</div>
+          {loyalInr > 0 && <div style={{fontSize:13,color:"#fff",marginTop:4,fontWeight:600,opacity:0.9}}>{inrFmt(loyalInr)}</div>}
+          <div style={{position:"absolute",right:16,top:16,opacity:0.15,fontSize:48}}>⭐</div>
+        </div>
+
+        {/* Portfolio Value */}
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"20px 22px",position:"relative",overflow:"hidden",boxShadow:"0 2px 12px rgba(0,0,0,0.05)"}}>
+          <div style={{fontSize:11,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Portfolio Value</div>
+          <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",color:txt,lineHeight:1}}>{totalInr > 0 ? inrFmt(totalInr) : "—"}</div>
+          <div style={{fontSize:12,color:mut,marginTop:6}}>{totalPts.toLocaleString("en-IN")} total points</div>
+          {monthlyTotals.length >= 2 && <div style={{position:"absolute",bottom:12,right:12}}><Sparkline values={monthlyTotals} color={grn}/></div>}
+        </div>
+
+        {/* Vouchers */}
+        <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:18,padding:"20px 22px",boxShadow:"0 2px 12px rgba(0,0,0,0.05)"}}>
+          <div style={{fontSize:11,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",marginBottom:10}}>Vouchers</div>
+          <div style={{fontSize:28,fontWeight:800,letterSpacing:"-0.03em",color:txt,lineHeight:1}}>{activeVouchers}</div>
+          <div style={{fontSize:12,color:mut,marginTop:6}}>active vouchers</div>
+          <button onClick={()=>onNavigate("vouchers")} style={{marginTop:10,background:"none",border:"none",cursor:"pointer",fontSize:12,color:acc,fontWeight:600,padding:0}}>View all →</button>
+        </div>
+      </div>
+
+      {/* ── Alerts ── */}
+      {expiring30.length > 0 && (
+        <div style={{background:"#fffbeb",border:`1.5px solid #fde68a`,borderRadius:14,padding:"14px 18px",marginBottom:20,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:18}}>⚠️</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:13,fontWeight:700,color:"#92400e"}}>Points expiring in 30 days</div>
+            <div style={{fontSize:12,color:"#b45309",marginTop:2}}>{expiring30.map(l=>`${l.name} (${l.points_balance?.toLocaleString()} pts)`).join(" · ")}</div>
+          </div>
+          <button onClick={()=>onNavigate("loyalty")} style={{...gbtn,fontSize:12,padding:"6px 14px"}}>View Programs</button>
+        </div>
+      )}
+
+      {/* ── Middle row: Donut + Bank Comparison ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+
+        {/* Portfolio Breakdown donut */}
+        {card(
+          <div>
+            <div style={s}>Portfolio Breakdown</div>
+            <div style={{display:"flex",alignItems:"center",gap:24}}>
+              <div style={{position:"relative",flexShrink:0}}>
+                <DonutChart data={donutData} size={140}/>
+                <div style={{position:"absolute",inset:0,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center"}}>
+                  <div style={{fontSize:16,fontWeight:800,color:txt}}>{totalPts > 0 ? (totalPts >= 1000 ? (totalPts/1000).toFixed(0)+"K" : totalPts) : "0"}</div>
+                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Total pts</div>
+                </div>
+              </div>
+              <div style={{flex:1}}>
+                {donutData.map((d, i) => (
+                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:10,height:10,borderRadius:3,background:d.color,flexShrink:0}}/>
+                      <div style={{fontSize:12,color:mut2}}>{d.label}</div>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:700,color:txt}}>{d.value.toLocaleString("en-IN")}</div>
+                  </div>
+                ))}
+                {totalInr > 0 && (
+                  <div style={{marginTop:14,paddingTop:12,borderTop:`1px solid ${bdr}`}}>
+                    <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Est. INR Value</div>
+                    <div style={{fontSize:18,fontWeight:800,color:grn,marginTop:2}}>{inrFmt(totalInr)}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bank Comparison */}
+        {card(
+          <div>
+            <div style={s}>Bank Comparison</div>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>Total rewards by bank</div>
+            {banks.length === 0 ? (
+              <div style={{color:mut,fontSize:13}}>No cards added yet</div>
+            ) : banks.map(([bank, pts], i) => (
+              <div key={bank} style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:5}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <div style={{width:22,height:22,borderRadius:8,background:surf2,border:`1.5px solid ${bdr}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:txt}}>{i+1}</div>
+                    <div style={{fontSize:13,fontWeight:600,color:txt}}>{bank}</div>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700,color:txt}}>{pts.toLocaleString("en-IN")}</div>
+                </div>
+                <div style={{height:5,background:surf2,borderRadius:10,overflow:"hidden"}}>
+                  <div style={{height:"100%",width:`${(pts/maxBankPts)*100}%`,background:i===0?acc:bdr2,borderRadius:10,transition:"width 0.6s ease"}}/>
+                </div>
+              </div>
+            ))}
+            {topBank && (
+              <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Top Bank</div>
+                  <div style={{fontSize:14,fontWeight:700,color:txt,marginTop:2}}>{topBank[0]}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>Total</div>
+                  <div style={{fontSize:14,fontWeight:700,color:acc,marginTop:2}}>{topBank[1].toLocaleString("en-IN")}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* ── Bottom row: Loyalty Programs + Recent Transactions ── */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+
+        {/* Loyalty Programs list */}
+        {card(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={s}>Loyalty Programs</div>
+              <button onClick={()=>onNavigate("loyalty")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>View All →</button>
+            </div>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>
+              {loyalties.length} programs{loyalInr>0?` · ${inrFmt(loyalInr)} est. value`:""}
+            </div>
+            {loyalties.length === 0 ? (
+              <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No loyalty programs yet</div>
+            ) : [...loyalties].sort((a,b)=>(b.points_balance||0)-(a.points_balance||0)).slice(0,5).map(l => {
+              const inrVal = (l.points_balance||0)*(l.inr_per_point||0);
+              const days = l.expiry_date ? Math.round((new Date(l.expiry_date)-now)/86400000) : null;
+              const expiring = days !== null && days <= 90;
+              return (
+                <div key={l.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <LogoCircle url={l.logo_url} name={l.name} color={l.color||acc2} size={36}/>
+                    <div>
+                      <div style={{fontSize:13,fontWeight:600,color:txt}}>{l.name}</div>
+                      <div style={{fontSize:11,color:mut,marginTop:1}}>
+                        {l.tier&&<span style={{color:l.color,fontWeight:600}}>{l.tier} · </span>}
+                        {expiring && <span style={{color:red}}>⚠ {days}d left · </span>}
+                        {l.category}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{textAlign:"right"}}>
+                    <div style={{fontSize:14,fontWeight:700,color:txt}}>{(l.points_balance||0).toLocaleString("en-IN")}</div>
+                    {inrVal > 0 && <div style={{fontSize:11,color:grn,marginTop:1}}>{inrFmt(inrVal)}</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Recent Transactions */}
+        {card(
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+              <div style={s}>Recent Transactions</div>
+              <div style={{fontSize:11,color:mut}}>Latest activity</div>
+            </div>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>Across all accounts</div>
+            {recentTxns.length === 0 ? (
+              <div style={{color:mut,fontSize:13,textAlign:"center",padding:"20px 0"}}>No transactions yet</div>
+            ) : recentTxns.map(t => (
+              <div key={t.id} style={{display:"flex",alignItems:"center",gap:12,padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+                <div style={{width:32,height:32,borderRadius:10,background:t.points>0?grn+"15":red+"12",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <span style={{fontSize:13,color:t.points>0?grn:red}}>{t.points>0?"↑":"↓"}</span>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description||"Transaction"}</div>
+                  <div style={{fontSize:11,color:mut,marginTop:1,display:"flex",gap:6,alignItems:"center"}}>
+                    <span style={{background:surf2,borderRadius:4,padding:"1px 6px",fontSize:10}}>{t.program_type==="card"?"💳":"⭐"} {t.program_name}</span>
+                    <span>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</span>
+                  </div>
+                </div>
+                <div style={{fontSize:13,fontWeight:700,color:t.points>0?grn:red,flexShrink:0}}>
+                  {t.points>0?"+":""}{t.points.toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Expiring in 90 days ── */}
+      {expiring90.length > 0 && card(
+        <div>
+          <div style={s}>Expiring Points — Next 90 Days</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:12}}>
+            {expiring90.map(l => {
+              const days = Math.round((new Date(l.expiry_date) - now) / 86400000);
+              const urgency = days <= 30 ? red : days <= 60 ? gold : mut2;
+              return (
+                <div key={l.id} style={{background:surf2,borderRadius:12,padding:"14px 16px",border:`1.5px solid ${days<=30?red+"33":bdr}`}}>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{l.name}</div>
+                  <div style={{fontSize:20,fontWeight:800,color:txt}}>{(l.points_balance||0).toLocaleString("en-IN")}</div>
+                  <div style={{fontSize:11,color:urgency,marginTop:4,fontWeight:600}}>Expires in {days} days</div>
+                  <div style={{fontSize:10,color:mut,marginTop:2}}>{new Date(l.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      , {marginBottom:16})}
+
+      {/* ── Transfer activity ── */}
+      {transfers.length > 0 && card(
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={s}>Recent Transfers</div>
+            <button onClick={()=>onNavigate("history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase"}}>View All →</button>
+          </div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead>
+                <tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.08em",borderBottom:`1.5px solid ${bdr}`}}>
+                  {["Date","From","To","Sent","Received"].map(h=>(
+                    <th key={h} style={{padding:"6px 12px",textAlign:h==="Sent"||h==="Received"?"right":"left",fontWeight:700}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...transfers].sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)).slice(0,4).map(t=>(
+                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
+                    <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{t.from_program}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{t.to_program}</td>
+                    <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(t.points_sent||0).toLocaleString()}</td>
+                    <td style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{((t.points_received||0)+(t.bonus_miles||0)).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      , {marginBottom:16})}
+
+    </div>
+  );
+}
+
+
 // ── Shell ─────────────────────────────────────────────────────────────────────
 const TABS=[
+  {id:"dashboard", label:"Overview",           icon:"◈"},
   {id:"cards",     label:"Credit Cards",      icon:"💳"},
   {id:"loyalty",   label:"Loyalty Programs",  icon:"⭐"},
   {id:"transfers", label:"Transfer Partners", icon:"⚙️"},
@@ -1415,11 +2222,12 @@ const TABS=[
   {id:"vouchers",  label:"Vouchers",          icon:"🎟️"},
   {id:"settings",  label:"Settings",          icon:"🔧"},
   {id:"import",    label:"Import Statement",   icon:"📥"},
+  {id:"history",   label:"Transfer History",   icon:"📋"},
 ];
 
 export default function App() {
   const [db,setDb]=useState(null);
-  const [tab,setTab]=useState("cards");
+  const [tab,setTab]=useState("dashboard");
   const [menuOpen,setMenuOpen]=useState(false);
 
   useEffect(()=>{
@@ -1431,39 +2239,43 @@ export default function App() {
   const cur=TABS.find(t=>t.id===tab);
 
   return (
-    <div style={{minHeight:"100vh",background:bg,color:txt,fontFamily:"Inter,system-ui,sans-serif",fontSize:14}}>
+    <div style={{minHeight:"100vh",background:bg,color:txt,fontFamily:"'Inter',system-ui,sans-serif",fontSize:14}}>
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700;800&display=swap');
         * { box-sizing: border-box; }
+        body { font-family: 'Inter', system-ui, sans-serif !important; background: #f8f6f2; }
         @media(max-width:640px){.desk-nav{display:none!important}.mob-hdr{display:flex!important}.main-wrap{margin-left:0!important;padding:16px!important;padding-top:68px!important}}
         @media(min-width:641px){.mob-hdr{display:none!important}}
-        input:focus, select:focus { border-color: ${acc} !important; box-shadow: 0 0 0 3px ${acc}18; }
-        tr:hover td { background: ${acc}04; }
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: ${surf2}; }
-        ::-webkit-scrollbar-thumb { background: ${bdr}; border-radius: 3px; }
+        input:focus, select:focus { border-color: ${acc} !important; box-shadow: 0 0 0 3px ${acc}30; outline: none; }
+        input, select, button { font-family: inherit; }
+        tr:hover td { background: ${surf2}; }
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: ${bdr2}; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: ${mut}; }
       `}</style>
 
       {/* Desktop sidebar */}
-      <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:surf,borderRight:`1.5px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10,boxShadow:"2px 0 8px rgba(0,0,0,0.04)"}}>
-        <div style={{padding:"24px 20px 20px",borderBottom:`1.5px solid ${bdr}`}}>
-          <div style={{fontSize:18,fontWeight:900,color:acc,letterSpacing:"-0.03em"}}>PointsVault</div>
-          <div style={{fontSize:11,color:mut,marginTop:3,letterSpacing:"0.04em"}}>Loyalty &amp; Cards Tracker</div>
+      <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:220,background:surf,borderRight:`1.5px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10,boxShadow:`2px 0 12px rgba(0,0,0,0.06)`}}>
+        <div style={{padding:"28px 24px 24px",borderBottom:`1.5px solid ${bdr}`}}>
+          <div style={{fontSize:17,fontWeight:800,color:txt,letterSpacing:"-0.03em"}}>PointsVault</div>
+          <div style={{fontSize:10,color:mut,marginTop:4,letterSpacing:"0.12em",textTransform:"uppercase"}}>Rewards Tracker</div>
         </div>
-        <div style={{flex:1,paddingTop:10,overflowY:"auto"}}>
+        <div style={{flex:1,paddingTop:8,overflowY:"auto"}}>
           {TABS.map(t=>(
-            <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?700:400,color:tab===t.id?acc:mut,background:tab===t.id?acc+"10":"transparent",borderLeft:tab===t.id?`3px solid ${acc}`:"3px solid transparent",transition:"all 0.15s"}}>
-              <span style={{fontSize:16}}>{t.icon}</span>{t.label}
+            <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 24px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderLeft:tab===t.id?`2px solid ${acc}`:"2px solid transparent",transition:"all 0.15s",letterSpacing:"0.01em"}}>
+              <span style={{fontSize:14,opacity:tab===t.id?1:0.5}}>{t.icon}</span>{t.label}
             </div>
           ))}
         </div>
-        <div style={{padding:"12px 20px 20px",borderTop:`1.5px solid ${bdr}`}}>
-          <div style={{fontSize:11,color:mut,letterSpacing:"0.04em"}}>🔄 Synced with Supabase</div>
+        <div style={{padding:"16px 24px 24px",borderTop:`1px solid ${bdr}`}}>
+          <div style={{fontSize:10,color:mut,letterSpacing:"0.08em",textTransform:"uppercase"}}>Synced · Supabase</div>
         </div>
       </nav>
 
       {/* Mobile header */}
-      <div className="mob-hdr" style={{display:"none",position:"fixed",top:0,left:0,right:0,height:56,background:surf,borderBottom:`1.5px solid ${bdr}`,alignItems:"center",justifyContent:"space-between",padding:"0 16px",zIndex:100,boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>
-        <div style={{fontSize:15,fontWeight:900,color:acc}}>PointsVault</div>
+      <div className="mob-hdr" style={{display:"none",position:"fixed",top:0,left:0,right:0,height:56,background:surf,borderBottom:`1.5px solid ${bdr}`,alignItems:"center",justifyContent:"space-between",padding:"0 16px",zIndex:100,boxShadow:`0 2px 8px rgba(0,0,0,0.06)`}}>
+        <div style={{fontSize:15,fontWeight:800,color:txt,letterSpacing:"-0.02em"}}>PointsVault</div>
         <div style={{fontSize:13,color:acc,fontWeight:700}}>{cur?.icon} {cur?.label}</div>
         <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",color:txt,fontSize:22,padding:"0 4px"}}>☰</button>
       </div>
@@ -1474,7 +2286,8 @@ export default function App() {
       )}
 
       {/* Main content */}
-      <main className="main-wrap" style={{marginLeft:220,padding:"32px 36px 60px",minHeight:"100vh"}}>
+      <main className="main-wrap" style={{marginLeft:220,padding:"36px 40px 80px",minHeight:"100vh",background:bg}}>
+        {tab==="dashboard" && <Dashboard db={db} onNavigate={setTab}/>}
         {tab==="cards"     && <Cards db={db}/>}
         {tab==="loyalty"   && <Loyalty db={db}/>}
         {tab==="transfers" && <Transfers db={db}/>}
@@ -1482,6 +2295,7 @@ export default function App() {
         {tab==="vouchers"  && <Vouchers db={db}/>}
         {tab==="settings"  && <Settings onDisconnect={()=>setDb(null)}/>}
         {tab==="import"    && <StatementImport db={db}/>}
+        {tab==="history"   && <TransferHistory db={db}/>}
       </main>
     </div>
   );
