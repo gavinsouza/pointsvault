@@ -1191,7 +1191,12 @@ function TransferPoints({ db }) {
   const [cards,setCards]=useState([]); const [loyalties,setLoyalties]=useState([]);
   const [allPartners,setAllPartners]=useState([]);
   const [busy,setBusy]=useState(true);
-  const [from,setFrom]=useState(""); const [to,setTo]=useState("");
+  // from state
+  const [fromType,setFromType]=useState("card");
+  const [from,setFrom]=useState("");
+  // to state
+  const [toType,setToType]=useState("loyalty");
+  const [to,setTo]=useState("");
   const [pts,setPts]=useState(""); const [bonusMiles,setBonusMiles]=useState("");
   const [txnDate,setTxnDate]=useState(new Date().toISOString().split("T")[0]);
   const [notes,setNotes]=useState(""); const [done,setDone]=useState(null);
@@ -1204,18 +1209,68 @@ function TransferPoints({ db }) {
   },[db]);
   useEffect(()=>{ loadAll(); },[loadAll]);
 
-  const allPrograms=[...cards.map(c=>({name:c.name,type:"card",balance:c.points_balance||0,id:c.id,logo_url:c.logo_url,color:c.color})),...loyalties.map(l=>({name:l.name,type:"loyalty",balance:l.points_balance||0,id:l.id,logo_url:l.logo_url,color:l.color}))];
-  const validFromNames=[...new Set(allPartners.map(p=>p.from_program))];
-  const validToNames=[...new Set(allPartners.map(p=>p.to_program))];
-  const toOptions=from?allPartners.filter(p=>p.from_program===from).map(p=>p.to_program):validToNames;
-  const fromOptions=to?allPartners.filter(p=>p.to_program===to).map(p=>p.from_program):validFromNames;
-  const partner=from&&to?allPartners.find(p=>p.from_program===from&&p.to_program===to):null;
+  const programsOfType = (type) => type==="card"
+    ? cards.map(c=>({name:c.name,type:"card",balance:c.points_balance||0,id:c.id,logo_url:c.logo_url,last4:c.last4}))
+    : loyalties.map(l=>({name:l.name,type:"loyalty",balance:l.points_balance||0,id:l.id,logo_url:l.logo_url,loyalty_number:l.loyalty_number}));
+
+  const allPrograms=[...cards.map(c=>({name:c.name,type:"card",balance:c.points_balance||0,id:c.id})),...loyalties.map(l=>({name:l.name,type:"loyalty",balance:l.points_balance||0,id:l.id}))];
+
+  // Which programs (of fromType) can transfer somewhere given current 'to' selection
+  const fromPrograms = programsOfType(fromType).filter(p => {
+    if (to) return allPartners.some(r=>r.from_program===p.name&&r.to_program===to);
+    return allPartners.some(r=>r.from_program===p.name);
+  });
+
+  // Which programs (of toType) can be transferred to from current 'from' selection
+  // Also show ratio next to name when from is selected
+  const toPrograms = programsOfType(toType).filter(p => {
+    if (from) return allPartners.some(r=>r.from_program===from&&r.to_program===p.name);
+    return allPartners.some(r=>r.to_program===p.name);
+  });
+
+  const partner = from&&to ? allPartners.find(p=>p.from_program===from&&p.to_program===to) : null;
   const sentPts=parseInt(pts)||0;
   const bonusPts=parseInt(bonusMiles)||0;
   const ratioReceived=partner&&sentPts?Math.floor(sentPts*(partner.ratio_to/partner.ratio_from)):0;
   const totalReceived=ratioReceived+bonusPts;
   const fromProg=allPrograms.find(p=>p.name===from);
   const toProg=allPrograms.find(p=>p.name===to);
+
+  const handleFromType = (t) => { setFromType(t); setFrom(""); };
+  const handleToType   = (t) => { setToType(t);   setTo(""); };
+  const handleFrom = (name) => {
+    setFrom(name);
+    if (to) {
+      const valid = allPartners.filter(p=>p.from_program===name).map(p=>p.to_program);
+      if (!valid.includes(to)) setTo("");
+    }
+  };
+  const handleTo = (name) => {
+    setTo(name);
+    if (from) {
+      const valid = allPartners.filter(p=>p.to_program===name).map(p=>p.from_program);
+      if (!valid.includes(from)) setFrom("");
+    }
+  };
+
+  // Get ratio for a specific to-program when from is selected
+  const getRatio = (toName) => {
+    if (!from) return null;
+    const p = allPartners.find(r=>r.from_program===from&&r.to_program===toName);
+    return p ? `${p.ratio_from}:${p.ratio_to}` : null;
+  };
+  // Get ratio for a specific from-program when to is selected
+  const getFromRatio = (fromName) => {
+    if (!to) return null;
+    const p = allPartners.find(r=>r.from_program===fromName&&r.to_program===to);
+    return p ? `${p.ratio_from}:${p.ratio_to}` : null;
+  };
+
+  const subLabel = (prog) => {
+    if (prog.type==="card" && prog.last4) return ` ···· ${prog.last4}`;
+    if (prog.type==="loyalty" && prog.loyalty_number) return ` #${prog.loyalty_number}`;
+    return "";
+  };
 
   const doTransfer=async()=>{
     if(!from||!to||!pts) return alert("Fill From, To and Points");
@@ -1239,12 +1294,18 @@ function TransferPoints({ db }) {
 
   if(busy) return <div style={{color:mut,padding:40,textAlign:"center"}}>Loading…</div>;
 
+  const typeBtn = (active, label, onClick) => (
+    <button onClick={onClick} style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut,transition:"all 0.15s"}}>
+      {label}
+    </button>
+  );
+
   return (
     <div>
       <div style={{fontSize:22,fontWeight:800,color:txt,letterSpacing:"-0.02em",marginBottom:6}}>Transfer Points</div>
       <div style={{fontSize:13,color:mut,marginBottom:24}}>Move points between your cards and programs</div>
       {done&&(
-        <div style={{background:"#ecfdf5",border:`1.5px solid #6ee7b7`,borderRadius:14,padding:"14px 18px",marginBottom:20}}>
+        <div style={{background:surf2,border:`1px solid ${bdr}`,borderRadius:12,padding:"14px 18px",marginBottom:20}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
             <div>
               <div style={{fontSize:13,color:grn,fontWeight:700,marginBottom:4}}>✓ Transfer complete!</div>
@@ -1255,66 +1316,76 @@ function TransferPoints({ db }) {
           </div>
         </div>
       )}
-      <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:24,maxWidth:560,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
-        {/* FROM — populates based on to if set, otherwise shows all valid sources */}
-        <div style={{marginBottom:18}}>
-          <div style={{fontSize:11,color:acc,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>From</div>
-          {lbl("Program")}
-          <select style={inp} value={from} onChange={e=>{
-            setFrom(e.target.value);
-            // If to is set and new from can't transfer to it, clear to
-            if(to){
-              const valid=allPartners.filter(p=>p.from_program===e.target.value).map(p=>p.to_program);
-              if(!valid.includes(to)) setTo("");
-            }
-          }}>
-            <option value="">— select source —</option>
-            {allPrograms
-              .filter(p => to
-                ? allPartners.some(r=>r.from_program===p.name&&r.to_program===to)
-                : validFromNames.includes(p.name)
-              )
-              .map(p=>(
-                <option key={p.name} value={p.name}>{p.name} ({p.balance.toLocaleString()} pts)</option>
-              ))}
-          </select>
-          {fromProg&&<div style={{fontSize:12,color:mut,marginTop:-8,marginBottom:8}}>Available: <span style={{color:txt,fontWeight:600}}>{fromProg.balance.toLocaleString()} pts</span></div>}
-          {!from&&to&&<div style={{fontSize:11,color:acc,marginTop:-8,marginBottom:8}}>Showing only programs that can transfer to {to}</div>}
+      <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:24,maxWidth:580,boxShadow:"0 1px 4px rgba(0,0,0,0.04)"}}>
+
+        {/* ── FROM ── */}
+        <div style={{background:surf2,borderRadius:10,padding:"16px 16px 12px",marginBottom:16,border:`1px solid ${bdr}`}}>
+          <div style={{fontSize:10,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>From</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              {lbl("Type")}
+              <div style={{display:"flex",gap:6}}>
+                {typeBtn(fromType==="card","Credit Card",()=>handleFromType("card"))}
+                {typeBtn(fromType==="loyalty","Loyalty Prog",()=>handleFromType("loyalty"))}
+              </div>
+            </div>
+            <div>
+              {lbl("Program")}
+              <select style={inp} value={from} onChange={e=>handleFrom(e.target.value)}>
+                <option value="">— select —</option>
+                {fromPrograms.map(p=>{
+                  const ratio = getFromRatio(p.name);
+                  return (
+                    <option key={p.name} value={p.name}>
+                      {p.name}{subLabel(p)} · {p.balance.toLocaleString()} pts{ratio?` [${ratio}]`:""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+          {fromProg&&<div style={{fontSize:12,color:mut,marginTop:2}}>Available: <span style={{fontWeight:600,color:txt}}>{fromProg.balance.toLocaleString()} pts</span></div>}
+          {!from&&to&&<div style={{fontSize:11,color:acc,marginTop:4}}>Showing programs that can transfer to {to}</div>}
         </div>
 
-        {/* TO — populates based on from if set, otherwise shows all valid destinations */}
-        <div style={{marginBottom:18}}>
-          <div style={{fontSize:11,color:grn,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>To</div>
-          {lbl("Program")}
-          <select style={inp} value={to} onChange={e=>{
-            setTo(e.target.value);
-            // If from is set and it can't transfer to new to, clear from
-            if(from){
-              const valid=allPartners.filter(p=>p.to_program===e.target.value).map(p=>p.from_program);
-              if(!valid.includes(from)) setFrom("");
-            }
-          }}>
-            <option value="">— select destination —</option>
-            {allPrograms
-              .filter(p => from
-                ? allPartners.some(r=>r.from_program===from&&r.to_program===p.name)
-                : validToNames.includes(p.name)
-              )
-              .map(p=>(
-                <option key={p.name} value={p.name}>{p.name} ({p.balance.toLocaleString()} pts)</option>
-              ))}
-          </select>
-          {!to&&from&&<div style={{fontSize:11,color:grn,marginTop:-8,marginBottom:8}}>Showing only programs {from} can transfer to</div>}
-          {!from&&!to&&<div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:8}}>Select either From or To first to filter options</div>}
-          {toProg&&<div style={{fontSize:12,color:mut,marginTop:-8,marginBottom:8}}>Current: <span style={{color:txt,fontWeight:600}}>{toProg.balance.toLocaleString()} pts</span></div>}
+        {/* ── TO ── */}
+        <div style={{background:surf2,borderRadius:10,padding:"16px 16px 12px",marginBottom:16,border:`1px solid ${bdr}`}}>
+          <div style={{fontSize:10,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:12}}>To</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            <div>
+              {lbl("Type")}
+              <div style={{display:"flex",gap:6}}>
+                {typeBtn(toType==="card","Credit Card",()=>handleToType("card"))}
+                {typeBtn(toType==="loyalty","Loyalty Prog",()=>handleToType("loyalty"))}
+              </div>
+            </div>
+            <div>
+              {lbl("Program")}
+              <select style={inp} value={to} onChange={e=>handleTo(e.target.value)}>
+                <option value="">— select —</option>
+                {toPrograms.map(p=>{
+                  const ratio = getRatio(p.name);
+                  return (
+                    <option key={p.name} value={p.name}>
+                      {p.name}{subLabel(p)} · {p.balance.toLocaleString()} pts{ratio?` [${ratio}]`:""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+          {toProg&&<div style={{fontSize:12,color:mut,marginTop:2}}>Current: <span style={{fontWeight:600,color:txt}}>{toProg.balance.toLocaleString()} pts</span></div>}
+          {!to&&from&&<div style={{fontSize:11,color:acc,marginTop:4}}>Showing programs {from} can transfer to</div>}
         </div>
+
+        {/* ── Partner info ── */}
         {partner&&(
-          <div style={{background:acc+"08",border:`1.5px solid ${acc}22`,borderRadius:12,padding:"12px 16px",marginBottom:18}}>
-            <div style={{display:"flex",gap:20,flexWrap:"wrap"}}>
-              <div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:700}}>Ratio</div><div style={{fontSize:18,fontWeight:900,color:acc}}>{partner.ratio_from}:{partner.ratio_to}</div></div>
-              {partner.min_transfer&&<div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:700}}>Min</div><div style={{fontSize:18,fontWeight:900,color:txt}}>{partner.min_transfer.toLocaleString()}</div></div>}
-              {partner.max_monthly&&<div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:700}}>Max/mo</div><div style={{fontSize:18,fontWeight:900,color:txt}}>{partner.max_monthly.toLocaleString()}</div></div>}
-              {partner.transfer_time&&<div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:700}}>Time</div><div style={{fontSize:18,fontWeight:900,color:grn}}>{partner.transfer_time}</div></div>}
+          <div style={{background:acc+"08",border:`1px solid ${acc}30`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+            <div style={{display:"flex",gap:20,flexWrap:"wrap",alignItems:"flex-end"}}>
+              <div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>Ratio</div><div style={{fontSize:22,fontWeight:800,color:acc,letterSpacing:"-0.02em"}}>{partner.ratio_from}:{partner.ratio_to}</div></div>
+              {partner.min_transfer&&<div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>Min Transfer</div><div style={{fontSize:16,fontWeight:700,color:txt}}>{partner.min_transfer.toLocaleString()}</div></div>}
+              {partner.max_monthly&&<div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>Max/Month</div><div style={{fontSize:16,fontWeight:700,color:txt}}>{partner.max_monthly.toLocaleString()}</div></div>}
+              {partner.transfer_time&&<div><div style={{fontSize:10,color:mut,textTransform:"uppercase",fontWeight:600,marginBottom:3}}>Transfer Time</div><div style={{fontSize:16,fontWeight:700,color:grn}}>{partner.transfer_time}</div></div>}
             </div>
           </div>
         )}
