@@ -1096,7 +1096,7 @@ function Loyalty({ db }) {
       ):(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:16}}>
           {filtered.map(p=>{ const d=days(p.expiry_date); const exp=d!==null&&d<60; const inrVal=(p.points_balance||0)*(p.inr_per_point||0); return (
-            <divkey={p.id} onClick={()=>setDetail(p)}
+            <div key={p.id} onClick={()=>setDetail(p)}
               style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"16px 18px",cursor:"pointer",position:"relative",boxShadow:"0 1px 4px rgba(0,0,0,0.04)",transition:"all 0.2s"}}
               onMouseEnter={e=>{ e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)"; e.currentTarget.style.transform="translateY(-2px)"; e.currentTarget.style.borderColor=p.color||acc2; }}
               onMouseLeave={e=>{ e.currentTarget.style.boxShadow="0 1px 4px rgba(0,0,0,0.04)"; e.currentTarget.style.transform="none"; e.currentTarget.style.borderColor=bdr; }}>
