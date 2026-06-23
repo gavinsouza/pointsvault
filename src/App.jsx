@@ -519,7 +519,7 @@ function CardDetail({ card:initialCard, db, onBack, onDelete, allCards, allLoyal
       <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"22px 24px",borderTop:`4px solid ${card.color||acc}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
-            <LogoCircle url={card.logo_url} name={card.name} color={card.color||acc} size={52}/>
+            <LogoCircle url={card.logo_url} name={card.name} color={card.color||acc} size={64}/>
             <div>
               <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{card.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank}{card.last4?` ···· ${card.last4}`:""} · <span style={{fontWeight:500}}>{card.network}</span></div>
@@ -698,7 +698,7 @@ function LPDetail({ prog:initialProg, db, onBack, onDelete, allCards, allLoyalti
       <div style={{background:surf,border:`1.5px solid ${bdr}`,borderRadius:14,padding:"22px 24px",borderTop:`4px solid ${prog.color||acc2}`,marginBottom:20,boxShadow:"0 4px 16px rgba(0,0,0,0.06)"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
-            <LogoCircle url={prog.logo_url} name={prog.name} color={prog.color||acc2} size={52}/>
+            <LogoCircle url={prog.logo_url} name={prog.name} color={prog.color||acc2} size={64}/>
             <div>
               <div style={{fontSize:24,fontWeight:900,color:txt,letterSpacing:"-0.03em"}}>{prog.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:3}}>
@@ -1014,7 +1014,7 @@ function Cards({ db }) {
                 <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:acc,borderRadius:"14px 14px 0 0"}}/>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,marginTop:4}}>
                   <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={34}/>
+                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={44}/>
                     <div>
                       <div style={{fontSize:14,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{c.name}</div>
                       <div style={{fontSize:11,color:mut,marginTop:1}}>{c.bank}{c.last4?` ···· ${c.last4}`:""}</div>
@@ -1167,7 +1167,7 @@ function Loyalty({ db }) {
               <div style={{position:"absolute",top:0,left:0,right:0,height:2,background:acc,borderRadius:"14px 14px 0 0"}}/>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,marginTop:4}}>
                 <div style={{display:"flex",gap:10,alignItems:"center"}}>
-                  <LogoCircle url={p.logo_url} name={p.name} color={p.color||acc2} size={34}/>
+                  <LogoCircle url={p.logo_url} name={p.name} color={p.color||acc2} size={44}/>
                   <div>
                     <div style={{fontSize:14,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{p.name}</div>
                     <div style={{fontSize:11,color:mut,marginTop:1}}>{p.tier&&<span style={{fontWeight:600,color:acc}}>{p.tier}</span>}{p.tier&&p.loyalty_number&&" · "}{p.loyalty_number&&<span>#{p.loyalty_number}</span>}</div>
@@ -2332,7 +2332,7 @@ function PortfolioChart({ cards, loyalties, surf, surf2, bdr, bdr2, txt, mut, ac
         return (
           <div key={d.name+i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:10}}>
             <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
-              <LogoCircle url={d.logo_url} name={d.name} color={acc} size={28}/>
+              <LogoCircle url={d.logo_url} name={d.name} color={acc} size={38}/>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:13,fontWeight:500,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{d.name}</div>
                 {d.sub&&<div style={{fontSize:11,color:mut}}>{d.sub}</div>}
@@ -2641,7 +2641,7 @@ function Dashboard({ db, onNavigate }) {
               return (
                 <div key={l.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
                   <div style={{display:"flex",alignItems:"center",gap:12}}>
-                    <LogoCircle url={l.logo_url} name={l.name} color={l.color||acc2} size={36}/>
+                    <LogoCircle url={l.logo_url} name={l.name} color={l.color||acc2} size={46}/>
                     <div>
                       <div style={{fontSize:13,fontWeight:600,color:txt}}>{l.name}</div>
                       <div style={{fontSize:11,color:mut,marginTop:1}}>
@@ -2678,7 +2678,7 @@ function Dashboard({ db, onNavigate }) {
               return (
                 <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
                   <div style={{display:"flex",alignItems:"center",gap:12}}>
-                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={36}/>
+                    <LogoCircle url={c.logo_url} name={c.name} color={c.color||acc} size={46}/>
                     <div>
                       <div style={{fontSize:13,fontWeight:600,color:txt}}>{c.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> ···· {c.last4}</span>}</div>
                       <div style={{fontSize:11,color:mut,marginTop:1,display:"flex",gap:6,alignItems:"center"}}>
