@@ -1332,6 +1332,255 @@ function LibraryImport({db, onClose, onDone}){
 }
 
 
+// ── MasterCardDetail ──────────────────────────────────────────────────────────
+function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
+  const [partners,setPartners]=useState([]);
+  const [inboundPartners,setInboundPartners]=useState([]);
+  const [milestones,setMilestones]=useState([]);
+  const [allMasters,setAllMasters]=useState({cards:[],programs:[]});
+  const [busy,setBusy]=useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      setBusy(true);
+      const [out,inb,ms,mc,mp]=await Promise.all([
+        db.from("master_partners").filter("from_id",card.id),
+        db.from("master_partners").filter("to_id",card.id),
+        db.from("master_milestones").filter("master_card_id",card.id),
+        db.from("master_cards").select(),
+        db.from("master_programs").select(),
+      ]);
+      setPartners((out.data||[]).sort((a,b)=>a.ratio_from/a.ratio_to-b.ratio_from/b.ratio_to));
+      setInboundPartners(inb.data||[]);
+      setMilestones((ms.data||[]).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)));
+      setAllMasters({cards:mc.data||[],programs:mp.data||[]});
+      setBusy(false);
+    })();
+  },[card.id]);
+
+  const getName=(type,id)=>type==="card"?allMasters.cards.find(x=>x.id===id)?.name||"—":allMasters.programs.find(x=>x.id===id)?.name||"—";
+  const getLogo=(type,id)=>type==="card"?allMasters.cards.find(x=>x.id===id)?.logo_url:allMasters.programs.find(x=>x.id===id)?.logo_url;
+  const autoTransferName=card.auto_transfer_to?allMasters.programs.find(x=>x.id===card.auto_transfer_to)?.name:null;
+
+  const cLbl={calendar_year:"Cal. Year",billing_year:"Billing Year",calendar_month:"Cal. Month",billing_month:"Bill. Month",lifetime:"Lifetime"};
+  const tLbl={bonus_points:"Bonus Points",voucher:"Voucher",fee_waiver:"Fee Waiver",lounge:"Lounge",gift:"Gift",status_upgrade:"Status Upgrade",other:"Benefit"};
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",fontFamily:"'Manrope',sans-serif"}}>← Back</button>
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={onEdit}>Edit</button>
+          <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={onDelete}>Delete</button>
+        </div>
+      </div>
+
+      {/* Hero */}
+      <Card style={{marginBottom:16}}>
+        <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
+          <LogoCircle url={card.logo_url} name={card.name} size={56}/>
+          <div>
+            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.name}</div>
+            <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank&&card.bank+" · "}{card.network}</div>
+            {autoTransferName&&<div style={{fontSize:11,color:acc,fontWeight:500,marginTop:4}}>Co-branded — auto-transfers to {autoTransferName}</div>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {[
+            {label:"Points Currency", value:card.points_currency||"pts"},
+            {label:"INR / Point",      value:"₹"+(card.inr_per_point||0)},
+            {label:"Annual Fee",       value:"₹"+Number(card.annual_fee||0).toLocaleString("en-IN"), color:red},
+            card.fee_waiver_amt>0&&{label:"Fee Waiver",value:"₹"+Number(card.fee_waiver_amt).toLocaleString("en-IN")+" ("+( card.fee_waiver_cycle==="billing"?"Billing Yr":"Cal. Yr")+")"},
+            card.billing_year_start&&{label:"Billing Yr Start",value:card.billing_year_start},
+            card.fee_charge_date&&{label:"Fee Charge Date",value:card.fee_charge_date},
+          ].filter(Boolean).map((s,i)=>(
+            <div key={i} style={{background:surf2,borderRadius:10,padding:"10px 14px",border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:500}}>{s.label}</div>
+              <div style={{fontSize:13,fontWeight:600,color:s.color||txt}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Milestones */}
+      {milestones.length>0&&(
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Milestones</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {milestones.map(m=>(
+              <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
+                <div style={{flexShrink:0,textAlign:"center",minWidth:64}}>
+                  {m.spend_threshold>0&&<div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{"₹"+(m.spend_threshold>=100000?(m.spend_threshold/100000).toFixed(0)+"L":m.spend_threshold>=1000?(m.spend_threshold/1000).toFixed(0)+"K":m.spend_threshold)}</div>}
+                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.05em"}}>{cLbl[m.cycle_type]||m.cycle_type}</div>
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:2}}>{tLbl[m.benefit_type]||m.benefit_type}{m.stackable&&<span style={{fontSize:9,color:grn,marginLeft:6,fontWeight:400}}>stackable</span>}</div>
+                  <div style={{fontSize:11,color:txt,lineHeight:1.5}}>{m.benefit_value}</div>
+                  {m.benefit_points&&<div className="pv-num" style={{fontSize:11,color:grn,fontWeight:600,marginTop:2}}>+{Number(m.benefit_points).toLocaleString("en-IN")} pts</div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {/* Transfer Out */}
+      <Card style={{marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer Out Partners ({partners.length})</div>
+        {busy?<div style={{color:mut,fontSize:12,textAlign:"center",padding:16}}>Loading…</div>:partners.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"12px 0"}}>No outgoing transfer partners</div>:(
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {partners.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <LogoCircle url={getLogo(p.to_type,p.to_id)} name={getName(p.to_type,p.to_id)} size={32}/>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{getName(p.to_type,p.to_id)}</div>
+                    <div style={{fontSize:10,color:mut}}>{p.to_type==="card"?"Credit Card":"Loyalty Program"}</div>
+                    {p.notes&&<div style={{fontSize:10,color:mut,marginTop:1,fontStyle:"italic"}}>{p.notes}</div>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:13,fontWeight:700,color:acc}}>{p.ratio_from}:{p.ratio_to}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Ratio</div></div>
+                  {p.min_transfer&&<div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:11,fontWeight:600,color:txt}}>{Number(p.min_transfer).toLocaleString()}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Min</div></div>}
+                  {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:11,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Time</div></div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Transfer In */}
+      {inboundPartners.length>0&&(
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer In (From these programs)</div>
+          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+            {inboundPartners.map(p=>(
+              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <LogoCircle url={getLogo(p.from_type,p.from_id)} name={getName(p.from_type,p.from_id)} size={32}/>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{getName(p.from_type,p.from_id)}</div>
+                    <div style={{fontSize:10,color:mut}}>{p.from_type==="card"?"Credit Card":"Loyalty Program"}</div>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:13,fontWeight:700,color:grn}}>{p.ratio_from}:{p.ratio_to}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Ratio</div></div>
+                  {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:11,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Time</div></div>}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ── MasterProgDetail ──────────────────────────────────────────────────────────
+function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
+  const [partners,setPartners]=useState([]);
+  const [inboundPartners,setInboundPartners]=useState([]);
+  const [allMasters,setAllMasters]=useState({cards:[],programs:[]});
+  const [busy,setBusy]=useState(true);
+
+  useEffect(()=>{
+    (async()=>{
+      setBusy(true);
+      const [out,inb,mc,mp]=await Promise.all([
+        db.from("master_partners").filter("from_id",prog.id),
+        db.from("master_partners").filter("to_id",prog.id),
+        db.from("master_cards").select(),
+        db.from("master_programs").select(),
+      ]);
+      setPartners(out.data||[]);
+      setInboundPartners(inb.data||[]);
+      setAllMasters({cards:mc.data||[],programs:mp.data||[]});
+      setBusy(false);
+    })();
+  },[prog.id]);
+
+  const getName=(type,id)=>type==="card"?allMasters.cards.find(x=>x.id===id)?.name||"—":allMasters.programs.find(x=>x.id===id)?.name||"—";
+  const getLogo=(type,id)=>type==="card"?allMasters.cards.find(x=>x.id===id)?.logo_url:allMasters.programs.find(x=>x.id===id)?.logo_url;
+
+  const PartnerSection=({title,items,colorRatio})=>(
+    items.length>0?(
+      <Card style={{marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>{title} ({items.length})</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {items.map(p=>{
+            const isOut=title.includes("Out");
+            const nameId=isOut?p.to_id:p.from_id;
+            const nameType=isOut?p.to_type:p.from_type;
+            return(
+              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <LogoCircle url={getLogo(nameType,nameId)} name={getName(nameType,nameId)} size={32}/>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{getName(nameType,nameId)}</div>
+                    <div style={{fontSize:10,color:mut}}>{nameType==="card"?"Credit Card":"Loyalty Program"}</div>
+                    {p.notes&&<div style={{fontSize:10,color:mut,fontStyle:"italic",marginTop:1}}>{p.notes}</div>}
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:12,alignItems:"center"}}>
+                  <div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:13,fontWeight:700,color:colorRatio||acc}}>{p.ratio_from}:{p.ratio_to}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Ratio</div></div>
+                  {p.min_transfer&&<div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:11,fontWeight:600,color:txt}}>{Number(p.min_transfer).toLocaleString()}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Min</div></div>}
+                  {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:11,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Time</div></div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    ):null
+  );
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",fontFamily:"'Manrope',sans-serif"}}>← Back</button>
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={onEdit}>Edit</button>
+          <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={onDelete}>Delete</button>
+        </div>
+      </div>
+
+      <Card style={{marginBottom:16}}>
+        <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
+          <LogoCircle url={prog.logo_url} name={prog.name} size={56}/>
+          <div>
+            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{prog.name}</div>
+            <div style={{fontSize:13,color:mut,marginTop:3}}>{prog.category}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {[
+            {label:"Points Currency", value:prog.points_currency||"pts"},
+            {label:"INR / Point",      value:"₹"+(prog.inr_per_point||0)},
+            prog.expiry_rule&&{label:"Expiry Rule",value:prog.expiry_rule},
+          ].filter(Boolean).map((s,i)=>(
+            <div key={i} style={{background:surf2,borderRadius:10,padding:"10px 14px",border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:500}}>{s.label}</div>
+              <div style={{fontSize:13,fontWeight:600,color:txt}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {busy?<div style={{color:mut,textAlign:"center",padding:32}}>Loading…</div>:(
+        <>
+          <PartnerSection title="Transfer Out Partners" items={partners} colorRatio={acc}/>
+          <PartnerSection title="Transfer In Partners" items={inboundPartners} colorRatio={grn}/>
+          {partners.length===0&&inboundPartners.length===0&&(
+            <Card><div style={{color:mut,fontSize:12,textAlign:"center",padding:"16px 0"}}>No transfer partners configured yet</div></Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+
 function Catalog({db}){
   const [tab,setTab]=useState("cards");
   const [mCards,setMCards]=useState([]);
@@ -1342,6 +1591,8 @@ function Catalog({db}){
   const [showProg,setShowProg]=useState(false);
   const [showPart,setShowPart]=useState(false);
   const [showLibrary,setShowLibrary]=useState(false);
+  const [detailCard,setDetailCard]=useState(null);
+  const [detailProg,setDetailProg]=useState(null);
   const [partSearch,setPartSearch]=useState("");
   const [partSort,setPartSort]=useState("name");
   const [saving,setSaving]=useState(false);
@@ -1435,7 +1686,9 @@ function Catalog({db}){
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+      {detailCard&&<MasterCardDetail card={detailCard} db={db} onBack={()=>setDetailCard(null)} onEdit={()=>{setEditItem(detailCard);setFC({name:detailCard.name,bank:detailCard.bank||"",network:detailCard.network||"Visa",points_currency:detailCard.points_currency||"pts",inr_per_point:String(detailCard.inr_per_point||""),annual_fee:String(detailCard.annual_fee||""),fee_waiver_amt:String(detailCard.fee_waiver_amt||""),fee_waiver_cycle:detailCard.fee_waiver_cycle||"calendar",billing_year_start:detailCard.billing_year_start||"",fee_charge_date:detailCard.fee_charge_date||""});setLogoFile(null);setLogoPrev(detailCard.logo_url);setDetailCard(null);setShowCard(true);}} onDelete={async()=>{if(!confirm("Delete this master card?")) return;await db.from("master_cards").delete(detailCard.id);setDetailCard(null);load();}}/>}
+      {detailProg&&<MasterProgDetail prog={detailProg} db={db} onBack={()=>setDetailProg(null)} onEdit={()=>{setEditItem(detailProg);setFP({name:detailProg.name,category:detailProg.category||"Airline",points_currency:detailProg.points_currency||"pts",inr_per_point:String(detailProg.inr_per_point||""),expiry_rule:detailProg.expiry_rule||""});setLogoFile(null);setLogoPrev(detailProg.logo_url);setDetailProg(null);setShowProg(true);}} onDelete={async()=>{if(!confirm("Delete this master program?")) return;await db.from("master_programs").delete(detailProg.id);setDetailProg(null);load();}}/>}
+      {!detailCard&&!detailProg&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
           <div style={{fontSize:24,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Catalog</div>
           <div style={{fontSize:13,color:mut,marginTop:5,fontWeight:400}}>Master cards, programs and transfer partners</div>
@@ -1462,7 +1715,7 @@ function Catalog({db}){
             {mCards.length===0?<Empty icon="CC" msg="No master cards yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {mCards.map(c=>(
-                  <Card key={c.id} style={{position:"relative"}}>
+                  <Card key={c.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailCard(c)}>
                     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
                       <LogoCircle url={c.logo_url} name={c.name} size={40}/>
                       <div>
@@ -1489,7 +1742,7 @@ function Catalog({db}){
             {mProgs.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {mProgs.map(p=>(
-                  <Card key={p.id} style={{position:"relative"}}>
+                  <Card key={p.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailProg(p)}>
                     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
                       <LogoCircle url={p.logo_url} name={p.name} size={40}/>
                       <div>
@@ -1499,8 +1752,8 @@ function Catalog({db}){
                     </div>
                     <div style={{fontSize:11,color:mut,fontWeight:400}}>{p.inr_per_point>0&&"₹"+p.inr_per_point+"/pt"}{p.expiry_rule&&" · "+p.expiry_rule}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
-                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(p);setFP({name:p.name,category:p.category||"Airline",points_currency:p.points_currency||"pts",inr_per_point:String(p.inr_per_point||""),expiry_rule:p.expiry_rule||""});setLogoFile(null);setLogoPrev(p.logo_url);setShowProg(true);}}>Edit</button>
-                      <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delProg(p.id)}>Del</button>
+                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditItem(p);setFP({name:p.name,category:p.category||"Airline",points_currency:p.points_currency||"pts",inr_per_point:String(p.inr_per_point||""),expiry_rule:p.expiry_rule||""});setLogoFile(null);setLogoPrev(p.logo_url);setShowProg(true);}}>Edit</button>
+                      <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();delProg(p.id);}}>Del</button>
                     </div>
                   </Card>
                 ))}
@@ -1568,6 +1821,7 @@ function Catalog({db}){
         </>
       )}
 
+      </div>}
       <Modal show={showCard} onClose={()=>{setShowCard(false);setEditItem(null);setLogoFile(null);setLogoPrev(null);}} title={editItem?"Edit Master Card":"Add Master Card"}>
         <LogoUpload current={logoPrev} onUpload={(f,p)=>{setLogoFile(f);setLogoPrev(p);}}/>
         {lbl("Card Name *")}<input style={inp} placeholder="HDFC Infinia" value={fC.name} onChange={ucC("name")}/>
@@ -1688,7 +1942,8 @@ function MyCards({db,owners}){
     if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
     const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:0,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null,billing_year_start:f.billing_year_start||null,fee_charge_date:f.fee_charge_date||null};
-    const {data}=await db.from("my_cards").insert(p);
+    const {data,error}=await db.from("my_cards").insert(p);
+    if(error){ alert("Failed to add card: "+JSON.stringify(error)); return; }
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
@@ -2004,7 +2259,8 @@ function MyPrograms({db,owners}){
     if(!f.master_id) return alert("Select a master program");
     if(!f.owner_id) return alert("Select an owner");
     const ob=parseInt(f.opening_balance)||0;
-    const {data}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:0,expiry_date:f.expiry_date||null});
+    const {data,error}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:0,expiry_date:f.expiry_date||null});
+    if(error){ alert("Failed to add program: "+JSON.stringify(error)); return; }
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
