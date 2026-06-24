@@ -448,157 +448,225 @@ function Setup({onDone}){
 }
 
 // ── PortfolioChart — SVG line chart, works for programs or cards ───────────────
-function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
+function UnifiedChart({txns,cards,progs,mc,mp,owners}){
   const [period,setPeriod]=useState("3m");
   const [ownerF,setOwnerF]=useState("all");
+  const [typeF,setTypeF]=useState("all"); // all | card | program
   const [entityF,setEntityF]=useState("all");
   const [metric,setMetric]=useState("points");
+  const [mode,setMode]=useState("total"); // total | individual
   const [hover,setHover]=useState(null);
 
-  const color=accentColor||acc;
   const pDays={"1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999};
 
-  const series=useMemo(()=>{
+  // Build series — either one combined line or one per entity
+  const {series,colors,labels} = useMemo(()=>{
     const now=new Date();
     const cutoff=new Date(now.getTime()-pDays[period]*86400000);
-    const filtered=(txns||[]).filter(t=>{
-      if(t.entity_type!==entityType) return false;
-      const ent=(entities||[]).find(e=>e.id===t.entity_id);
-      if(!ent) return false;
-      if(ownerF!=="all"&&ent.owner_id!==ownerF) return false;
-      if(entityF!=="all"&&ent.id!==entityF) return false;
-      return true;
-    });
-    const entIds=[...new Set(filtered.map(t=>t.entity_id))];
-    if(entIds.length===0) return [];
-    const openBals={};
-    entIds.forEach(eid=>{
-      const ent=(entities||[]).find(e=>e.id===eid);
-      const pre=(txns||[]).filter(t=>t.entity_id===eid&&new Date(t.txn_date).getTime()<cutoff.getTime());
-      openBals[eid]=(ent?.opening_balance||0)+pre.reduce((a,t)=>a+t.points,0);
-    });
-    const inRange=filtered.filter(t=>new Date(t.txn_date).getTime()>=cutoff.getTime());
-    const dateSet=new Set(inRange.map(t=>t.txn_date));
-    dateSet.add(cutoff.toISOString().split("T")[0]);
-    dateSet.add(now.toISOString().split("T")[0]);
-    const dates=[...dateSet].sort();
-    const run={...openBals};
-    return dates.map(date=>{
-      inRange.filter(t=>t.txn_date===date).forEach(t=>{
-        if(run[t.entity_id]!==undefined) run[t.entity_id]+=t.points;
-      });
-      let total=0;
-      entIds.forEach(eid=>{
-        const ent=(entities||[]).find(e=>e.id===eid);
-        const m=(masters||[]).find(x=>x.id===ent?.master_id);
-        total+=metric==="inr"?(run[eid]||0)*(m?.inr_per_point||0):(run[eid]||0);
-      });
-      return {date,value:total};
-    });
-  },[txns,entities,masters,ownerF,entityF,period,metric,entityType]);
 
-  const W=540,H=160,PL=56,PR=10,PT=10,PB=28;
+    const allEntities=[
+      ...(typeF==="program"?[]:(cards||[]).filter(e=>ownerF==="all"||e.owner_id===ownerF).filter(e=>entityF==="all"||e.id===entityF)),
+      ...(typeF==="card"?[]:(progs||[]).filter(e=>ownerF==="all"||e.owner_id===ownerF).filter(e=>entityF==="all"||e.id===entityF)),
+    ];
+
+    const getMaster=(e)=>{
+      const isCard=cards.some(c=>c.id===e.id);
+      return isCard?mc.find(m=>m.id===e.master_id):mp.find(m=>m.id===e.master_id);
+    };
+    const isCard=(e)=>cards.some(c=>c.id===e.id);
+
+    const buildSeries=(entities)=>{
+      if(!entities.length) return [];
+      const openBals={};
+      entities.forEach(e=>{
+        const pre=(txns||[]).filter(t=>t.entity_id===e.id&&new Date(t.txn_date).getTime()<cutoff.getTime());
+        openBals[e.id]=(e.opening_balance||0)+pre.reduce((a,t)=>a+t.points,0);
+      });
+      const inRange=(txns||[]).filter(t=>entities.some(e=>e.id===t.entity_id)&&new Date(t.txn_date).getTime()>=cutoff.getTime());
+      const dateSet=new Set(inRange.map(t=>t.txn_date));
+      dateSet.add(cutoff.toISOString().split("T")[0]);
+      dateSet.add(now.toISOString().split("T")[0]);
+      const dates=[...dateSet].sort();
+      const run={...openBals};
+      return dates.map(date=>{
+        inRange.filter(t=>t.txn_date===date).forEach(t=>{if(run[t.entity_id]!==undefined)run[t.entity_id]+=t.points;});
+        let total=0;
+        entities.forEach(e=>{
+          const m=getMaster(e);
+          total+=metric==="inr"?(run[e.id]||0)*(m?.inr_per_point||0):(run[e.id]||0);
+        });
+        return{date,value:total};
+      });
+    };
+
+    if(mode==="total"){
+      return{series:[buildSeries(allEntities)],colors:[acc],labels:["Portfolio"]};
+    } else {
+      // Individual mode — one line per entity (cap at 8)
+      const ents=allEntities.slice(0,8);
+      const palette=[acc,txt,grn,red,"#7c6fcd","#2980b9","#e67e22","#16a085"];
+      const sArr=ents.map(e=>buildSeries([e]));
+      const lArr=ents.map(e=>{
+        const m=getMaster(e);
+        const ic=isCard(e);
+        return(e.nickname||(ic?(mc.find(x=>x.id===e.master_id)?.name||"Card"):(mp.find(x=>x.id===e.master_id)?.name||"LP")));
+      });
+      return{series:sArr,colors:palette,labels:lArr};
+    }
+  },[txns,cards,progs,mc,mp,ownerF,typeF,entityF,period,metric,mode]);
+
+  const W=700,H=200,PL=64,PR=16,PT=14,PB=32;
   const cW=W-PL-PR,cH=H-PT-PB;
-  const vals=series.map(s=>s.value);
-  const isEmpty=series.length<2;
-  const minV=isEmpty?0:Math.min(...vals,0);
-  const maxV=isEmpty?1:Math.max(...vals,1);
+
+  // Compute mins/maxes across all series
+  const allVals=series.flat().map(s=>s.value);
+  const isEmpty=series.every(s=>s.length<2);
+  const minV=isEmpty?0:Math.min(...allVals,0);
+  const maxV=isEmpty?1:Math.max(...allVals,1);
   const range=maxV-minV||1;
-  const toX=i=>PL+(i/(Math.max(series.length-1,1)))*cW;
+  const toX=(i,len)=>PL+(i/(Math.max(len-1,1)))*cW;
   const toY=v=>PT+cH-((v-minV)/range)*cH;
-  const latestVal=vals.length>0?(vals[vals.length-1]||0):0;
-  const gradId="grad"+entityType;
+  const latestVals=series.map(s=>s.length>0?s[s.length-1].value:0);
+  const totalLatest=latestVals.reduce((a,b)=>a+b,0);
 
-  const pathD=series.map((s,i)=>(i===0?"M":"L")+toX(i).toFixed(1)+","+toY(s.value).toFixed(1)).join(" ");
-  const areaD=series.length>1?pathD+" L"+toX(series.length-1).toFixed(1)+","+(PT+cH).toFixed(1)+" L"+toX(0).toFixed(1)+","+(PT+cH).toFixed(1)+" Z":"";
+  // Build SVG paths
+  const paths=series.map(s=>{
+    if(s.length<2) return{d:"",area:""};
+    const d=s.map((pt,i)=>(i===0?"M":"L")+toX(i,s.length).toFixed(1)+","+toY(pt.value).toFixed(1)).join(" ");
+    const area=d+" L"+toX(s.length-1,s.length).toFixed(1)+","+(PT+cH).toFixed(1)+" L"+toX(0,s.length).toFixed(1)+","+(PT+cH).toFixed(1)+" Z";
+    return{d,area};
+  });
 
-  const yTicks=3;
+  const yTicks=4;
   const yVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
-  const fmt=v=>metric==="inr"?inrFmt(v):Math.round(v).toLocaleString("en-IN");
+  const fmtTick=v=>metric==="inr"?inrFmt(v):Math.round(v).toLocaleString("en-IN");
   const fmtD=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
-  const xIdxs=series.length<=1?[]:[0,Math.floor((series.length-1)/2),series.length-1];
+
+  // Use first series for x-axis labels
+  const xSeries=series[0]||[];
+  const xIdxs=xSeries.length<=1?[]:[0,Math.floor((xSeries.length-1)/2),xSeries.length-1];
 
   const onMove=e=>{
-    if(series.length<2) return;
+    if(isEmpty||!xSeries.length) return;
     const r=e.currentTarget.getBoundingClientRect();
     const mx=((e.clientX-r.left)/r.width)*W;
     if(mx<PL||mx>W-PR){setHover(null);return;}
-    const i=Math.round(Math.max(0,Math.min(series.length-1,(mx-PL)/cW*(series.length-1))));
-    if(series[i]) setHover({x:toX(i),y:toY(series[i].value),v:series[i].value,d:series[i].date});
+    const rawIdx=(mx-PL)/cW*(xSeries.length-1);
+    const i=Math.round(Math.max(0,Math.min(xSeries.length-1,rawIdx)));
+    const hoverVals=series.map(s=>s[Math.min(i,s.length-1)]?.value||0);
+    setHover({x:toX(i,xSeries.length),ys:hoverVals.map(v=>toY(v)),vs:hoverVals,d:xSeries[i]?.date||""});
   };
 
-  const ss={fontSize:10,color:mut2,border:"1px solid "+bdr,borderRadius:6,padding:"3px 7px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
-  const pb=a=>({padding:"3px 8px",borderRadius:20,border:"1px solid "+(a?txt:bdr),cursor:"pointer",fontSize:10,fontWeight:a?600:400,background:a?txt:"transparent",color:a?"#fff":mut2,fontFamily:"'Manrope',sans-serif"});
-  const entOpts=(entities||[]).filter(e=>ownerF==="all"||e.owner_id===ownerF).map(e=>{const m=(masters||[]).find(x=>x.id===e.master_id);return{id:e.id,name:e.nickname||m?.name||"—"};});
+  const ss={fontSize:11,color:mut2,border:"1px solid "+bdr,borderRadius:6,padding:"4px 8px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
+  const pb=a=>({padding:"3px 9px",borderRadius:20,border:"1px solid "+(a?txt:bdr),cursor:"pointer",fontSize:10,fontWeight:a?600:400,background:a?txt:"transparent",color:a?"#fff":mut2,fontFamily:"'Manrope',sans-serif"});
+  const tb=a=>({padding:"2px 9px",borderRadius:6,border:"none",background:a?surf:"transparent",color:a?txt:mut,fontSize:10,fontWeight:a?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif",boxShadow:a?"0 1px 2px rgba(0,0,0,0.07)":"none"});
 
-  const ttX=hover?Math.min(hover.x+8,W-PR-112):0;
-  const ttY=hover?Math.max(PT+2,hover.y-40):0;
+  // Entity options based on typeF
+  const entityOpts=typeF==="card"
+    ?(cards||[]).filter(e=>ownerF==="all"||e.owner_id===ownerF).map(e=>{const m=mc.find(x=>x.id===e.master_id);return{id:e.id,name:e.nickname||m?.name||"Card"};})
+    :typeF==="program"
+    ?(progs||[]).filter(e=>ownerF==="all"||e.owner_id===ownerF).map(e=>{const m=mp.find(x=>x.id===e.master_id);return{id:e.id,name:e.nickname||m?.name||"LP"};})
+    :[];
 
-  return (
-    <div style={{background:surf,border:"1px solid "+bdr,borderRadius:18,padding:"18px 20px",marginTop:12,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
+  const displayVal=hover?hover.vs.reduce((a,b)=>a+b,0):totalLatest;
+  const displayDate=hover?fmtD(hover.d):"";
+
+  return(
+    <Card style={{marginTop:16}}>
+      {/* Controls */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div>
-          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:2}}>Points over time</div>
-          {!isEmpty&&<div style={{fontSize:16,fontWeight:700,color:hover?color:txt,fontFamily:"'Manrope',sans-serif",fontVariantNumeric:"tabular-nums"}}>
-            {metric==="inr"?inrFmt(hover?hover.v:latestVal):(hover?hover.v:latestVal).toLocaleString("en-IN")}
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:2}}>Portfolio over time</div>
+          {!isEmpty&&<div style={{fontSize:18,fontWeight:700,color:hover?acc:txt,fontFamily:"'Manrope',sans-serif",fontVariantNumeric:"tabular-nums",transition:"color 0.1s"}}>
+            {metric==="inr"?inrFmt(displayVal):displayVal.toLocaleString("en-IN")}
             <span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:5}}>{metric==="inr"?"est. value":"pts"}</span>
-            {hover&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:6}}>{fmtD(hover.d)}</span>}
+            {hover&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:8}}>{displayDate}</span>}
           </div>}
         </div>
-        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+          {/* Pts/₹ toggle */}
           <div style={{display:"flex",gap:2,background:surf3,borderRadius:7,padding:2}}>
-            {["points","inr"].map(m=>(
-              <button key={m} onClick={()=>setMetric(m)} style={{padding:"2px 8px",borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,fontSize:10,fontWeight:metric===m?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
-                {m==="inr"?"₹":"Pts"}
-              </button>
-            ))}
+            {["points","inr"].map(m=><button key={m} onClick={()=>setMetric(m)} style={tb(metric===m)}>{m==="inr"?"₹":"Pts"}</button>)}
           </div>
+          {/* Total/Individual toggle */}
+          <div style={{display:"flex",gap:2,background:surf3,borderRadius:7,padding:2}}>
+            <button onClick={()=>setMode("total")} style={tb(mode==="total")}>Total</button>
+            <button onClick={()=>setMode("individual")} style={tb(mode==="individual")}>Individual</button>
+          </div>
+          {/* Owner */}
           <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setEntityF("all");}} style={ss}>
-            <option value="all">All</option>
+            <option value="all">All owners</option>
             {(owners||[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-          <select value={entityF} onChange={e=>setEntityF(e.target.value)} style={ss}>
+          {/* Type */}
+          <select value={typeF} onChange={e=>{setTypeF(e.target.value);setEntityF("all");}} style={ss}>
             <option value="all">All</option>
-            {entOpts.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+            <option value="card">Credit Cards</option>
+            <option value="program">Loyalty Programs</option>
           </select>
+          {/* Entity — only show when typeF is not "all" */}
+          {typeF!=="all"&&<select value={entityF} onChange={e=>setEntityF(e.target.value)} style={ss}>
+            <option value="all">All {typeF==="card"?"cards":"programs"}</option>
+            {entityOpts.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>}
         </div>
       </div>
-      <div style={{display:"flex",gap:3,marginBottom:8}}>
+
+      {/* Period pills */}
+      <div style={{display:"flex",gap:3,marginBottom:10}}>
         {["1m","3m","6m","1y","3y","LT"].map(p=>(
           <button key={p} onClick={()=>setPeriod(p)} style={pb(period===p)}>{p==="LT"?"All":p}</button>
         ))}
       </div>
+
+      {/* Individual mode legend */}
+      {mode==="individual"&&!isEmpty&&(
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:8}}>
+          {labels.map((l,i)=>(
+            <div key={i} style={{display:"flex",alignItems:"center",gap:4,fontSize:10,color:mut}}>
+              <div style={{width:12,height:3,borderRadius:2,background:colors[i]}}/>
+              {l}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Chart */}
       {isEmpty
-        ?<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11}}>Add transactions to see trend</div>
+        ?<div style={{height:120,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11}}>Add transactions to see trend</div>
         :<div style={{width:"100%",overflowX:"hidden"}}>
           <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block",cursor:"crosshair"}} onMouseMove={onMove} onMouseLeave={()=>setHover(null)}>
             <defs>
-              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor={color} stopOpacity="0.10"/>
-                <stop offset="100%" stopColor={color} stopOpacity="0"/>
-              </linearGradient>
+              {series.map((_,i)=>(
+                <linearGradient key={i} id={"ug"+i} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={colors[i]} stopOpacity={mode==="total"?0.10:0.05}/>
+                  <stop offset="100%" stopColor={colors[i]} stopOpacity="0"/>
+                </linearGradient>
+              ))}
             </defs>
-            {yVals.map((v,i)=>(
-              <line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>
-            ))}
-            {yVals.map((v,i)=>(
-              <text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmt(v)}</text>
-            ))}
-            {xIdxs.map(i=>(
-              <text key={i} x={toX(i)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(series[i].date)}</text>
-            ))}
-            {areaD&&<path d={areaD} fill={"url(#"+gradId+")"}/>}
-            {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
-            {hover&&<line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={color} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.4"/>}
-            {hover&&<circle cx={hover.x} cy={hover.y} r="3" fill={surf} stroke={color} strokeWidth="1.5"/>}
-            {hover&&<rect x={ttX} y={ttY} width="110" height="36" rx="5" fill={surf} stroke={bdr} strokeWidth="0.75"/>}
-            {hover&&<text x={ttX+7} y={ttY+13} fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(hover.d)}</text>}
-            {hover&&<text x={ttX+7} y={ttY+27} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.v):hover.v.toLocaleString("en-IN")}</text>}
-            {!hover&&series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
+            {yVals.map((v,i)=><line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>)}
+            {yVals.map((v,i)=><text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmtTick(v)}</text>)}
+            {xIdxs.map(i=><text key={i} x={toX(i,xSeries.length)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(xSeries[i].date)}</text>)}
+            {paths.map((p,i)=>p.area&&<path key={"a"+i} d={p.area} fill={"url(#ug"+i+")"}/>)}
+            {paths.map((p,i)=>p.d&&<path key={"l"+i} d={p.d} fill="none" stroke={colors[i]} strokeWidth={mode==="total"?"2":"1.5"} strokeLinecap="round" strokeLinejoin="round"/>)}
+            {hover&&<line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={mut} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.4"/>}
+            {hover&&hover.ys.map((y,i)=><circle key={i} cx={hover.x} cy={y} r="3" fill={surf} stroke={colors[i]} strokeWidth="1.5"/>)}
+            {hover&&(()=>{
+              const ttW=130,ttH=mode==="individual"?14+series.length*14:42;
+              const tx=Math.min(hover.x+10,W-PR-ttW-4);
+              const ty=Math.max(PT+2,hover.ys[0]-ttH-6);
+              return <>
+                <rect x={tx} y={ty} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75"/>
+                <text x={tx+7} y={ty+13} fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(hover.d)}</text>
+                {mode==="total"&&<text x={tx+7} y={ty+27} fontSize="11" fill={colors[0]} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.vs[0]):hover.vs[0].toLocaleString("en-IN")}</text>}
+                {mode==="individual"&&hover.vs.map((v,i)=><text key={i} x={tx+7} y={ty+27+i*14} fontSize="9" fill={colors[i]} fontFamily="Manrope" fontWeight="600">{labels[i]}: {metric==="inr"?inrFmt(v):v.toLocaleString("en-IN")}</text>)}
+              </>;
+            })()}
+            {!hover&&paths.map((p,i)=>series[i].length>0&&<circle key={i} cx={toX(series[i].length-1,series[i].length)} cy={toY(series[i][series[i].length-1].value)} r="2.5" fill={colors[i]}/>)}
           </svg>
         </div>
       }
-    </div>
+    </Card>
   );
 }
 
@@ -794,7 +862,7 @@ function Overview({db,owners,onNavigate}){
           .ov-col  { display: flex !important; flex-direction: column !important; }
         }
       `}</style>
-      <div className="ov-grid" style={{gap:16,marginBottom:16}}>
+      <div className="ov-grid" style={{gap:16,marginBottom:0}}>
         {/* LEFT COL — Loyalty Programs */}
         <div className="ov-col">
           <Card className="ov-list-card" style={{height:340,display:"flex",flexDirection:"column"}}>
@@ -816,10 +884,6 @@ function Overview({db,owners,onNavigate}){
               })}
             />
           </Card>
-          <PortfolioChart
-            txns={txns} entities={progs} masters={mp} owners={owners}
-            entityType="program" accentColor={acc}
-          />
         </div>
         {/* RIGHT COL — Credit Cards */}
         <div className="ov-col">
@@ -838,12 +902,9 @@ function Overview({db,owners,onNavigate}){
               })}
             />
           </Card>
-          <PortfolioChart
-            txns={txns} entities={cards} masters={mc} owners={owners}
-            entityType="card" accentColor={txt}
-          />
         </div>
       </div>
+      <UnifiedChart txns={txns} cards={cards} progs={progs} mc={mc} mp={mp} owners={owners}/>
 
       {transfers.length>0&&(
         <Card>
@@ -2473,6 +2534,7 @@ function MyCards({db,owners}){
                   <div style={{minWidth:0,flex:1}}>
                     <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.nickname||m?.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> ·· {c.last4}</span>}</div>
                     <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{m?.network&&" · "+m.network}</div>
+                    {m?.auto_transfer_to&&<div style={{fontSize:10,color:acc,fontWeight:600,marginTop:2}}>Co-branded · {mProgNames[m.auto_transfer_to]||"Linked LP"}</div>}
                   </div>
                 </div>
                 <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
