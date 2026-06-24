@@ -1,5 +1,230 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 
+// ── PointsVault Library — hardcoded master data ───────────────────────────────
+const LIBRARY = {
+  // ── Loyalty Programs ──────────────────────────────────────────────────────
+  programs: [
+    // Airlines
+    {lid:"lp_krisflyer",    name:"Singapore Airlines KrisFlyer",   category:"Airline", points_currency:"KrisFlyer Miles",  inr_per_point:1.50, expiry_rule:"Miles expire after 36 months of account inactivity"},
+    {lid:"lp_airindia",     name:"Air India Flying Returns",        category:"Airline", points_currency:"Miles",            inr_per_point:0.70, expiry_rule:"Miles expire 36 months from date of earning"},
+    {lid:"lp_flyingblue",   name:"Air France KLM Flying Blue",      category:"Airline", points_currency:"Miles",            inr_per_point:1.20, expiry_rule:"Miles expire after 24 months of inactivity"},
+    {lid:"lp_qatar",        name:"Qatar Airways Privilege Club",    category:"Airline", points_currency:"Qmiles",           inr_per_point:1.30, expiry_rule:"Qmiles expire 3 years from date of earning"},
+    {lid:"lp_etihad",       name:"Etihad Guest",                    category:"Airline", points_currency:"Miles",            inr_per_point:1.10, expiry_rule:"Miles expire after 18 months of inactivity"},
+    {lid:"lp_turkish",      name:"Turkish Airlines Miles and Smiles",category:"Airline",points_currency:"Miles",            inr_per_point:1.00, expiry_rule:"Miles expire 3 years from date of earning"},
+    {lid:"lp_united",       name:"United MileagePlus",              category:"Airline", points_currency:"Miles",            inr_per_point:1.20, expiry_rule:"Miles never expire with account activity"},
+    {lid:"lp_aeroplan",     name:"Air Canada Aeroplan",             category:"Airline", points_currency:"Points",           inr_per_point:1.40, expiry_rule:"Points expire after 18 months of inactivity"},
+    {lid:"lp_spiceclub",    name:"SpiceJet SpiceClub",              category:"Airline", points_currency:"SpiceClub Miles",  inr_per_point:0.40, expiry_rule:"Miles expire 1 year from date of earning"},
+    {lid:"lp_airasia",      name:"AirAsia Rewards",                 category:"Airline", points_currency:"Points",           inr_per_point:0.30, expiry_rule:"Points expire after 12 months of inactivity"},
+    {lid:"lp_finnair",      name:"Finnair Plus",                    category:"Airline", points_currency:"Avios",            inr_per_point:1.00, expiry_rule:"Avios expire after 36 months of inactivity"},
+    {lid:"lp_lifemiles",    name:"Avianca LifeMiles",               category:"Airline", points_currency:"Miles",            inr_per_point:1.00, expiry_rule:"Miles expire after 12 months of inactivity"},
+    {lid:"lp_lotusmiles",   name:"Vietnam Airlines LotusMiles",     category:"Airline", points_currency:"Miles",            inr_per_point:0.60, expiry_rule:"Miles expire 3 years from date of earning"},
+    {lid:"lp_thai",         name:"Thai Airways Royal Orchid Plus",  category:"Airline", points_currency:"Miles",            inr_per_point:0.90, expiry_rule:"Miles expire 3 years from date of earning"},
+    {lid:"lp_cathay",       name:"Cathay Pacific Asia Miles",       category:"Airline", points_currency:"Asia Miles",       inr_per_point:1.10, expiry_rule:"Miles expire 3 years from date of earning"},
+    {lid:"lp_ba",           name:"British Airways Executive Club",  category:"Airline", points_currency:"Avios",            inr_per_point:1.00, expiry_rule:"Avios expire after 36 months of inactivity"},
+    {lid:"lp_qantas",       name:"Qantas Frequent Flyer",           category:"Airline", points_currency:"Points",           inr_per_point:1.10, expiry_rule:"Points expire after 18 months of inactivity"},
+    {lid:"lp_jal",          name:"Japan Airlines Mileage Bank",     category:"Airline", points_currency:"Miles",            inr_per_point:1.20, expiry_rule:"Miles expire 36 months from date of earning"},
+    {lid:"lp_ethiopian",    name:"Ethiopian Airlines ShebaMiles",   category:"Airline", points_currency:"Miles",            inr_per_point:0.80, expiry_rule:"Miles expire 3 years from date of earning"},
+    {lid:"lp_virgin",       name:"Virgin Atlantic Flying Club",     category:"Airline", points_currency:"Points",           inr_per_point:1.10, expiry_rule:"Points expire after 36 months of inactivity"},
+    // Hotels
+    {lid:"lp_marriott",     name:"Marriott Bonvoy",                 category:"Hotel",   points_currency:"Points",           inr_per_point:0.50, expiry_rule:"Points expire after 24 months of inactivity"},
+    {lid:"lp_ihg",          name:"IHG One Rewards",                 category:"Hotel",   points_currency:"Points",           inr_per_point:0.40, expiry_rule:"Points expire after 12 months of inactivity"},
+    {lid:"lp_clubitc",      name:"Club ITC Green Points",           category:"Hotel",   points_currency:"Green Points",     inr_per_point:1.00, expiry_rule:"Points valid for 3 years from date of earning"},
+    {lid:"lp_accor",        name:"Accor Live Limitless",            category:"Hotel",   points_currency:"Points",           inr_per_point:1.60, expiry_rule:"Points expire after 12 months of inactivity"},
+    {lid:"lp_radisson",     name:"Radisson Rewards",                category:"Hotel",   points_currency:"Points",           inr_per_point:0.35, expiry_rule:"Points expire after 12 months of inactivity"},
+    {lid:"lp_wyndham",      name:"Wyndham Rewards",                 category:"Hotel",   points_currency:"Points",           inr_per_point:0.45, expiry_rule:"Points expire after 18 months of inactivity"},
+    {lid:"lp_hilton",       name:"Hilton Honors",                   category:"Hotel",   points_currency:"Points",           inr_per_point:0.30, expiry_rule:"Points expire after 12 months of inactivity"},
+  ],
+
+  // ── Credit Cards ──────────────────────────────────────────────────────────
+  cards: [
+    {
+      lid:"cc_infinia",
+      name:"HDFC Infinia Metal", bank:"HDFC Bank", network:"Visa",
+      points_currency:"Reward Points", inr_per_point:1.00, annual_fee:14750,
+      auto_transfer_to:null,
+      milestones:[
+        {spend_threshold:1000000, cycle_type:"billing_year",   benefit_type:"fee_waiver",    benefit_value:"Annual fee waived",                    benefit_points:null,  stackable:false, sort_order:1},
+        {spend_threshold:0,       cycle_type:"lifetime",       benefit_type:"bonus_points",  benefit_value:"Welcome — 12,500 bonus Reward Points", benefit_points:12500, stackable:false, sort_order:2},
+      ],
+      partners:[
+        {to_lid:"lp_krisflyer", ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant–2 days"},
+        {to_lid:"lp_airindia",  ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Few hours"},
+        {to_lid:"lp_flyingblue",ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_ba",        ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_qatar",     ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_etihad",    ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_turkish",   ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_united",    ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_aeroplan",  ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_spiceclub", ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_airasia",   ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_finnair",   ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_lifemiles", ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_lotusmiles",ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_thai",      ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_cathay",    ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_marriott",  ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_ihg",       ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_clubitc",   ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_accor",     ratio_from:2, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_radisson",  ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+        {to_lid:"lp_wyndham",   ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant"},
+      ],
+    },
+    {
+      lid:"cc_bizblack",
+      name:"HDFC Biz Black Metal", bank:"HDFC Bank", network:"Diners Club",
+      points_currency:"Reward Points", inr_per_point:1.00, annual_fee:11800,
+      auto_transfer_to:null,
+      milestones:[
+        {spend_threshold:150000,  cycle_type:"lifetime",      benefit_type:"gift",         benefit_value:"Club Marriott membership + Taj stay voucher worth Rs.5,000 (spend Rs.1.5L in 90 days)", benefit_points:null, stackable:false, sort_order:1},
+        {spend_threshold:500000,  cycle_type:"calendar_year", benefit_type:"voucher",       benefit_value:"SmartBuy flight or Taj stay voucher Rs.5,000 (max 4 per year on Rs.20L spend)",         benefit_points:null, stackable:true,  sort_order:2},
+        {spend_threshold:750000,  cycle_type:"billing_year",  benefit_type:"fee_waiver",    benefit_value:"Annual fee waived",                                                                       benefit_points:null, stackable:false, sort_order:3},
+      ],
+      partners:[
+        {to_lid:"lp_krisflyer", ratio_from:1, ratio_to:1, min_transfer:500, transfer_time:"Instant–2 days"},
+      ],
+    },
+    {
+      lid:"cc_marriotthdfc",
+      name:"HDFC Marriott Bonvoy", bank:"HDFC Bank", network:"Diners Club",
+      points_currency:"Marriott Bonvoy Points", inr_per_point:0.50, annual_fee:3540,
+      auto_transfer_to:"lp_marriott",
+      auto_transfer_ratio_from:1, auto_transfer_ratio_to:1,
+      milestones:[
+        {spend_threshold:0,       cycle_type:"lifetime",      benefit_type:"other",        benefit_value:"Welcome: 1 Free Night Award (up to 15,000 pts) + Silver Elite status + 10 Elite Night Credits", benefit_points:null, stackable:false, sort_order:1},
+        {spend_threshold:0,       cycle_type:"billing_year",  benefit_type:"other",        benefit_value:"Renewal: 1 Free Night Award (up to 15,000 pts)",                                               benefit_points:null, stackable:false, sort_order:2},
+        {spend_threshold:600000,  cycle_type:"calendar_year", benefit_type:"other",        benefit_value:"Up to 3 additional Free Night Awards on higher spend milestones",                               benefit_points:null, stackable:true,  sort_order:3},
+      ],
+      partners:[],
+    },
+    {
+      lid:"cc_magnusburgundy",
+      name:"Axis Magnus for Burgundy", bank:"Axis Bank", network:"Mastercard",
+      points_currency:"EDGE Reward Points", inr_per_point:1.00, annual_fee:35400,
+      auto_transfer_to:null,
+      milestones:[
+        {spend_threshold:3000000, cycle_type:"billing_year",  benefit_type:"fee_waiver",   benefit_value:"Annual fee waived (excl. insurance, gold, fuel spends)", benefit_points:null, stackable:false, sort_order:1},
+      ],
+      partners:[
+        // Group A (cap 2L pts/yr)
+        {to_lid:"lp_krisflyer",  ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_qatar",      ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_etihad",     ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_jal",        ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_aeroplan",   ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_united",     ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_turkish",    ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_thai",       ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_ethiopian",  ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_ba",         ratio_from:5, ratio_to:2, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_finnair",    ratio_from:5, ratio_to:2, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_lotusmiles", ratio_from:5, ratio_to:2, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        {to_lid:"lp_wyndham",    ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group A — annual cap 2L pts"},
+        // Group B (cap 8L pts/yr)
+        {to_lid:"lp_airindia",   ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group B — annual cap 8L pts"},
+        {to_lid:"lp_flyingblue", ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group B — annual cap 8L pts"},
+        {to_lid:"lp_qantas",     ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group B — annual cap 8L pts"},
+        {to_lid:"lp_spiceclub",  ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group B — annual cap 8L pts"},
+        {to_lid:"lp_airasia",    ratio_from:5, ratio_to:4, min_transfer:300, transfer_time:"Instant", notes:"Group B — annual cap 8L pts"},
+      ],
+    },
+    {
+      lid:"cc_atlas",
+      name:"Axis Atlas", bank:"Axis Bank", network:"Visa",
+      points_currency:"EDGE Miles", inr_per_point:1.00, annual_fee:5900,
+      auto_transfer_to:null,
+      milestones:[
+        {spend_threshold:300000,  cycle_type:"billing_year", benefit_type:"bonus_points", benefit_value:"Silver tier — 2,500 bonus EDGE Miles",              benefit_points:2500,  stackable:false, sort_order:1},
+        {spend_threshold:750000,  cycle_type:"billing_year", benefit_type:"bonus_points", benefit_value:"Gold tier — 2,500 milestone + 2,500 annual EDGE Miles",benefit_points:5000, stackable:false, sort_order:2},
+        {spend_threshold:1500000, cycle_type:"billing_year", benefit_type:"bonus_points", benefit_value:"Platinum tier — 5,000 milestone + 5,000 annual EDGE Miles",benefit_points:10000,stackable:false,sort_order:3},
+      ],
+      partners:[
+        // Group A (cap 30K miles/yr)
+        {to_lid:"lp_krisflyer",  ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_etihad",     ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_turkish",    ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_united",     ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_jal",        ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_thai",       ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_ba",         ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_finnair",    ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_ethiopian",  ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        {to_lid:"lp_lotusmiles", ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group A — annual cap 30K miles"},
+        // Group B (cap 120K miles/yr)
+        {to_lid:"lp_airindia",   ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_flyingblue", ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_aeroplan",   ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_qantas",     ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_spiceclub",  ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_airasia",    ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_marriott",   ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_accor",      ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_ihg",        ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_clubitc",    ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+        {to_lid:"lp_wyndham",    ratio_from:1, ratio_to:2, min_transfer:500, transfer_time:"Instant", notes:"Group B — annual cap 120K miles"},
+      ],
+    },
+    {
+      lid:"cc_mrcc",
+      name:"Amex Membership Rewards Credit Card", bank:"American Express", network:"Amex",
+      points_currency:"Membership Rewards Points", inr_per_point:0.50, annual_fee:1770,
+      auto_transfer_to:null,
+      milestones:[
+        {spend_threshold:6000,  cycle_type:"calendar_month", benefit_type:"bonus_points", benefit_value:"4 txns of Rs.1,500+ in a calendar month — 1,000 bonus MR pts",  benefit_points:1000, stackable:true,  sort_order:1},
+        {spend_threshold:20000, cycle_type:"calendar_month", benefit_type:"bonus_points", benefit_value:"Spend Rs.20,000 in a calendar month — 1,000 bonus MR pts (needs one-time enrollment)", benefit_points:1000, stackable:true, sort_order:2},
+        {spend_threshold:150000,cycle_type:"calendar_year",  benefit_type:"fee_waiver",   benefit_value:"Annual fee waived on Rs.1.5L annual spend",                      benefit_points:null, stackable:false, sort_order:3},
+      ],
+      partners:[
+        {to_lid:"lp_krisflyer", ratio_from:2, ratio_to:1, min_transfer:1000, transfer_time:"Instant"},
+        {to_lid:"lp_ba",        ratio_from:2, ratio_to:1, min_transfer:1000, transfer_time:"Instant"},
+        {to_lid:"lp_qatar",     ratio_from:2, ratio_to:1, min_transfer:1000, transfer_time:"Instant"},
+        {to_lid:"lp_cathay",    ratio_from:2, ratio_to:1, min_transfer:1000, transfer_time:"Instant"},
+        {to_lid:"lp_virgin",    ratio_from:2, ratio_to:1, min_transfer:1000, transfer_time:"Instant"},
+        {to_lid:"lp_etihad",    ratio_from:2, ratio_to:1, min_transfer:1000, transfer_time:"Instant", notes:"Partnership ends June 2026"},
+        {to_lid:"lp_marriott",  ratio_from:1, ratio_to:1, min_transfer:1000, transfer_time:"Instant"},
+        {to_lid:"lp_hilton",    ratio_from:1, ratio_to:0.9,min_transfer:1000,transfer_time:"Instant"},
+      ],
+    },
+    {
+      lid:"cc_scapia",
+      name:"Scapia Federal Bank Credit Card", bank:"Federal Bank", network:"Visa",
+      points_currency:"Scapia Coins", inr_per_point:0.20, annual_fee:0,
+      auto_transfer_to:null,
+      milestones:[
+        {spend_threshold:10000, cycle_type:"calendar_month", benefit_type:"other", benefit_value:"Unlimited domestic lounge access for the month (Visa: Rs.10,000 spend; RuPay: Rs.15,000 spend)", benefit_points:null, stackable:true, sort_order:1},
+        {spend_threshold:20000, cycle_type:"calendar_month", benefit_type:"other", benefit_value:"Airport privileges up to Rs.1,000 (dining/shopping/spa at domestic airports)", benefit_points:null, stackable:true, sort_order:2},
+      ],
+      partners:[],
+    },
+  ],
+
+  // ── LP-to-LP transfer routes (hotel programs → airlines) ──────────────────
+  lp_partners:[
+    // Marriott Bonvoy → Airlines (3:1 ratio — 3 Bonvoy pts = 1 airline mile, + 5,000 bonus per 60,000 transferred)
+    {from_lid:"lp_marriott", to_lid:"lp_airindia",   ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_krisflyer",  ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_flyingblue", ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_ba",         ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_united",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_aeroplan",   ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_qatar",      ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_etihad",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_turkish",    ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_cathay",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_jal",        ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_qantas",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_spiceclub",  ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"5,000 bonus miles per 60,000 pts transferred"},
+    // IHG → Airlines
+    {from_lid:"lp_ihg",      to_lid:"lp_airindia",   ratio_from:10, ratio_to:1, min_transfer:10000, transfer_time:"3–5 days", notes:""},
+    {from_lid:"lp_ihg",      to_lid:"lp_ba",          ratio_from:10, ratio_to:1, min_transfer:10000, transfer_time:"3–5 days", notes:""},
+    {from_lid:"lp_ihg",      to_lid:"lp_flyingblue",  ratio_from:10, ratio_to:1, min_transfer:10000, transfer_time:"3–5 days", notes:""},
+    {from_lid:"lp_ihg",      to_lid:"lp_united",      ratio_from:10, ratio_to:1, min_transfer:10000, transfer_time:"3–5 days", notes:""},
+    // Accor → Flying Blue
+    {from_lid:"lp_accor",    to_lid:"lp_flyingblue",  ratio_from:2, ratio_to:1,  min_transfer:2000,  transfer_time:"Instant",  notes:""},
+  ],
+};
+
 function createClient(url, key) {
   const h = { apikey:key, Authorization:`Bearer ${key}`, "Content-Type":"application/json", Prefer:"return=representation" };
   const base = `${url}/rest/v1`;
@@ -590,6 +815,523 @@ function Overview({db,owners,onNavigate}){
 }
 
 // Catalog
+
+// ── AutoTransferName ─────────────────────────────────────────────────────────
+function AutoTransferName({masterId,db}){
+  const [name,setName]=useState("linked program");
+  useEffect(()=>{
+    if(!masterId) return;
+    db.from("master_programs").select().then(({data})=>{
+      const found=(data||[]).find(p=>p.id===masterId);
+      if(found) setName(found.name);
+    });
+  },[masterId]);
+  return name;
+}
+
+// ── CardMilestones ────────────────────────────────────────────────────────────
+function CardMilestones({masterId,db}){
+  const [ms,setMs]=useState([]);
+  useEffect(()=>{
+    if(!masterId) return;
+    db.from("master_milestones").filter("master_card_id",masterId).then(({data})=>{
+      setMs((data||[]).sort((a,b)=>(a.sort_order||0)-(b.sort_order||0)));
+    });
+  },[masterId]);
+  if(!ms.length) return null;
+  const cLbl={calendar_year:"Cal. Year",billing_year:"Billing Year",calendar_month:"Cal. Month",billing_month:"Bill. Month",lifetime:"Lifetime"};
+  const tLbl={bonus_points:"Bonus Points",voucher:"Voucher",fee_waiver:"Fee Waiver",lounge:"Lounge",gift:"Gift",status_upgrade:"Status Upgrade",other:"Benefit"};
+  return(
+    <Card style={{marginBottom:16}}>
+      <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Milestones</div>
+      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+        {ms.map(m=>(
+          <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
+            <div style={{flexShrink:0,textAlign:"center",minWidth:64}}>
+              {m.spend_threshold>0&&<div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{"Rs."+(m.spend_threshold>=100000?(m.spend_threshold/100000).toFixed(0)+"L":m.spend_threshold>=1000?(m.spend_threshold/1000).toFixed(0)+"K":m.spend_threshold)}</div>}
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.05em"}}>{cLbl[m.cycle_type]||m.cycle_type}</div>
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:2}}>{tLbl[m.benefit_type]||m.benefit_type}{m.stackable&&<span style={{fontSize:9,color:grn,marginLeft:6,fontWeight:400}}>stackable</span>}</div>
+              <div style={{fontSize:11,color:txt,fontWeight:400,lineHeight:1.4}}>{m.benefit_value}</div>
+              {m.benefit_points&&<div className="pv-num" style={{fontSize:11,color:grn,marginTop:2,fontWeight:600}}>+{Number(m.benefit_points).toLocaleString("en-IN")} pts</div>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── PartnerRow ────────────────────────────────────────────────────────────────
+function PartnerRow({p,gName,gLogo}){
+  return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={32}/>
+        <div>
+          <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{gName(p.to_type,p.to_id)}</div>
+          {p.notes&&<div style={{fontSize:10,color:mut,marginTop:1}}>{p.notes}</div>}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:12,alignItems:"center"}}>
+        <div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:13,fontWeight:700,color:acc,fontFamily:"'Manrope',sans-serif"}}>{p.ratio_from}:{p.ratio_to}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Ratio</div></div>
+        {p.min_transfer&&<div style={{textAlign:"center"}}><div className="pv-num" style={{fontSize:11,fontWeight:600,color:txt}}>{Number(p.min_transfer).toLocaleString()}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Min</div></div>}
+        {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:11,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Time</div></div>}
+      </div>
+    </div>
+  );
+}
+
+// ── CardPartnersWithImport ────────────────────────────────────────────────────
+function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onRefresh}){
+  const [importing,setImporting]=useState(false);
+  const [importDone,setImportDone]=useState(false);
+  const libCard=LIBRARY.cards.find(c=>c.name.toLowerCase()===(masterName||"").toLowerCase());
+  const hasMore=libCard&&libCard.partners.length>partners.length;
+  const doImport=async()=>{
+    if(!libCard||!masterId) return;
+    setImporting(true);
+    const {data:allProgs}=await db.from("master_programs").select();
+    const {data:existing}=await db.from("master_partners").filter("from_id",masterId);
+    const existIds=new Set((existing||[]).map(p=>p.to_id));
+    for(const lp of libCard.partners){
+      const libLp=LIBRARY.programs.find(x=>x.lid===lp.to_lid);
+      if(!libLp) continue;
+      let prog=allProgs?.find(p=>p.name.toLowerCase()===libLp.name.toLowerCase());
+      if(!prog){
+        const {data}=await db.from("master_programs").insert({name:libLp.name,category:libLp.category,points_currency:libLp.points_currency,inr_per_point:libLp.inr_per_point,expiry_rule:libLp.expiry_rule});
+        if(data&&data[0]) prog=data[0];
+      }
+      if(!prog||existIds.has(prog.id)) continue;
+      await db.from("master_partners").insert({from_id:masterId,from_type:"card",to_id:prog.id,to_type:"program",ratio_from:lp.ratio_from,ratio_to:lp.ratio_to,min_transfer:lp.min_transfer||null,transfer_time:lp.transfer_time||null,notes:lp.notes||null,has_reverse:false});
+    }
+    setImporting(false);setImportDone(true);onRefresh();
+    setTimeout(()=>setImportDone(false),3000);
+  };
+  return(
+    <Card style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners</div>
+        {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing...":"Import from Library"}</button>}
+        {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
+      </div>
+      {partners.length===0
+        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0"}}>No transfer partners{hasMore?" — use Import above":""}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:6}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
+      }
+    </Card>
+  );
+}
+
+// ── ProgPartnersWithImport ────────────────────────────────────────────────────
+function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onRefresh}){
+  const [importing,setImporting]=useState(false);
+  const [importDone,setImportDone]=useState(false);
+  const libRoutes=LIBRARY.lp_partners.filter(r=>{
+    const fromLp=LIBRARY.programs.find(x=>x.lid===r.from_lid);
+    return fromLp?.name?.toLowerCase()===(masterName||"").toLowerCase();
+  });
+  const hasMore=libRoutes.length>partners.length;
+  const doImport=async()=>{
+    if(!libRoutes.length||!masterId) return;
+    setImporting(true);
+    const {data:allProgs}=await db.from("master_programs").select();
+    const {data:existing}=await db.from("master_partners").filter("from_id",masterId);
+    const existIds=new Set((existing||[]).map(p=>p.to_id));
+    for(const route of libRoutes){
+      const toLp=LIBRARY.programs.find(p=>p.lid===route.to_lid);
+      if(!toLp) continue;
+      let toDbProg=allProgs?.find(p=>p.name.toLowerCase()===toLp.name.toLowerCase());
+      if(!toDbProg){
+        const {data}=await db.from("master_programs").insert({name:toLp.name,category:toLp.category,points_currency:toLp.points_currency,inr_per_point:toLp.inr_per_point,expiry_rule:toLp.expiry_rule});
+        if(data&&data[0]) toDbProg=data[0];
+      }
+      if(!toDbProg||existIds.has(toDbProg.id)) continue;
+      await db.from("master_partners").insert({from_id:masterId,from_type:"program",to_id:toDbProg.id,to_type:"program",ratio_from:route.ratio_from,ratio_to:route.ratio_to,min_transfer:route.min_transfer||null,transfer_time:route.transfer_time||null,notes:route.notes||null,has_reverse:false});
+    }
+    setImporting(false);setImportDone(true);onRefresh();
+    setTimeout(()=>setImportDone(false),3000);
+  };
+  return(
+    <Card style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners</div>
+        {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing...":"Import from Library"}</button>}
+        {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
+      </div>
+      {partners.length===0
+        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0"}}>No transfer partners{hasMore?" — use Import above":""}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:6}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
+      }
+    </Card>
+  );
+}
+
+// ── LibraryImport — import pre-loaded cards and programs ─────────────────────
+function LibraryImport({db, onClose, onDone}){
+  const [step, setStep] = useState(1); // 1=select 2=review 3=importing 4=done
+  const [selectedCards, setSelectedCards] = useState(new Set());
+  const [selectedProgs, setSelectedProgs] = useState(new Set());
+  const [libTab, setLibTab] = useState("cards");
+  const [existingCards, setExistingCards] = useState([]);
+  const [existingProgs, setExistingProgs] = useState([]);
+  const [importLog, setImportLog] = useState([]);
+  const [searchQ, setSearchQ] = useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      const [c,p] = await Promise.all([db.from("master_cards").select(), db.from("master_programs").select()]);
+      setExistingCards((c.data||[]).map(x=>x.name.toLowerCase()));
+      setExistingProgs((p.data||[]).map(x=>x.name.toLowerCase()));
+    })();
+  },[db]);
+
+  const alreadyHasCard = lid => {
+    const c = LIBRARY.cards.find(x=>x.lid===lid);
+    return c && existingCards.includes(c.name.toLowerCase());
+  };
+  const alreadyHasProg = lid => {
+    const p = LIBRARY.programs.find(x=>x.lid===lid);
+    return p && existingProgs.includes(p.name.toLowerCase());
+  };
+
+  // Build dependency set — which LPs are needed by selected CCs
+  const depProgs = useMemo(()=>{
+    const deps = new Set();
+    selectedCards.forEach(lid=>{
+      const card = LIBRARY.cards.find(c=>c.lid===lid);
+      if(!card) return;
+      // auto_transfer_to LP
+      if(card.auto_transfer_to) deps.add(card.auto_transfer_to);
+      // all partner LPs
+      card.partners.forEach(p=>deps.add(p.to_lid));
+    });
+    return deps;
+  },[selectedCards]);
+
+  // LPs that will be newly added (dep + manually selected, minus already existing)
+  const newProgs = useMemo(()=>{
+    const all = new Set([...depProgs, ...selectedProgs]);
+    return [...all].filter(lid=>!alreadyHasProg(lid));
+  },[depProgs, selectedProgs, existingProgs]);
+
+  // LP→LP partners to add for selected LPs
+  const lpPartners = useMemo(()=>{
+    const allLpLids = new Set([...depProgs, ...selectedProgs]);
+    return LIBRARY.lp_partners.filter(r=>allLpLids.has(r.from_lid));
+  },[depProgs, selectedProgs]);
+
+  const toggleCard = lid => {
+    setSelectedCards(s=>{ const n=new Set(s); n.has(lid)?n.delete(lid):n.add(lid); return n; });
+  };
+  const toggleProg = lid => {
+    setSelectedProgs(s=>{ const n=new Set(s); n.has(lid)?n.delete(lid):n.add(lid); return n; });
+  };
+
+  const doImport = async()=>{
+    setStep(3);
+    const log = [];
+    const progIdMap = {}; // lid -> actual DB id
+
+    // 1. Insert new LPs
+    const allNewProgLids = [...new Set([...newProgs])];
+    for(const lid of allNewProgLids){
+      const lp = LIBRARY.programs.find(p=>p.lid===lid);
+      if(!lp) continue;
+      if(alreadyHasProg(lid)){
+        // find existing id
+        const {data} = await db.from("master_programs").select();
+        const ex = (data||[]).find(x=>x.name.toLowerCase()===lp.name.toLowerCase());
+        if(ex) progIdMap[lid] = ex.id;
+        log.push({type:"skip", msg:`${lp.name} already exists`});
+        continue;
+      }
+      const {data,error} = await db.from("master_programs").insert({
+        name:lp.name, category:lp.category, points_currency:lp.points_currency,
+        inr_per_point:lp.inr_per_point, expiry_rule:lp.expiry_rule
+      });
+      if(error){ log.push({type:"error", msg:`Failed: ${lp.name} — ${error.message}`}); continue; }
+      if(data&&data[0]){ progIdMap[lid]=data[0].id; log.push({type:"ok", msg:`Added LP: ${lp.name}`}); }
+    }
+
+    // Also load existing prog IDs for LPs already in catalog that are partners
+    const {data:allProgs} = await db.from("master_programs").select();
+    (allProgs||[]).forEach(p=>{
+      const libP = LIBRARY.programs.find(x=>x.name.toLowerCase()===p.name.toLowerCase());
+      if(libP && !progIdMap[libP.lid]) progIdMap[libP.lid] = p.id;
+    });
+
+    // 2. Insert new CCs + resolve auto_transfer_to
+    const cardIdMap = {};
+    for(const lid of selectedCards){
+      const card = LIBRARY.cards.find(c=>c.lid===lid);
+      if(!card) continue;
+      if(alreadyHasCard(lid)){
+        log.push({type:"skip", msg:`${card.name} already exists`});
+        const {data:allCards} = await db.from("master_cards").select();
+        const ex = (allCards||[]).find(x=>x.name.toLowerCase()===card.name.toLowerCase());
+        if(ex) cardIdMap[lid]=ex.id;
+        continue;
+      }
+      const auto_transfer_to_id = card.auto_transfer_to ? (progIdMap[card.auto_transfer_to]||null) : null;
+      const {data,error} = await db.from("master_cards").insert({
+        name:card.name, bank:card.bank, network:card.network,
+        points_currency:card.points_currency, inr_per_point:card.inr_per_point,
+        annual_fee:card.annual_fee,
+        auto_transfer_to:auto_transfer_to_id,
+        auto_transfer_ratio_from:card.auto_transfer_ratio_from||1,
+        auto_transfer_ratio_to:card.auto_transfer_ratio_to||1,
+      });
+      if(error){ log.push({type:"error", msg:`Failed: ${card.name} — ${error.message}`}); continue; }
+      if(data&&data[0]){ cardIdMap[lid]=data[0].id; log.push({type:"ok", msg:`Added CC: ${card.name}`}); }
+    }
+
+    // 3. Insert milestones
+    for(const lid of selectedCards){
+      const card = LIBRARY.cards.find(c=>c.lid===lid);
+      if(!card||!cardIdMap[lid]) continue;
+      for(const m of (card.milestones||[])){
+        await db.from("master_milestones").insert({
+          master_card_id:cardIdMap[lid],
+          spend_threshold:m.spend_threshold,
+          cycle_type:m.cycle_type,
+          benefit_type:m.benefit_type,
+          benefit_value:m.benefit_value,
+          benefit_points:m.benefit_points||null,
+          stackable:m.stackable,
+          sort_order:m.sort_order,
+        });
+      }
+      if((card.milestones||[]).length>0) log.push({type:"ok", msg:`Added ${card.milestones.length} milestones for ${card.name}`});
+    }
+
+    // 4. Insert CC→LP transfer partners
+    for(const lid of selectedCards){
+      const card = LIBRARY.cards.find(c=>c.lid===lid);
+      if(!card||!cardIdMap[lid]) continue;
+      const cardDbId = cardIdMap[lid];
+      for(const p of (card.partners||[])){
+        const toProgId = progIdMap[p.to_lid];
+        if(!toProgId) continue;
+        // check not already existing
+        await db.from("master_partners").insert({
+          from_id:cardDbId, from_type:"card",
+          to_id:toProgId, to_type:"program",
+          ratio_from:p.ratio_from, ratio_to:p.ratio_to,
+          min_transfer:p.min_transfer||null,
+          transfer_time:p.transfer_time||null,
+          notes:p.notes||null,
+          has_reverse:false,
+        });
+      }
+      if((card.partners||[]).length>0) log.push({type:"ok", msg:`Added ${card.partners.length} transfer routes for ${card.name}`});
+    }
+
+    // 5. Insert LP→LP partners
+    for(const r of lpPartners){
+      const fromId = progIdMap[r.from_lid];
+      const toId = progIdMap[r.to_lid];
+      if(!fromId||!toId) continue;
+      await db.from("master_partners").insert({
+        from_id:fromId, from_type:"program",
+        to_id:toId, to_type:"program",
+        ratio_from:r.ratio_from, ratio_to:r.ratio_to,
+        min_transfer:r.min_transfer||null,
+        transfer_time:r.transfer_time||null,
+        notes:r.notes||null,
+        has_reverse:false,
+      });
+    }
+    if(lpPartners.length>0) log.push({type:"ok", msg:`Added ${lpPartners.length} LP→LP transfer routes`});
+
+    setImportLog(log);
+    setStep(4);
+  };
+
+  const filteredCards = LIBRARY.cards.filter(c=>c.name.toLowerCase().includes(searchQ.toLowerCase())||c.bank.toLowerCase().includes(searchQ.toLowerCase()));
+  const filteredProgs = LIBRARY.programs.filter(p=>p.name.toLowerCase().includes(searchQ.toLowerCase())||p.category.toLowerCase().includes(searchQ.toLowerCase()));
+
+  const selStyle={fontSize:10,fontWeight:tab=>tab?"600":"500",color:mut2};
+  const tabBtn=(t,label)=>({
+    padding:"6px 14px",borderRadius:20,border:`1px solid ${libTab===t?txt:bdr}`,
+    cursor:"pointer",fontSize:11,fontWeight:libTab===t?600:500,
+    background:libTab===t?txt:"transparent",color:libTab===t?"#fff":mut2,
+    fontFamily:"'Manrope',sans-serif"
+  });
+
+  // ── Step 1: Select ──────────────────────────────────────────────────────────
+  if(step===1) return(
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:txt,marginBottom:4}}>Import from Library</div>
+      <div style={{fontSize:12,color:mut,marginBottom:16}}>Select cards and programs to add to your catalog.</div>
+      <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:6}}>
+          <button style={tabBtn("cards","Cards")} onClick={()=>setLibTab("cards")}>Credit Cards ({LIBRARY.cards.length})</button>
+          <button style={tabBtn("programs","Programs")} onClick={()=>setLibTab("programs")}>Loyalty Programs ({LIBRARY.programs.length})</button>
+        </div>
+        <input style={{...inp,marginBottom:0,flex:1,minWidth:140,fontSize:12}} placeholder="Search..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
+      </div>
+
+      {libTab==="cards"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+          {filteredCards.map(c=>{
+            const has=alreadyHasCard(c.lid);
+            const sel=selectedCards.has(c.lid);
+            return(
+              <div key={c.lid} onClick={()=>!has&&toggleCard(c.lid)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,border:`1px solid ${sel?txt:bdr}`,background:sel?txt+"08":has?surf2:surf,cursor:has?"not-allowed":"pointer",opacity:has?0.5:1,transition:"all 0.15s"}}>
+                <div style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${sel?txt:bdr}`,background:sel?txt:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {sel&&<span style={{color:"#fff",fontSize:11,lineHeight:1}}>✓</span>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:has?mut:txt,letterSpacing:"-0.01em"}}>{c.name}</div>
+                  <div style={{fontSize:10,color:mut,marginTop:1}}>{c.bank} · {c.network} · {c.partners.length} transfer partners · {(c.milestones||[]).length} milestones</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0}}>
+                  <div style={{fontSize:11,fontWeight:600,color:txt}}>₹{c.annual_fee.toLocaleString("en-IN")}</div>
+                  {has&&<div style={{fontSize:9,color:mut,marginTop:1}}>Already in catalog</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {libTab==="programs"&&(
+        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:340,overflowY:"auto"}}>
+          {filteredProgs.map(p=>{
+            const has=alreadyHasProg(p.lid);
+            const sel=selectedProgs.has(p.lid);
+            const isDepOf=[...selectedCards].filter(cid=>LIBRARY.cards.find(c=>c.lid===cid)?.partners.some(pt=>pt.to_lid===p.lid)||LIBRARY.cards.find(c=>c.lid===cid)?.auto_transfer_to===p.lid).map(cid=>LIBRARY.cards.find(c=>c.lid===cid)?.name);
+            const isDep=isDepOf.length>0;
+            return(
+              <div key={p.lid} onClick={()=>!has&&toggleProg(p.lid)}
+                style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",borderRadius:10,border:`1px solid ${isDep?acc+"55":sel?txt:bdr}`,background:isDep?acc+"06":sel?txt+"08":has?surf2:surf,cursor:has?"not-allowed":"pointer",opacity:has?0.5:1,transition:"all 0.15s"}}>
+                <div style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${isDep?acc:sel?txt:bdr}`,background:isDep?acc:sel?txt:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  {(sel||isDep)&&<span style={{color:"#fff",fontSize:11,lineHeight:1}}>✓</span>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:600,color:has?mut:txt,letterSpacing:"-0.01em"}}>{p.name}</div>
+                  <div style={{fontSize:10,color:mut,marginTop:1}}>{p.category} · {p.points_currency} · ₹{p.inr_per_point}/pt</div>
+                  {isDep&&<div style={{fontSize:9,color:acc,marginTop:2}}>Required by: {isDepOf.join(", ")}</div>}
+                </div>
+                {has&&<div style={{fontSize:9,color:mut,flexShrink:0}}>In catalog</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:16,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
+        <div style={{fontSize:12,color:mut}}>
+          {selectedCards.size>0&&<span>{selectedCards.size} card{selectedCards.size>1?"s":""}</span>}
+          {selectedCards.size>0&&selectedProgs.size>0&&<span> · </span>}
+          {selectedProgs.size>0&&<span>{selectedProgs.size} program{selectedProgs.size>1?"s":""}</span>}
+          {selectedCards.size===0&&selectedProgs.size===0&&<span>Nothing selected</span>}
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={gbtn} onClick={onClose}>Cancel</button>
+          <button style={{...pbtn,opacity:(selectedCards.size+selectedProgs.size)===0?0.4:1}} onClick={()=>(selectedCards.size+selectedProgs.size)>0&&setStep(2)}>Review →</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Step 2: Review dependencies ─────────────────────────────────────────────
+  if(step===2){
+    const newCardNames=[...selectedCards].filter(l=>!alreadyHasCard(l)).map(l=>LIBRARY.cards.find(c=>c.lid===l));
+    const skipCardNames=[...selectedCards].filter(l=>alreadyHasCard(l)).map(l=>LIBRARY.cards.find(c=>c.lid===l));
+    const newProgObjs=newProgs.map(l=>LIBRARY.programs.find(p=>p.lid===l)).filter(Boolean);
+    const depOnlyProgs=newProgs.filter(l=>depProgs.has(l)&&!selectedProgs.has(l)).map(l=>LIBRARY.programs.find(p=>p.lid===l)).filter(Boolean);
+    const totalPartners=[...selectedCards].reduce((a,l)=>a+(LIBRARY.cards.find(c=>c.lid===l)?.partners?.length||0),0)+lpPartners.length;
+    const totalMilestones=[...selectedCards].reduce((a,l)=>a+(LIBRARY.cards.find(c=>c.lid===l)?.milestones?.length||0),0);
+
+    return(
+      <div>
+        <div style={{fontSize:15,fontWeight:600,color:txt,marginBottom:4}}>Review Import</div>
+        <div style={{fontSize:12,color:mut,marginBottom:16}}>The following will be added to your catalog:</div>
+
+        {newCardNames.length>0&&(
+          <div style={{marginBottom:12}}>
+            {lbl("Credit Cards to Add")}
+            {newCardNames.map(c=>(
+              <div key={c.lid} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",background:surf2,borderRadius:8,marginBottom:4,fontSize:12}}>
+                <span style={{fontWeight:600,color:txt}}>{c.name}</span>
+                <span style={{color:mut}}>{c.partners.length} routes · {(c.milestones||[]).length} milestones</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {newProgObjs.length>0&&(
+          <div style={{marginBottom:12}}>
+            {lbl("Loyalty Programs to Add")}
+            {newProgObjs.map(p=>(
+              <div key={p.lid} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",background:depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?acc+"08":surf2,borderRadius:8,marginBottom:4,border:`1px solid ${depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?acc+"33":bdr}`,fontSize:12}}>
+                <span style={{fontWeight:600,color:txt}}>{p.name}</span>
+                <span style={{fontSize:10,color:depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?acc:mut}}>{depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?"Auto-added (required)":"Selected"}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{background:surf2,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",gap:20,flexWrap:"wrap"}}>
+          {[
+            {label:"Cards",value:newCardNames.length},
+            {label:"Programs",value:newProgObjs.length},
+            {label:"Transfer Routes",value:totalPartners},
+            {label:"Milestones",value:totalMilestones},
+          ].filter(s=>s.value>0).map((s,i)=>(
+            <div key={i} style={{textAlign:"center"}}>
+              <div style={{fontSize:20,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{s.value}</div>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em"}}>{s.label}</div>
+            </div>
+          ))}
+          {skipCardNames.length>0&&<div style={{fontSize:11,color:mut,alignSelf:"center"}}>{skipCardNames.length} already in catalog — will be skipped</div>}
+        </div>
+
+        <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+          <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+          <button style={pbtn} onClick={doImport}>Import All →</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Step 3: Importing ───────────────────────────────────────────────────────
+  if(step===3) return(
+    <div style={{textAlign:"center",padding:"40px 0"}}>
+      <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:8}}>Importing…</div>
+      <div style={{fontSize:12,color:mut}}>Please wait while we add everything to your catalog.</div>
+    </div>
+  );
+
+  // ── Step 4: Done ────────────────────────────────────────────────────────────
+  if(step===4){
+    const errors=importLog.filter(l=>l.type==="error");
+    const added=importLog.filter(l=>l.type==="ok");
+    return(
+      <div>
+        <div style={{fontSize:15,fontWeight:600,color:errors.length?red:grn,marginBottom:4}}>
+          {errors.length>0?"Import completed with errors":"Import complete!"}
+        </div>
+        <div style={{fontSize:12,color:mut,marginBottom:16}}>{added.length} operations succeeded{errors.length>0&&`, ${errors.length} failed`}.</div>
+        <div style={{maxHeight:200,overflowY:"auto",marginBottom:16}}>
+          {importLog.map((l,i)=>(
+            <div key={i} style={{fontSize:11,color:l.type==="ok"?grn:l.type==="skip"?mut:red,padding:"3px 0",borderBottom:`1px solid ${bdr}`}}>
+              {l.type==="ok"?"✓ ":l.type==="skip"?"— ":"✗ "}{l.msg}
+            </div>
+          ))}
+        </div>
+        <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{onDone();onClose();}}>Done</button>
+      </div>
+    );
+  }
+  return null;
+}
+
+
 function Catalog({db}){
   const [tab,setTab]=useState("cards");
   const [mCards,setMCards]=useState([]);
@@ -599,6 +1341,7 @@ function Catalog({db}){
   const [showCard,setShowCard]=useState(false);
   const [showProg,setShowProg]=useState(false);
   const [showPart,setShowPart]=useState(false);
+  const [showLibrary,setShowLibrary]=useState(false);
   const [partSearch,setPartSearch]=useState("");
   const [partSort,setPartSort]=useState("name");
   const [saving,setSaving]=useState(false);
@@ -692,12 +1435,23 @@ function Catalog({db}){
 
   return(
     <div>
-      <Hdr title="Catalog" sub="Master cards, programs and transfer partners"/>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+        <div>
+          <div style={{fontSize:24,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Catalog</div>
+          <div style={{fontSize:13,color:mut,marginTop:5,fontWeight:400}}>Master cards, programs and transfer partners</div>
+        </div>
+        <button style={{...pbtn,background:acc,border:"none",gap:8}} onClick={()=>setShowLibrary(true)}>
+          ✦ Import from Library
+        </button>
+      </div>
       <div style={{display:"flex",gap:8,marginBottom:24}}>
         <button style={tb("cards")} onClick={()=>setTab("cards")}>Master Cards</button>
         <button style={tb("programs")} onClick={()=>setTab("programs")}>Master Programs</button>
         <button style={tb("partners")} onClick={()=>setTab("partners")}>Transfer Partners</button>
       </div>
+      <Modal show={showLibrary} onClose={()=>setShowLibrary(false)} title="" wide>
+        <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load}/>
+      </Modal>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:(
         <>
         {tab==="cards"&&(
@@ -1066,10 +1820,35 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const saveTxn=async()=>{
     if(!f.points) return alert("Enter points");
     const pts=f.type==="redeem"?-Math.abs(parseInt(f.points)):Math.abs(parseInt(f.points));
-    await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description,txn_date:f.txn_date});
-    const nb=(card.points_balance||0)+pts;
-    await db.from("my_cards").update(card.id,{points_balance:nb});
-    setCard(c=>({...c,points_balance:nb}));
+    // Auto-transfer: if this card has auto_transfer_to, block if LP not in portfolio, else create paired txns
+    if(master?.auto_transfer_to&&!f.override_auto){
+      const {data:myProgs}=await db.from("my_programs").select();
+      const {data:mProgs}=await db.from("master_programs").select();
+      const autoMaster=mProgs?.find(m=>m.id===master.auto_transfer_to);
+      const linkedProg=myProgs?.find(p=>p.master_id===master.auto_transfer_to&&p.owner_id===card.owner_id);
+      if(!linkedProg){
+        return alert("This is a co-branded card that auto-transfers to "+( autoMaster?.name||"a linked loyalty program")+". Please add that program to your account first before logging transactions.");
+      }
+      // Record earn on card
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description||"Earn",txn_date:f.txn_date});
+      // Record auto-transfer-out on card
+      const rFrom=master.auto_transfer_ratio_from||1;
+      const rTo=master.auto_transfer_ratio_to||1;
+      const transferredPts=Math.floor(pts*(rTo/rFrom));
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:-pts,description:"Auto-transferred to "+(linkedProg.nickname||autoMaster?.name),txn_date:f.txn_date});
+      // Card balance stays 0 (earn + immediate outgoing = net 0)
+      await db.from("my_cards").update(card.id,{points_balance:0});
+      setCard(c=>({...c,points_balance:0}));
+      // Record transfer-in on LP
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:linkedProg.id,points:transferredPts,description:"Auto-transferred from "+(card.nickname||master?.name),txn_date:f.txn_date});
+      const newProgBal=(linkedProg.points_balance||0)+transferredPts;
+      await db.from("my_programs").update(linkedProg.id,{points_balance:newProgBal});
+    } else {
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description,txn_date:f.txn_date});
+      const nb=(card.points_balance||0)+pts;
+      await db.from("my_cards").update(card.id,{points_balance:nb});
+      setCard(c=>({...c,points_balance:nb}));
+    }
     setShowTxn(false);setF(tf);load();
   };
 
@@ -1108,6 +1887,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             <div>
               <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||master?.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&".... "+card.last4+" · "}{owner?.name||"--"} · {master?.bank||""} {master?.network||""}</div>
+              {master?.auto_transfer_to&&<div style={{fontSize:11,color:acc,fontWeight:500,marginTop:4}}>Points flow to → <span style={{fontWeight:600}}><AutoTransferName masterId={master.auto_transfer_to} db={db}/></span></div>}
             </div>
           </div>
           <button style={pbtn} onClick={()=>{setF(tf);setShowTxn(true);}}>+ Add Transaction</button>
@@ -1128,26 +1908,8 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
           ))}
         </div>
       </Card>
-      {partners.length>0&&(
-        <Card style={{marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer Partners</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {partners.map(p=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,borderRadius:12,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={32}/>
-                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{gName(p.to_type,p.to_id)}</div>
-                </div>
-                <div style={{display:"flex",gap:14,alignItems:"center"}}>
-                  <div style={{textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:acc}}>{p.ratio_from}:{p.ratio_to}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Ratio</div></div>
-                  {p.min_transfer&&<div style={{textAlign:"center"}}><div style={{fontSize:12,fontWeight:600,color:txt}}>{Number(p.min_transfer).toLocaleString()}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Min</div></div>}
-                  {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:12,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Time</div></div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <CardMilestones masterId={master?.id} db={db}/>
+      <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <Card>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:16}}>Points History</div>
         {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
@@ -1172,10 +1934,17 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         )}
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
+        {master?.auto_transfer_to&&<div style={{background:acc+"10",border:`1px solid ${acc}33`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:acc,fontWeight:500}}>
+          Co-branded card — points auto-transfer to linked LP after logging
+        </div>}
         {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="adjust">Adjustment</option></select>
         {lbl("Points")}<input style={inp} type="number" placeholder="1000" value={f.points} onChange={up("points")}/>
         {lbl("Description")}<input style={inp} placeholder="Grocery spend, bonus..." value={f.description} onChange={up("description")}/>
         {lbl("Date")}<input style={inp} type="date" value={f.txn_date} onChange={up("txn_date")}/>
+        {master?.auto_transfer_to&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12,fontSize:12,color:mut2}}>
+          <input type="checkbox" checked={f.override_auto||false} onChange={e=>setF(p=>({...p,override_auto:e.target.checked}))} style={{accentColor:acc}}/>
+          Override auto-transfer (log to card only)
+        </label>}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
       <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Card">
@@ -1413,26 +2182,8 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
         </div>
         {master?.expiry_rule&&<div style={{fontSize:12,color:mut,marginTop:10}}>{master.expiry_rule}</div>}
       </Card>
-      {partners.length>0&&(
-        <Card style={{marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer Partners</div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {partners.map(p=>(
-              <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,borderRadius:12,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={32}/>
-                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{gName(p.to_type,p.to_id)}</div>
-                </div>
-                <div style={{display:"flex",gap:14,alignItems:"center"}}>
-                  <div style={{textAlign:"center"}}><div style={{fontSize:14,fontWeight:800,color:acc}}>{p.ratio_from}:{p.ratio_to}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Ratio</div></div>
-                  {p.min_transfer&&<div style={{textAlign:"center"}}><div style={{fontSize:12,fontWeight:600,color:txt}}>{Number(p.min_transfer).toLocaleString()}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Min</div></div>}
-                  {p.transfer_time&&<div style={{textAlign:"center"}}><div style={{fontSize:12,fontWeight:600,color:grn}}>{p.transfer_time}</div><div style={{fontSize:9,color:mut,textTransform:"uppercase"}}>Time</div></div>}
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
+      <CardMilestones masterId={master?.id} db={db}/>
+      <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <Card>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:16}}>Points History</div>
         {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
