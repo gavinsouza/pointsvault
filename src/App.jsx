@@ -226,7 +226,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const minV=Math.min(...vals,0),maxV=Math.max(...vals,1),range=maxV-minV||1;
   const toX=i=>PL+(i/(series.length-1||1))*cW;
   const toY=v=>PT+cH-((v-minV)/range)*cH;
-  const pathD=series.map((s,i)=>`${i===0?"M":"L"}${toX(i).toFixed(1)},${toY(s.value).toFixed(1)}`).join(" ");
+  const pathD=series.length>0?series.map((s,i)=>`${i===0?"M":"L"}${toX(i).toFixed(1)},${toY(s.value).toFixed(1)}`).join(" "):"";
   const areaD=series.length>1?`${pathD} L${toX(series.length-1).toFixed(1)},${(PT+cH).toFixed(1)} L${toX(0).toFixed(1)},${(PT+cH).toFixed(1)} Z`:"";
   const yTicks=3;
   const yTickVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
@@ -234,7 +234,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const xIdxs=series.length<=1?[0]:[0,Math.floor((series.length-1)/2),series.length-1];
   const fmtDate=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
   const isEmpty=series.length<2||vals.every(v=>v===0);
-  const latestVal=vals[vals.length-1]||0;
+  const latestVal=vals.length>0?vals[vals.length-1]||0:0;
   const gradId=`g${entityType}`;
 
   const [hover,setHover]=useState(null); // {idx,x,y,value,date}
@@ -244,9 +244,11 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
     const rect=svg.getBoundingClientRect();
     const mx=((e.clientX-rect.left)/rect.width)*W;
     if(mx<PL||mx>W-PR) return setHover(null);
+    if(series.length<2) return setHover(null);
     const rawIdx=(mx-PL)/cW*(series.length-1);
     const idx=Math.round(Math.max(0,Math.min(series.length-1,rawIdx)));
     const pt=series[idx];
+    if(!pt) return setHover(null);
     setHover({idx,x:toX(idx),y:toY(pt.value),value:pt.value,date:pt.date});
   };
 
@@ -305,7 +307,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
           </defs>
           {yTickVals.map((v,i)=><line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>)}
           {yTickVals.map((v,i)=><text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmtTick(v)}</text>)}
-          {xIdxs.map(idx=><text key={idx} x={toX(idx)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtDate(series[idx].date)}</text>)}
+          {xIdxs.map(idx=>series[idx]?<text key={idx} x={toX(idx)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtDate(series[idx].date)}</text>:null)}
           {areaD&&<path d={areaD} fill={`url(#${gradId})`}/>}
           {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
           {/* Hover crosshair */}
@@ -317,7 +319,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
             <text x={Math.min(hover.x+8,W-PR-ttW-4)+8} y={Math.max(PT+2,hover.y-ttH-6)+29} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.value):hover.value.toLocaleString("en-IN")}</text>
           </>}
           {/* End dot (when not hovering) */}
-          {!hover&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
+          {!hover&&series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
         </svg>
       }
     </Card>
