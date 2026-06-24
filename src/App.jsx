@@ -1078,11 +1078,12 @@ function MergeMasters({db, type, onClose, onDone}){
     const entries = [];
 
     // 1. Re-point all instances from drop → keep
-    const {data:instances} = await db.from(instTbl).filter(instCol, dropId);
+    const {data:instances} = await db.from(instTbl).filter("master_id", dropId);
     for(const inst of (instances||[])){
-      await db.from(instTbl).update(inst.id, {[instCol]:keepId});
-      entries.push({type:"ok", msg:`Re-pointed instance: ${inst.nickname||inst.id}`});
+      await db.from(instTbl).update(inst.id, {master_id:keepId});
+      entries.push({type:"ok", msg:"Re-pointed: "+(inst.nickname||inst.membership_number||inst.id)});
     }
+    if((instances||[]).length>0) entries.push({type:"ok", msg:`${instances.length} instances re-pointed to kept master`});
 
     // 2. Copy transfer partners from drop → keep (skip duplicates)
     const {data:allPartners} = await db.from("master_partners").select();
@@ -1231,7 +1232,9 @@ function LibraryImport({db, onClose, onDone}){
   const GENERIC_WORDS = new Set(["airways","airlines","airline","rewards","miles","points","club","plus",
     "card","bank","credit","loyalty","program","programme","frequent","flyer","travel","guest","one",
     "live","limitless","member","gold","silver","platinum","international","national","air","hotel",
-    "hotels","resorts","honors","bonvoy","executive","privilege","mileage","advantage","connect"]);
+    "hotels","resorts","honors","bonvoy","executive","privilege","mileage","advantage","connect",
+    "flying","returns","blue","klm","smiles","orchid","royal","asia","pacific","lounge","express",
+    "world","global","elite","premier","select","plus","sky","wings","jet","star","alliance","team"]);
 
   const brandWords = name => name.toLowerCase()
     .replace(/[^a-z0-9 ]/g,"")
@@ -1937,8 +1940,10 @@ function Catalog({db}){
   const [showMerge,setShowMerge]=useState(null); // null | "card" | "program"
   const [detailCard,setDetailCard]=useState(null);
   const [detailProg,setDetailProg]=useState(null);
+  const [cardSearch,setCardSearch]=useState("");
+  const [progSearch,setProgSearch]=useState("");
+  const [partSort,setPartSort]=useState("all"); // all | out | in
   const [partSearch,setPartSearch]=useState("");
-  const [partSort,setPartSort]=useState("name");
   const [saving,setSaving]=useState(false);
   const [editItem,setEditItem]=useState(null);
   const [logoFile,setLogoFile]=useState(null);
@@ -2058,9 +2063,13 @@ function Catalog({db}){
         {tab==="cards"&&(
           <div>
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
-              <button style={pbtn} onClick={()=>{setEditItem(null);setFC(eCard);setLogoFile(null);setLogoPrev(null);setShowCard(true);}}>+ Add Master Card</button>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flex:1}}>
+                <input style={{...inp,marginBottom:0,flex:1,minWidth:140,fontSize:12,padding:"6px 10px"}} placeholder="Search cards..." value={cardSearch} onChange={e=>setCardSearch(e.target.value)}/>
+                <button style={{...gbtn,fontSize:12}} onClick={()=>setShowMerge("card")}>⟳ Merge</button>
+                <button style={pbtn} onClick={()=>{setEditItem(null);setFC(eCard);setLogoFile(null);setLogoPrev(null);setShowCard(true);}}>+ Add</button>
+              </div>
             </div>
-            {mCards.length===0?<Empty icon="CC" msg="No master cards yet"/>:(
+            {(()=>{const filtMC=mCards.filter(c=>!cardSearch||c.name.toLowerCase().includes(cardSearch.toLowerCase())||(c.bank||"").toLowerCase().includes(cardSearch.toLowerCase()));return filtMC.length===0?<Empty icon="CC" msg="No master cards yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {mCards.map(c=>(
                   <Card key={c.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailCard(c)}>
@@ -2079,18 +2088,19 @@ function Catalog({db}){
                   </Card>
                 ))}
               </div>
-            )}
+            )})()}
           </div>
         )}
         {tab==="programs"&&(
           <div>
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
-              <div style={{display:"flex",gap:8}}>
-                <button style={{...gbtn,fontSize:12}} onClick={()=>setShowMerge("program")}>⟳ Merge Duplicates</button>
-                <button style={pbtn} onClick={()=>{setEditItem(null);setFP(eProg);setLogoFile(null);setLogoPrev(null);setShowProg(true);}}>+ Add Master Program</button>
+              <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap",flex:1}}>
+                <input style={{...inp,marginBottom:0,flex:1,minWidth:140,fontSize:12,padding:"6px 10px"}} placeholder="Search programs..." value={progSearch} onChange={e=>setProgSearch(e.target.value)}/>
+                <button style={{...gbtn,fontSize:12}} onClick={()=>setShowMerge("program")}>⟳ Merge</button>
+                <button style={pbtn} onClick={()=>{setEditItem(null);setFP(eProg);setLogoFile(null);setLogoPrev(null);setShowProg(true);}}>+ Add</button>
               </div>
             </div>
-            {mProgs.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
+            {(()=>{const filtMP=mProgs.filter(p=>!progSearch||p.name.toLowerCase().includes(progSearch.toLowerCase())||(p.category||"").toLowerCase().includes(progSearch.toLowerCase()));return filtMP.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {mProgs.map(p=>(
                   <Card key={p.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailProg(p)}>
@@ -2109,7 +2119,7 @@ function Catalog({db}){
                   </Card>
                 ))}
               </div>
-            )}
+            )})()}
           </div>
         )}
         {tab==="partners"&&(
@@ -2134,6 +2144,8 @@ function Catalog({db}){
                     return !s||fn.includes(s)||tn.includes(s);
                   })
                   .sort((a,b)=>{
+                    if(partSort==="out") return a.from_type==="card"?-1:b.from_type==="card"?1:0;
+                    if(partSort==="in")  return a.to_type==="card"?-1:b.to_type==="card"?1:0;
                     if(partSort==="ratio") return (b.ratio_to/b.ratio_from)-(a.ratio_to/a.ratio_from);
                     return gName(a.from_type,a.from_id).localeCompare(gName(b.from_type,b.from_id));
                   })
