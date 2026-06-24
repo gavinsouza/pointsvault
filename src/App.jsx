@@ -796,7 +796,7 @@ function Overview({db,owners,onNavigate}){
       <div className="ov-grid" style={{gap:16,marginBottom:16}}>
         {/* LEFT COL — Loyalty Programs */}
         <div className="ov-col">
-          <Card className="ov-list-card">
+          <Card className="ov-list-card" style={{height:380,overflowY:"auto"}}>
             <OvList
               title="Loyalty Programs"
               onNav={()=>onNavigate("my-programs")}
@@ -822,7 +822,7 @@ function Overview({db,owners,onNavigate}){
         </div>
         {/* RIGHT COL — Credit Cards */}
         <div className="ov-col">
-          <Card className="ov-list-card">
+          <Card className="ov-list-card" style={{height:380,overflowY:"auto"}}>
             <OvList
               title="Credit Cards"
               onNav={()=>onNavigate("my-cards")}
