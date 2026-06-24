@@ -1904,7 +1904,6 @@ function Catalog({db}){
         )}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={savePart}>{editItem?"Save Changes":"Add Route"}</button>
       </Modal>
-      </div>}
     </div>
   );
 }
