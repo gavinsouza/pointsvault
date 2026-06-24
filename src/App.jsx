@@ -1029,85 +1029,330 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
   );
 }
 
+
+// ── MergeMasters ─────────────────────────────────────────────────────────────
+function MergeMasters({db, type, onClose, onDone}){
+  const [items, setItems] = useState([]);
+  const [keepId, setKeepId] = useState("");
+  const [dropId, setDropId] = useState("");
+  const [preview, setPreview] = useState(null); // {instances, txns, partners}
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [log, setLog] = useState([]);
+
+  useEffect(()=>{
+    const tbl = type==="card"?"master_cards":"master_programs";
+    db.from(tbl).select().then(({data})=>setItems((data||[]).sort((a,b)=>a.name.localeCompare(b.name))));
+  },[db,type]);
+
+  const instTbl = type==="card"?"my_cards":"my_programs";
+  const instCol = type==="card"?"master_id":"master_id";
+
+  useEffect(()=>{
+    if(!keepId||!dropId||keepId===dropId){ setPreview(null); return; }
+    (async()=>{
+      const [inst, txnsAll, partners] = await Promise.all([
+        db.from(instTbl).filter(instCol, dropId),
+        db.from("point_transactions").select(),
+        db.from("master_partners").select(),
+      ]);
+      const instances = inst.data||[];
+      // count transactions belonging to instances of the drop master
+      const instIds = new Set(instances.map(i=>i.id));
+      const txnCount = (txnsAll.data||[]).filter(t=>instIds.has(t.entity_id)).length;
+      const dropPartners = (partners.data||[]).filter(p=>p.from_id===dropId||p.to_id===dropId);
+      const keepPartners = (partners.data||[]).filter(p=>p.from_id===keepId||p.to_id===keepId);
+      // which drop partners don't exist on keep
+      const keepRouteKeys = new Set(keepPartners.map(p=>p.from_id+":"+p.to_id));
+      const newRoutes = dropPartners.filter(p=>{
+        const key = (p.from_id===dropId?keepId:p.from_id)+":"+(p.to_id===dropId?keepId:p.to_id);
+        return !keepRouteKeys.has(key);
+      });
+      setPreview({instances:instances.length, txns:txnCount, dropPartners:dropPartners.length, newRoutes:newRoutes.length});
+    })();
+  },[keepId,dropId]);
+
+  const doMerge = async()=>{
+    if(!keepId||!dropId||keepId===dropId) return;
+    setBusy(true);
+    const entries = [];
+
+    // 1. Re-point all instances from drop → keep
+    const {data:instances} = await db.from(instTbl).filter(instCol, dropId);
+    for(const inst of (instances||[])){
+      await db.from(instTbl).update(inst.id, {[instCol]:keepId});
+      entries.push({type:"ok", msg:`Re-pointed instance: ${inst.nickname||inst.id}`});
+    }
+
+    // 2. Copy transfer partners from drop → keep (skip duplicates)
+    const {data:allPartners} = await db.from("master_partners").select();
+    const dropRoutes = (allPartners||[]).filter(p=>p.from_id===dropId||p.to_id===dropId);
+    const keepRoutes = (allPartners||[]).filter(p=>p.from_id===keepId||p.to_id===keepId);
+    const keepKeys = new Set(keepRoutes.map(p=>p.from_id+":"+p.to_id));
+    for(const p of dropRoutes){
+      const newFrom = p.from_id===dropId?keepId:p.from_id;
+      const newTo   = p.to_id===dropId?keepId:p.to_id;
+      if(newFrom===newTo) continue; // skip self-loops
+      const key = newFrom+":"+newTo;
+      if(keepKeys.has(key)) continue;
+      await db.from("master_partners").insert({
+        from_id:newFrom, from_type:p.from_type, to_id:newTo, to_type:p.to_type,
+        ratio_from:p.ratio_from, ratio_to:p.ratio_to,
+        min_transfer:p.min_transfer, transfer_time:p.transfer_time,
+        notes:p.notes, has_reverse:p.has_reverse,
+      });
+      entries.push({type:"ok", msg:`Copied transfer route to kept master`});
+    }
+
+    // 3. Delete all old partner routes for drop master
+    for(const p of dropRoutes){
+      await db.from("master_partners").delete(p.id);
+    }
+
+    // 4. Delete milestones for drop master (if card)
+    if(type==="card"){
+      const {data:ms} = await db.from("master_milestones").filter("master_card_id", dropId);
+      for(const m of (ms||[])){
+        await db.from("master_milestones").delete(m.id);
+      }
+      if((ms||[]).length>0) entries.push({type:"ok", msg:`Removed ${ms.length} milestones from duplicate`});
+    }
+
+    // 5. Delete the drop master
+    const tbl = type==="card"?"master_cards":"master_programs";
+    await db.from(tbl).delete(dropId);
+    entries.push({type:"ok", msg:`Deleted duplicate master`});
+
+    setLog(entries);
+    setBusy(false);
+    setDone(true);
+  };
+
+  const keepItem = items.find(i=>i.id===keepId);
+  const dropItem = items.find(i=>i.id===dropId);
+
+  const selSt = {width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid ${bdr}`,fontSize:13,fontFamily:"'Manrope',sans-serif",background:surf,color:txt,outline:"none",marginBottom:12};
+
+  if(done) return(
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:grn,marginBottom:4}}>Merge complete!</div>
+      <div style={{fontSize:12,color:mut,marginBottom:16}}>{log.filter(l=>l.type==="ok").length} operations completed.</div>
+      <div style={{maxHeight:180,overflowY:"auto",marginBottom:16}}>
+        {log.map((l,i)=>(
+          <div key={i} style={{fontSize:11,color:l.type==="ok"?grn:red,padding:"3px 0",borderBottom:`1px solid ${bdr}`}}>
+            {l.type==="ok"?"✓ ":"✗ "}{l.msg}
+          </div>
+        ))}
+      </div>
+      <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{onDone();onClose();}}>Done</button>
+    </div>
+  );
+
+  return(
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:txt,marginBottom:4}}>Merge {type==="card"?"Master Cards":"Master Programs"}</div>
+      <div style={{fontSize:12,color:mut,marginBottom:20}}>Re-points all instances and transactions from the duplicate to the keeper, copies transfer partners, then deletes the duplicate.</div>
+
+      <div style={{marginBottom:4}}>{lbl("Keep this one (the master to keep)")}</div>
+      <select value={keepId} onChange={e=>{setKeepId(e.target.value);setPreview(null);}} style={selSt}>
+        <option value="">Select master to keep…</option>
+        {items.filter(i=>i.id!==dropId).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+      </select>
+
+      <div style={{marginBottom:4}}>{lbl("Delete this duplicate")}</div>
+      <select value={dropId} onChange={e=>{setDropId(e.target.value);setPreview(null);}} style={selSt}>
+        <option value="">Select duplicate to delete…</option>
+        {items.filter(i=>i.id!==keepId).map(i=><option key={i.id} value={i.id}>{i.name}</option>)}
+      </select>
+
+      {keepId&&dropId&&keepId===dropId&&(
+        <div style={{fontSize:12,color:red,marginBottom:12}}>Cannot merge a master with itself.</div>
+      )}
+
+      {preview&&keepId&&dropId&&keepId!==dropId&&(
+        <div style={{background:surf2,borderRadius:10,padding:"14px 16px",marginBottom:16,border:`1px solid ${bdr}`}}>
+          <div style={{fontSize:11,fontWeight:600,color:txt,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>Preview</div>
+          <div style={{display:"flex",gap:16,flexWrap:"wrap"}}>
+            {[
+              {label:"Instances re-pointed", value:preview.instances},
+              {label:"Transactions kept",    value:preview.txns},
+              {label:"New routes copied",    value:preview.newRoutes},
+            ].map((s,i)=>(
+              <div key={i} style={{textAlign:"center"}}>
+                <div style={{fontSize:18,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{s.value}</div>
+                <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{fontSize:11,color:red,marginTop:12,fontWeight:500}}>
+            ⚠ "{dropItem?.name}" will be permanently deleted after merge.
+          </div>
+        </div>
+      )}
+
+      <div style={{display:"flex",justifyContent:"flex-end",gap:8,marginTop:8}}>
+        <button style={gbtn} onClick={onClose}>Cancel</button>
+        <button
+          style={{...pbtn,background:red,border:"none",opacity:(!keepId||!dropId||keepId===dropId||busy)?0.4:1}}
+          onClick={()=>(!keepId||!dropId||keepId===dropId||busy)?null:doMerge()}>
+          {busy?"Merging…":"Merge & Delete Duplicate"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── LibraryImport — import pre-loaded cards and programs ─────────────────────
 function LibraryImport({db, onClose, onDone}){
-  const [step, setStep] = useState(1); // 1=select 2=review 3=importing 4=done
+  const [step, setStep] = useState(1); // 1=select 1.5=confirm-matches 2=review 3=importing 4=done
   const [selectedCards, setSelectedCards] = useState(new Set());
   const [selectedProgs, setSelectedProgs] = useState(new Set());
   const [libTab, setLibTab] = useState("cards");
   const [existingCards, setExistingCards] = useState([]);
-  const [existingProgs, setExistingProgs] = useState([]);
+  const [existingProgsRaw, setExistingProgsRaw] = useState([]); // full objects
+  const [existingCardsRaw, setExistingCardsRaw] = useState([]); // full objects
   const [importLog, setImportLog] = useState([]);
   const [searchQ, setSearchQ] = useState("");
+  // Step 1.5 state — fuzzy match confirmations
+  const [fuzzyMatches, setFuzzyMatches] = useState([]); // [{libLid, libName, existingId, existingName, confirmed: null/true/false}]
 
   useEffect(()=>{
     (async()=>{
       const [c,p] = await Promise.all([db.from("master_cards").select(), db.from("master_programs").select()]);
+      setExistingCardsRaw(c.data||[]);
+      setExistingProgsRaw(p.data||[]);
       setExistingCards((c.data||[]).map(x=>x.name.toLowerCase()));
-      setExistingProgs((p.data||[]).map(x=>x.name.toLowerCase()));
     })();
   },[db]);
 
+  const existingProgNames = existingProgsRaw.map(x=>x.name.toLowerCase());
+
+  // ── Matching logic ────────────────────────────────────────────────────────
+  const GENERIC_WORDS = new Set(["airways","airlines","airline","rewards","miles","points","club","plus",
+    "card","bank","credit","loyalty","program","programme","frequent","flyer","travel","guest","one",
+    "live","limitless","member","gold","silver","platinum","international","national","air","hotel",
+    "hotels","resorts","honors","bonvoy","executive","privilege","mileage","advantage","connect"]);
+
+  const brandWords = name => name.toLowerCase()
+    .replace(/[^a-z0-9 ]/g,"")
+    .split(/\s+/)
+    .filter(w=>w.length>2&&!GENERIC_WORDS.has(w));
+
+  const matchType = (libName, existingName) => {
+    const ln = libName.toLowerCase(); const en = existingName.toLowerCase();
+    if(ln===en) return "exact";
+    const lb = brandWords(libName); const eb = brandWords(existingName);
+    if(lb.length===0||eb.length===0) return "none";
+    const shared = lb.filter(w=>eb.includes(w));
+    if(shared.length>0) return "fuzzy";
+    return "none";
+  };
+
   const alreadyHasCard = lid => {
     const c = LIBRARY.cards.find(x=>x.lid===lid);
-    return c && existingCards.includes(c.name.toLowerCase());
+    if(!c) return false;
+    return existingCards.includes(c.name.toLowerCase());
   };
   const alreadyHasProg = lid => {
     const p = LIBRARY.programs.find(x=>x.lid===lid);
-    return p && existingProgs.includes(p.name.toLowerCase());
+    if(!p) return false;
+    return existingProgNames.includes(p.name.toLowerCase());
+  };
+  // Returns existing prog object if fuzzy match confirmed, null otherwise
+  const getFuzzyMergeTarget = lid => {
+    const m = fuzzyMatches.find(f=>f.libLid===lid&&f.confirmed===true);
+    return m ? existingProgsRaw.find(p=>p.id===m.existingId) : null;
   };
 
-  // Build dependency set — which LPs are needed by selected CCs
   const depProgs = useMemo(()=>{
     const deps = new Set();
     selectedCards.forEach(lid=>{
       const card = LIBRARY.cards.find(c=>c.lid===lid);
       if(!card) return;
-      // auto_transfer_to LP
       if(card.auto_transfer_to) deps.add(card.auto_transfer_to);
-      // all partner LPs
       card.partners.forEach(p=>deps.add(p.to_lid));
     });
     return deps;
   },[selectedCards]);
 
-  // LPs that will be newly added (dep + manually selected, minus already existing)
+  const allSelectedProgs = useMemo(()=>{
+    return new Set([...depProgs,...selectedProgs]);
+  },[depProgs,selectedProgs]);
+
   const newProgs = useMemo(()=>{
-    const all = new Set([...depProgs, ...selectedProgs]);
-    return [...all].filter(lid=>!alreadyHasProg(lid));
-  },[depProgs, selectedProgs, existingProgs]);
+    return [...allSelectedProgs].filter(lid=>{
+      if(alreadyHasProg(lid)) return false;
+      // also exclude fuzzy-confirmed (they map to existing)
+      if(fuzzyMatches.find(f=>f.libLid===lid&&f.confirmed===true)) return false;
+      return true;
+    });
+  },[allSelectedProgs,existingProgNames,fuzzyMatches]);
 
-  // LP→LP partners to add for selected LPs
   const lpPartners = useMemo(()=>{
-    const allLpLids = new Set([...depProgs, ...selectedProgs]);
-    return LIBRARY.lp_partners.filter(r=>allLpLids.has(r.from_lid));
-  },[depProgs, selectedProgs]);
+    return LIBRARY.lp_partners.filter(r=>allSelectedProgs.has(r.from_lid));
+  },[allSelectedProgs]);
 
-  const toggleCard = lid => {
-    setSelectedCards(s=>{ const n=new Set(s); n.has(lid)?n.delete(lid):n.add(lid); return n; });
-  };
-  const toggleProg = lid => {
-    setSelectedProgs(s=>{ const n=new Set(s); n.has(lid)?n.delete(lid):n.add(lid); return n; });
+  const toggleCard = lid => setSelectedCards(s=>{ const n=new Set(s); n.has(lid)?n.delete(lid):n.add(lid); return n; });
+  const toggleProg = lid => setSelectedProgs(s=>{ const n=new Set(s); n.has(lid)?n.delete(lid):n.add(lid); return n; });
+
+  // ── Step 1 → 1.5 transition: detect fuzzy matches ────────────────────────
+  const proceedFromSelect = () => {
+    if(selectedCards.size+selectedProgs.size===0) return;
+    // Find all LPs that are fuzzy (not exact) matches
+    const toCheck = [...allSelectedProgs];
+    const matches = [];
+    for(const lid of toCheck){
+      if(alreadyHasProg(lid)) continue; // exact match handled silently
+      const libP = LIBRARY.programs.find(p=>p.lid===lid);
+      if(!libP) continue;
+      for(const existing of existingProgsRaw){
+        const mt = matchType(libP.name, existing.name);
+        if(mt==="fuzzy"){
+          matches.push({libLid:lid, libName:libP.name, existingId:existing.id, existingName:existing.name, confirmed:null});
+          break; // only first match per lib program
+        }
+      }
+    }
+    if(matches.length>0){
+      setFuzzyMatches(matches);
+      setStep(1.5);
+    } else {
+      setFuzzyMatches([]);
+      setStep(2);
+    }
   };
 
+  const confirmFuzzy = (libLid, answer) => {
+    setFuzzyMatches(prev=>prev.map(f=>f.libLid===libLid?{...f,confirmed:answer}:f));
+  };
+
+  const allFuzzyAnswered = fuzzyMatches.every(f=>f.confirmed!==null);
+
+  // ── doImport ──────────────────────────────────────────────────────────────
   const doImport = async()=>{
     setStep(3);
     const log = [];
-    const progIdMap = {}; // lid -> actual DB id
+    const progIdMap = {};
 
-    // 1. Insert new LPs
-    const allNewProgLids = [...new Set([...newProgs])];
-    for(const lid of allNewProgLids){
+    // Load all existing programs upfront
+    const {data:allProgs} = await db.from("master_programs").select();
+
+    // Build progIdMap for exact matches
+    (allProgs||[]).forEach(p=>{
+      const libP = LIBRARY.programs.find(x=>x.name.toLowerCase()===p.name.toLowerCase());
+      if(libP) progIdMap[libP.lid]=p.id;
+    });
+
+    // Build progIdMap for fuzzy-confirmed merges
+    fuzzyMatches.filter(f=>f.confirmed===true).forEach(f=>{
+      progIdMap[f.libLid]=f.existingId;
+      log.push({type:"merge", msg:`Merged: ${f.libName} → existing "${f.existingName}"`});
+    });
+
+    // Insert genuinely new LPs
+    for(const lid of newProgs){
       const lp = LIBRARY.programs.find(p=>p.lid===lid);
-      if(!lp) continue;
-      if(alreadyHasProg(lid)){
-        // find existing id
-        const {data} = await db.from("master_programs").select();
-        const ex = (data||[]).find(x=>x.name.toLowerCase()===lp.name.toLowerCase());
-        if(ex) progIdMap[lid] = ex.id;
-        log.push({type:"skip", msg:`${lp.name} already exists`});
-        continue;
-      }
+      if(!lp||progIdMap[lid]) continue;
       const {data,error} = await db.from("master_programs").insert({
         name:lp.name, category:lp.category, points_currency:lp.points_currency,
         inr_per_point:lp.inr_per_point, expiry_rule:lp.expiry_rule
@@ -1116,14 +1361,14 @@ function LibraryImport({db, onClose, onDone}){
       if(data&&data[0]){ progIdMap[lid]=data[0].id; log.push({type:"ok", msg:`Added LP: ${lp.name}`}); }
     }
 
-    // Also load existing prog IDs for LPs already in catalog that are partners
-    const {data:allProgs} = await db.from("master_programs").select();
-    (allProgs||[]).forEach(p=>{
+    // Refresh progIdMap with any newly inserted
+    const {data:freshProgs} = await db.from("master_programs").select();
+    (freshProgs||[]).forEach(p=>{
       const libP = LIBRARY.programs.find(x=>x.name.toLowerCase()===p.name.toLowerCase());
-      if(libP && !progIdMap[libP.lid]) progIdMap[libP.lid] = p.id;
+      if(libP&&!progIdMap[libP.lid]) progIdMap[libP.lid]=p.id;
     });
 
-    // 2. Insert new CCs + resolve auto_transfer_to
+    // Insert new CCs
     const cardIdMap = {};
     for(const lid of selectedCards){
       const card = LIBRARY.cards.find(c=>c.lid===lid);
@@ -1135,12 +1380,12 @@ function LibraryImport({db, onClose, onDone}){
         if(ex) cardIdMap[lid]=ex.id;
         continue;
       }
-      const auto_transfer_to_id = card.auto_transfer_to ? (progIdMap[card.auto_transfer_to]||null) : null;
+      const auto_id = card.auto_transfer_to?(progIdMap[card.auto_transfer_to]||null):null;
       const {data,error} = await db.from("master_cards").insert({
         name:card.name, bank:card.bank, network:card.network,
         points_currency:card.points_currency, inr_per_point:card.inr_per_point,
         annual_fee:card.annual_fee,
-        auto_transfer_to:auto_transfer_to_id,
+        auto_transfer_to:auto_id,
         auto_transfer_ratio_from:card.auto_transfer_ratio_from||1,
         auto_transfer_ratio_to:card.auto_transfer_ratio_to||1,
       });
@@ -1148,63 +1393,62 @@ function LibraryImport({db, onClose, onDone}){
       if(data&&data[0]){ cardIdMap[lid]=data[0].id; log.push({type:"ok", msg:`Added CC: ${card.name}`}); }
     }
 
-    // 3. Insert milestones
+    // Insert milestones
     for(const lid of selectedCards){
       const card = LIBRARY.cards.find(c=>c.lid===lid);
       if(!card||!cardIdMap[lid]) continue;
       for(const m of (card.milestones||[])){
         await db.from("master_milestones").insert({
-          master_card_id:cardIdMap[lid],
-          spend_threshold:m.spend_threshold,
-          cycle_type:m.cycle_type,
-          benefit_type:m.benefit_type,
-          benefit_value:m.benefit_value,
-          benefit_points:m.benefit_points||null,
-          stackable:m.stackable,
-          sort_order:m.sort_order,
+          master_card_id:cardIdMap[lid], spend_threshold:m.spend_threshold,
+          cycle_type:m.cycle_type, benefit_type:m.benefit_type,
+          benefit_value:m.benefit_value, benefit_points:m.benefit_points||null,
+          stackable:m.stackable, sort_order:m.sort_order,
         });
       }
       if((card.milestones||[]).length>0) log.push({type:"ok", msg:`Added ${card.milestones.length} milestones for ${card.name}`});
     }
 
-    // 4. Insert CC→LP transfer partners
+    // Insert CC→LP transfer partners (skip if route already exists)
     for(const lid of selectedCards){
       const card = LIBRARY.cards.find(c=>c.lid===lid);
-      if(!card||!cardIdMap[lid]) continue;
+      if(!card) continue;
       const cardDbId = cardIdMap[lid];
+      if(!cardDbId) continue;
+      const {data:existingRoutes} = await db.from("master_partners").filter("from_id",cardDbId);
+      const existToIds = new Set((existingRoutes||[]).map(p=>p.to_id));
+      let added=0;
       for(const p of (card.partners||[])){
         const toProgId = progIdMap[p.to_lid];
-        if(!toProgId) continue;
-        // check not already existing
+        if(!toProgId||existToIds.has(toProgId)) continue;
         await db.from("master_partners").insert({
-          from_id:cardDbId, from_type:"card",
-          to_id:toProgId, to_type:"program",
+          from_id:cardDbId, from_type:"card", to_id:toProgId, to_type:"program",
           ratio_from:p.ratio_from, ratio_to:p.ratio_to,
-          min_transfer:p.min_transfer||null,
-          transfer_time:p.transfer_time||null,
-          notes:p.notes||null,
-          has_reverse:false,
+          min_transfer:p.min_transfer||null, transfer_time:p.transfer_time||null,
+          notes:p.notes||null, has_reverse:false,
         });
+        added++;
       }
-      if((card.partners||[]).length>0) log.push({type:"ok", msg:`Added ${card.partners.length} transfer routes for ${card.name}`});
+      if(added>0) log.push({type:"ok", msg:`Added ${added} transfer routes for ${card.name}`});
     }
 
-    // 5. Insert LP→LP partners
+    // Insert LP→LP partners (skip if route already exists)
+    const {data:existingLPRoutes} = await db.from("master_partners").select();
+    const existingRouteKeys = new Set((existingLPRoutes||[]).map(r=>r.from_id+":"+r.to_id));
+    let lpAdded=0;
     for(const r of lpPartners){
       const fromId = progIdMap[r.from_lid];
       const toId = progIdMap[r.to_lid];
       if(!fromId||!toId) continue;
+      if(existingRouteKeys.has(fromId+":"+toId)) continue;
       await db.from("master_partners").insert({
-        from_id:fromId, from_type:"program",
-        to_id:toId, to_type:"program",
+        from_id:fromId, from_type:"program", to_id:toId, to_type:"program",
         ratio_from:r.ratio_from, ratio_to:r.ratio_to,
-        min_transfer:r.min_transfer||null,
-        transfer_time:r.transfer_time||null,
-        notes:r.notes||null,
-        has_reverse:false,
+        min_transfer:r.min_transfer||null, transfer_time:r.transfer_time||null,
+        notes:r.notes||null, has_reverse:false,
       });
+      lpAdded++;
     }
-    if(lpPartners.length>0) log.push({type:"ok", msg:`Added ${lpPartners.length} LP→LP transfer routes`});
+    if(lpAdded>0) log.push({type:"ok", msg:`Added ${lpAdded} LP→LP transfer routes`});
 
     setImportLog(log);
     setStep(4);
@@ -1213,13 +1457,7 @@ function LibraryImport({db, onClose, onDone}){
   const filteredCards = LIBRARY.cards.filter(c=>c.name.toLowerCase().includes(searchQ.toLowerCase())||c.bank.toLowerCase().includes(searchQ.toLowerCase()));
   const filteredProgs = LIBRARY.programs.filter(p=>p.name.toLowerCase().includes(searchQ.toLowerCase())||p.category.toLowerCase().includes(searchQ.toLowerCase()));
 
-  const selStyle={fontSize:10,fontWeight:tab=>tab?"600":"500",color:mut2};
-  const tabBtn=(t,label)=>({
-    padding:"6px 14px",borderRadius:20,border:`1px solid ${libTab===t?txt:bdr}`,
-    cursor:"pointer",fontSize:11,fontWeight:libTab===t?600:500,
-    background:libTab===t?txt:"transparent",color:libTab===t?"#fff":mut2,
-    fontFamily:"'Manrope',sans-serif"
-  });
+  const tabBtn=(t)=>({padding:"6px 14px",borderRadius:20,border:`1px solid ${libTab===t?txt:bdr}`,cursor:"pointer",fontSize:11,fontWeight:libTab===t?600:500,background:libTab===t?txt:"transparent",color:libTab===t?"#fff":mut2,fontFamily:"'Manrope',sans-serif"});
 
   // ── Step 1: Select ──────────────────────────────────────────────────────────
   if(step===1) return(
@@ -1228,8 +1466,8 @@ function LibraryImport({db, onClose, onDone}){
       <div style={{fontSize:12,color:mut,marginBottom:16}}>Select cards and programs to add to your catalog.</div>
       <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap"}}>
         <div style={{display:"flex",gap:6}}>
-          <button style={tabBtn("cards","Cards")} onClick={()=>setLibTab("cards")}>Credit Cards ({LIBRARY.cards.length})</button>
-          <button style={tabBtn("programs","Programs")} onClick={()=>setLibTab("programs")}>Loyalty Programs ({LIBRARY.programs.length})</button>
+          <button style={tabBtn("cards")} onClick={()=>setLibTab("cards")}>Credit Cards ({LIBRARY.cards.length})</button>
+          <button style={tabBtn("programs")} onClick={()=>setLibTab("programs")}>Loyalty Programs ({LIBRARY.programs.length})</button>
         </div>
         <input style={{...inp,marginBottom:0,flex:1,minWidth:140,fontSize:12}} placeholder="Search..." value={searchQ} onChange={e=>setSearchQ(e.target.value)}/>
       </div>
@@ -1293,18 +1531,52 @@ function LibraryImport({db, onClose, onDone}){
         </div>
         <div style={{display:"flex",gap:8}}>
           <button style={gbtn} onClick={onClose}>Cancel</button>
-          <button style={{...pbtn,opacity:(selectedCards.size+selectedProgs.size)===0?0.4:1}} onClick={()=>(selectedCards.size+selectedProgs.size)>0&&setStep(2)}>Review →</button>
+          <button style={{...pbtn,opacity:(selectedCards.size+selectedProgs.size)===0?0.4:1}} onClick={proceedFromSelect}>Review →</button>
         </div>
       </div>
     </div>
   );
 
-  // ── Step 2: Review dependencies ─────────────────────────────────────────────
+  // ── Step 1.5: Confirm fuzzy matches ─────────────────────────────────────────
+  if(step===1.5) return(
+    <div>
+      <div style={{fontSize:15,fontWeight:600,color:txt,marginBottom:4}}>Possible Duplicates Found</div>
+      <div style={{fontSize:12,color:mut,marginBottom:20}}>We found existing programs in your catalog that might be the same as library programs. Please confirm each one:</div>
+      <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:24}}>
+        {fuzzyMatches.map((f,i)=>(
+          <div key={i} style={{padding:"14px 16px",borderRadius:12,border:`1px solid ${f.confirmed===null?acc+"55":f.confirmed?grn+"55":bdr}`,background:f.confirmed===null?acc+"05":f.confirmed?grn+"05":surf2}}>
+            <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Library program</div>
+            <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:12}}>{f.libName}</div>
+            <div style={{fontSize:11,color:mut,marginBottom:4,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Existing in your catalog</div>
+            <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:14}}>{f.existingName}</div>
+            <div style={{fontSize:12,color:mut,marginBottom:12}}>Are these the same program?</div>
+            {f.confirmed===null?(
+              <div style={{display:"flex",gap:8}}>
+                <button style={{...pbtn,background:grn,border:"none",flex:1,justifyContent:"center"}} onClick={()=>confirmFuzzy(f.libLid,true)}>Yes — merge them</button>
+                <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>confirmFuzzy(f.libLid,false)}>No — keep separate</button>
+              </div>
+            ):(
+              <div style={{fontSize:12,fontWeight:600,color:f.confirmed?grn:mut}}>
+                {f.confirmed?"✓ Will merge — transfer partners added to existing program":"✓ Will add as separate program"}
+                <button style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:11,marginLeft:8}} onClick={()=>confirmFuzzy(f.libLid,null)}>Change</button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between"}}>
+        <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+        <button style={{...pbtn,opacity:allFuzzyAnswered?1:0.4}} onClick={()=>allFuzzyAnswered&&setStep(2)}>Continue →</button>
+      </div>
+    </div>
+  );
+
+  // ── Step 2: Review ───────────────────────────────────────────────────────────
   if(step===2){
     const newCardNames=[...selectedCards].filter(l=>!alreadyHasCard(l)).map(l=>LIBRARY.cards.find(c=>c.lid===l));
     const skipCardNames=[...selectedCards].filter(l=>alreadyHasCard(l)).map(l=>LIBRARY.cards.find(c=>c.lid===l));
+    const mergeProgs=fuzzyMatches.filter(f=>f.confirmed===true);
     const newProgObjs=newProgs.map(l=>LIBRARY.programs.find(p=>p.lid===l)).filter(Boolean);
-    const depOnlyProgs=newProgs.filter(l=>depProgs.has(l)&&!selectedProgs.has(l)).map(l=>LIBRARY.programs.find(p=>p.lid===l)).filter(Boolean);
     const totalPartners=[...selectedCards].reduce((a,l)=>a+(LIBRARY.cards.find(c=>c.lid===l)?.partners?.length||0),0)+lpPartners.length;
     const totalMilestones=[...selectedCards].reduce((a,l)=>a+(LIBRARY.cards.find(c=>c.lid===l)?.milestones?.length||0),0);
 
@@ -1327,11 +1599,23 @@ function LibraryImport({db, onClose, onDone}){
 
         {newProgObjs.length>0&&(
           <div style={{marginBottom:12}}>
-            {lbl("Loyalty Programs to Add")}
+            {lbl("New Loyalty Programs")}
             {newProgObjs.map(p=>(
-              <div key={p.lid} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",background:depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?acc+"08":surf2,borderRadius:8,marginBottom:4,border:`1px solid ${depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?acc+"33":bdr}`,fontSize:12}}>
+              <div key={p.lid} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",background:surf2,borderRadius:8,marginBottom:4,border:`1px solid ${bdr}`,fontSize:12}}>
                 <span style={{fontWeight:600,color:txt}}>{p.name}</span>
-                <span style={{fontSize:10,color:depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?acc:mut}}>{depProgs.has(p.lid)&&!selectedProgs.has(p.lid)?"Auto-added (required)":"Selected"}</span>
+                <span style={{fontSize:10,color:mut}}>{p.category}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {mergeProgs.length>0&&(
+          <div style={{marginBottom:12}}>
+            {lbl("Programs Being Merged (transfer partners added)")}
+            {mergeProgs.map((f,i)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"7px 12px",background:grn+"08",borderRadius:8,marginBottom:4,border:`1px solid ${grn}33`,fontSize:12}}>
+                <span style={{fontWeight:600,color:txt}}>{f.existingName}</span>
+                <span style={{fontSize:10,color:grn}}>Merge from library</span>
               </div>
             ))}
           </div>
@@ -1340,7 +1624,8 @@ function LibraryImport({db, onClose, onDone}){
         <div style={{background:surf2,borderRadius:10,padding:"12px 16px",marginBottom:16,display:"flex",gap:20,flexWrap:"wrap"}}>
           {[
             {label:"Cards",value:newCardNames.length},
-            {label:"Programs",value:newProgObjs.length},
+            {label:"New Programs",value:newProgObjs.length},
+            {label:"Merges",value:mergeProgs.length},
             {label:"Transfer Routes",value:totalPartners},
             {label:"Milestones",value:totalMilestones},
           ].filter(s=>s.value>0).map((s,i)=>(
@@ -1349,18 +1634,17 @@ function LibraryImport({db, onClose, onDone}){
               <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em"}}>{s.label}</div>
             </div>
           ))}
-          {skipCardNames.length>0&&<div style={{fontSize:11,color:mut,alignSelf:"center"}}>{skipCardNames.length} already in catalog — will be skipped</div>}
+          {skipCardNames.length>0&&<div style={{fontSize:11,color:mut,alignSelf:"center"}}>{skipCardNames.length} already in catalog — skipped</div>}
         </div>
 
         <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-          <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+          <button style={gbtn} onClick={()=>fuzzyMatches.length>0?setStep(1.5):setStep(1)}>← Back</button>
           <button style={pbtn} onClick={doImport}>Import All →</button>
         </div>
       </div>
     );
   }
 
-  // ── Step 3: Importing ───────────────────────────────────────────────────────
   if(step===3) return(
     <div style={{textAlign:"center",padding:"40px 0"}}>
       <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:8}}>Importing…</div>
@@ -1368,10 +1652,9 @@ function LibraryImport({db, onClose, onDone}){
     </div>
   );
 
-  // ── Step 4: Done ────────────────────────────────────────────────────────────
   if(step===4){
     const errors=importLog.filter(l=>l.type==="error");
-    const added=importLog.filter(l=>l.type==="ok");
+    const added=importLog.filter(l=>l.type==="ok"||l.type==="merge");
     return(
       <div>
         <div style={{fontSize:15,fontWeight:600,color:errors.length?red:grn,marginBottom:4}}>
@@ -1380,8 +1663,8 @@ function LibraryImport({db, onClose, onDone}){
         <div style={{fontSize:12,color:mut,marginBottom:16}}>{added.length} operations succeeded{errors.length>0&&`, ${errors.length} failed`}.</div>
         <div style={{maxHeight:200,overflowY:"auto",marginBottom:16}}>
           {importLog.map((l,i)=>(
-            <div key={i} style={{fontSize:11,color:l.type==="ok"?grn:l.type==="skip"?mut:red,padding:"3px 0",borderBottom:`1px solid ${bdr}`}}>
-              {l.type==="ok"?"✓ ":l.type==="skip"?"— ":"✗ "}{l.msg}
+            <div key={i} style={{fontSize:11,color:l.type==="ok"||l.type==="merge"?grn:l.type==="skip"?mut:red,padding:"3px 0",borderBottom:`1px solid ${bdr}`}}>
+              {l.type==="ok"?"✓ ":l.type==="merge"?"⟳ ":l.type==="skip"?"— ":"✗ "}{l.msg}
             </div>
           ))}
         </div>
@@ -1393,7 +1676,6 @@ function LibraryImport({db, onClose, onDone}){
 }
 
 
-// ── MasterCardDetail ──────────────────────────────────────────────────────────
 function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
   const [partners,setPartners]=useState([]);
   const [inboundPartners,setInboundPartners]=useState([]);
@@ -1652,6 +1934,7 @@ function Catalog({db}){
   const [showProg,setShowProg]=useState(false);
   const [showPart,setShowPart]=useState(false);
   const [showLibrary,setShowLibrary]=useState(false);
+  const [showMerge,setShowMerge]=useState(null); // null | "card" | "program"
   const [detailCard,setDetailCard]=useState(null);
   const [detailProg,setDetailProg]=useState(null);
   const [partSearch,setPartSearch]=useState("");
@@ -1767,6 +2050,9 @@ function Catalog({db}){
       <Modal show={showLibrary} onClose={()=>setShowLibrary(false)} title="" wide>
         <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load}/>
       </Modal>
+      <Modal show={!!showMerge} onClose={()=>setShowMerge(null)} title="">
+        {showMerge&&<MergeMasters db={db} type={showMerge} onClose={()=>setShowMerge(null)} onDone={load}/>}
+      </Modal>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:(
         <>
         {tab==="cards"&&(
@@ -1799,7 +2085,10 @@ function Catalog({db}){
         {tab==="programs"&&(
           <div>
             <div style={{display:"flex",justifyContent:"flex-end",marginBottom:16}}>
-              <button style={pbtn} onClick={()=>{setEditItem(null);setFP(eProg);setLogoFile(null);setLogoPrev(null);setShowProg(true);}}>+ Add Master Program</button>
+              <div style={{display:"flex",gap:8}}>
+                <button style={{...gbtn,fontSize:12}} onClick={()=>setShowMerge("program")}>⟳ Merge Duplicates</button>
+                <button style={pbtn} onClick={()=>{setEditItem(null);setFP(eProg);setLogoFile(null);setLogoPrev(null);setShowProg(true);}}>+ Add Master Program</button>
+              </div>
             </div>
             {mProgs.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
