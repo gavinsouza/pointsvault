@@ -2382,6 +2382,8 @@ function Catalog({db}){
 function MyCards({db,owners}){
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
+  const [myProgs,setMyProgs]=useState([]);
+  const [mProgNames,setMProgNames]=useState({}); // master_prog_id → name
   const [busy,setBusy]=useState(true);
   const [show,setShow]=useState(false);
   const [detail,setDetail]=useState(null);
@@ -2393,8 +2395,10 @@ function MyCards({db,owners}){
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [c,m]=await Promise.all([db.from("my_cards").select(),db.from("master_cards").select()]);
+    const [c,m,mp,mmp]=await Promise.all([db.from("my_cards").select(),db.from("master_cards").select(),db.from("my_programs").select(),db.from("master_programs").select()]);
     setCards(c.data||[]); setMCards(m.data||[]);
+    setMyProgs(mp.data||[]);
+    const nameMap={};(mmp.data||[]).forEach(p=>{nameMap[p.id]=p.name;});setMProgNames(nameMap);
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
@@ -2504,9 +2508,8 @@ function MyCards({db,owners}){
         {(()=>{
           const master=mCards.find(m=>m.id===f.master_id);
           if(!master?.auto_transfer_to) return null;
-          const linkedMasterProg=mCards.find(()=>false)||{id:master.auto_transfer_to};
-          const eligibleProgs=progs.filter(p=>p.master_id===master.auto_transfer_to&&(f.owner_id==="all"||p.owner_id===f.owner_id||!f.owner_id));
-          const masterProgName=mProgs?.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
+          const eligibleProgs=myProgs.filter(p=>p.master_id===master.auto_transfer_to&&(!f.owner_id||p.owner_id===f.owner_id));
+          const masterProgName=mProgNames[master.auto_transfer_to]||"linked program";
           return(<div>
             {lbl("Link to "+masterProgName+" account")}
             <select style={inp} value={f.linked_program_id} onChange={up("linked_program_id")}>
