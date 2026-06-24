@@ -3507,44 +3507,30 @@ function Vouchers({db,owners}){
 }
 
 // Settings
-function Settings({db,owners,reloadOwners,onDisconnect}){
+// ── SetupOwners ───────────────────────────────────────────────────────────────
+function SetupOwners({db,owners,reloadOwners}){
   const [showAdd,setShowAdd]=useState(false);
   const [newOwner,setNewOwner]=useState("");
-  const [resetting,setResetting]=useState(false);
 
   const addOwner=async()=>{
     if(!newOwner.trim()) return;
     await db.from("owners").insert({name:newOwner.trim()});
     setNewOwner("");setShowAdd(false);reloadOwners();
   };
-
   const delOwner=async owner=>{
     const [c,p,v]=await Promise.all([db.from("my_cards").filter("owner_id",owner.id),db.from("my_programs").filter("owner_id",owner.id),db.from("vouchers").filter("owner_id",owner.id)]);
     const n=(c.data||[]).length+(p.data||[]).length+(v.data||[]).length;
-    if(n>0) return alert("Cannot delete \""+owner.name+"\" - they have "+n+" linked cards, programs or vouchers. Reassign or delete those first.");
+    if(n>0) return alert("Cannot delete \""+owner.name+"\" — they have "+n+" linked cards, programs or vouchers. Reassign or delete those first.");
     if(!confirm("Delete owner \""+owner.name+"\"?")) return;
     await db.from("owners").delete(owner.id);
     reloadOwners();
   };
 
-  const resetAll=async()=>{
-    const conf=window.prompt("This will permanently delete ALL data.\n\nType DELETE to confirm:");
-    if(conf!=="DELETE") return;
-    setResetting(true);
-    const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
-    const h={apikey:k,Authorization:"Bearer "+k,"Content-Type":"application/json"};
-    for(const t of ["point_transactions","transfer_log","vouchers","my_cards","my_programs","master_partners","master_cards","master_programs","owners"]){
-      await fetch(u+"/rest/v1/"+t+"?created_at=gte.2000-01-01",{method:"DELETE",headers:h}).catch(()=>{});
-    }
-    setResetting(false);
-    alert("All data deleted.");window.location.reload();
-  };
-
   return(
     <div>
-      <Hdr title="Settings"/>
+      <Hdr title="Owners" sub="People whose points you track"/>
       <div style={{maxWidth:520}}>
-        <Card style={{marginBottom:16}}>
+        <Card>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
             <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Owners</div>
             <button style={{...gbtn,padding:"6px 14px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Owner</button>
@@ -3556,37 +3542,138 @@ function Settings({db,owners,reloadOwners,onDisconnect}){
             </div>
           ))}
         </Card>
-        <Card style={{marginBottom:16}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Database Connection</div>
-          <div style={{fontSize:12,color:mut,marginBottom:4}}>Connected to</div>
-          <div style={{fontSize:12,color:txt,fontFamily:"monospace",background:surf2,padding:"8px 12px",borderRadius:8,marginBottom:16,wordBreak:"break-all",border:`1px solid ${bdr}`}}>{localStorage.getItem("pv_u")}</div>
-          <button style={dbtn} onClick={()=>{localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");onDisconnect();}}>Disconnect</button>
-        </Card>
-        <div style={{background:"#fef2f2",border:"1.5px solid #fecaca",borderRadius:12,padding:"18px 20px"}}>
-          <div style={{fontSize:10,fontWeight:500,color:red,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.09em"}}>Danger Zone</div>
-          <div style={{fontSize:13,color:mut,marginBottom:14}}>Permanently delete all data and reset PointsVault to blank.</div>
-          <button style={{...dbtn,background:red,color:"#fff",border:"none",opacity:resetting?0.6:1}} onClick={resetting?undefined:resetAll}>{resetting?"Deleting...":"Reset All Data"}</button>
-        </div>
       </div>
       <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add Owner">
-        {lbl("Name")}<input style={inp} placeholder="Gavin, Wife, Kids..." value={newOwner} onChange={e=>setNewOwner(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addOwner()}/>
-        <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={addOwner}>Add Owner</button>
+        {lbl("Name")}<input style={inp} placeholder="Gavin" value={newOwner} onChange={e=>setNewOwner(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addOwner()}/>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={addOwner}>Add Owner</button>
       </Modal>
     </div>
   );
 }
 
-// Shell
-const TABS=[
-  {id:"overview",         label:"Overview",         icon:"o"},
-  {id:"catalog",          label:"Catalog",          icon:"C"},
-  {id:"my-cards",         label:"My Cards",         icon:"cc"},
-  {id:"my-programs",      label:"My Programs",      icon:"lp"},
-  {id:"transfer",         label:"Transfer Points",  icon:"->"},
-  {id:"transfer-history", label:"Transfer History", icon:"h"},
-  {id:"vouchers",         label:"Vouchers",         icon:"v"},
-  {id:"settings",         label:"Settings",         icon:"s"},
-];
+// ── SettingsGeneral ───────────────────────────────────────────────────────────
+function SettingsGeneral({db,onDisconnect}){
+  return(
+    <div>
+      <Hdr title="General" sub="Database connection"/>
+      <div style={{maxWidth:520}}>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Database Connection</div>
+          <div style={{fontSize:12,color:mut,marginBottom:4}}>Connected to</div>
+          <div style={{fontSize:12,color:txt,fontFamily:"monospace",background:surf2,padding:"8px 12px",borderRadius:8,marginBottom:16,wordBreak:"break-all",border:`1px solid ${bdr}`}}>{localStorage.getItem("pv_u")}</div>
+          <button style={dbtn} onClick={()=>{localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");onDisconnect();}}>Disconnect</button>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── SettingsDanger ────────────────────────────────────────────────────────────
+function SettingsDanger({db,owners,onReset}){
+  const [busy,setBusy]=useState(null); // which action is running
+
+  const confirm2=(msg)=>{
+    const v=window.prompt(msg+"\n\nType DELETE to confirm:");
+    return v==="DELETE";
+  };
+
+  const deleteAllMyCards=async()=>{
+    if(!confirm2("This will permanently delete ALL My Cards and their transactions.")) return;
+    setBusy("mycards");
+    const {data:cards}=await db.from("my_cards").select();
+    for(const c of (cards||[])){
+      const {data:txns}=await db.from("point_transactions").filter("entity_id",c.id);
+      for(const t of (txns||[])) await db.from("point_transactions").delete(t.id);
+      const {data:tl1}=await db.from("transfer_log").filter("from_id",c.id);
+      const {data:tl2}=await db.from("transfer_log").filter("to_id",c.id);
+      for(const t of [...(tl1||[]),...(tl2||[])]) await db.from("transfer_log").delete(t.id);
+      await db.from("my_cards").delete(c.id);
+    }
+    setBusy(null);
+    alert("Deleted "+(cards||[]).length+" My Cards and all their transactions.");
+  };
+
+  const deleteAllMyLPs=async()=>{
+    if(!confirm2("This will permanently delete ALL My Loyalty Programs and their transactions.")) return;
+    setBusy("mylps");
+    const {data:progs}=await db.from("my_programs").select();
+    for(const p of (progs||[])){
+      const {data:txns}=await db.from("point_transactions").filter("entity_id",p.id);
+      for(const t of (txns||[])) await db.from("point_transactions").delete(t.id);
+      const {data:tl1}=await db.from("transfer_log").filter("from_id",p.id);
+      const {data:tl2}=await db.from("transfer_log").filter("to_id",p.id);
+      for(const t of [...(tl1||[]),...(tl2||[])]) await db.from("transfer_log").delete(t.id);
+      await db.from("my_programs").delete(p.id);
+    }
+    setBusy(null);
+    alert("Deleted "+(progs||[]).length+" My Programs and all their transactions.");
+  };
+
+  const deleteAllBalancesAndTxns=async()=>{
+    if(!confirm2("This will delete ALL transactions and reset ALL balances to 0. Your cards and programs will remain but history will be wiped.")) return;
+    setBusy("balances");
+    // Delete all transactions
+    const {data:txns}=await db.from("point_transactions").select();
+    for(const t of (txns||[])) await db.from("point_transactions").delete(t.id);
+    // Delete all transfer logs
+    const {data:tl}=await db.from("transfer_log").select();
+    for(const t of (tl||[])) await db.from("transfer_log").delete(t.id);
+    // Reset all balances to 0
+    const {data:cards}=await db.from("my_cards").select();
+    for(const c of (cards||[])) await db.from("my_cards").update(c.id,{points_balance:0});
+    const {data:progs}=await db.from("my_programs").select();
+    for(const p of (progs||[])) await db.from("my_programs").update(p.id,{points_balance:0});
+    setBusy(null);
+    alert("Deleted "+((txns||[]).length)+" transactions and reset all balances to 0.");
+  };
+
+  const deleteAllTransferPartners=async()=>{
+    if(!confirm2("This will permanently delete ALL master transfer partner routes from the catalog.")) return;
+    setBusy("partners");
+    const {data:parts}=await db.from("master_partners").select();
+    for(const p of (parts||[])) await db.from("master_partners").delete(p.id);
+    setBusy(null);
+    alert("Deleted "+(parts||[]).length+" transfer partner routes.");
+  };
+
+  const resetAll=async()=>{
+    if(!confirm2("This will permanently delete ALL data and reset PointsVault to blank.")) return;
+    setBusy("all");
+    const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
+    const h={apikey:k,Authorization:"Bearer "+k,"Content-Type":"application/json"};
+    for(const t of ["point_transactions","transfer_log","vouchers","my_cards","my_programs","master_milestones","master_partners","master_cards","master_programs","owners"]){
+      await fetch(u+"/rest/v1/"+t+"?created_at=gte.2000-01-01",{method:"DELETE",headers:h}).catch(()=>{});
+    }
+    setBusy(null);
+    alert("All data deleted.");
+    localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");
+    onReset();
+  };
+
+  const dangerItem=(title,desc,btnLabel,action,key)=>(
+    <div style={{padding:"18px 20px",border:`1.5px solid #fecaca`,borderRadius:12,marginBottom:12,background:"#fef2f2"}}>
+      <div style={{fontSize:13,fontWeight:600,color:red,marginBottom:4}}>{title}</div>
+      <div style={{fontSize:12,color:mut,marginBottom:12,lineHeight:1.5}}>{desc}</div>
+      <button style={{...dbtn,background:red,color:"#fff",border:"none",opacity:busy===key?0.6:1,fontSize:12}} onClick={busy?undefined:action}>
+        {busy===key?"Working…":btnLabel}
+      </button>
+    </div>
+  );
+
+  return(
+    <div>
+      <Hdr title="Danger Zone" sub="Irreversible actions — type DELETE to confirm each one"/>
+      <div style={{maxWidth:560}}>
+        {dangerItem("Delete all My Cards","Deletes all your My Cards and every transaction linked to them. Master cards in the catalog are unaffected.","Delete all My Cards",deleteAllMyCards,"mycards")}
+        {dangerItem("Delete all My Loyalty Programs","Deletes all your My Programs and every transaction linked to them. Master programs in the catalog are unaffected.","Delete all My LPs",deleteAllMyLPs,"mylps")}
+        {dangerItem("Reset all balances & transactions","Wipes all transaction history and resets every card and LP balance to 0. Your cards and programs remain — just the history is cleared.","Reset all balances & transactions",deleteAllBalancesAndTxns,"balances")}
+        {dangerItem("Delete all transfer partner routes","Removes all transfer partner routes from the catalog. Master cards and programs are unaffected.","Delete all transfer routes",deleteAllTransferPartners,"partners")}
+        {dangerItem("Reset everything","Permanently deletes ALL data including owners, catalog, cards, programs, transactions and transfers. Cannot be undone.","Reset everything — start fresh",resetAll,"all")}
+      </div>
+    </div>
+  );
+}
+
 
 export default function App(){
   const [db,setDb]=useState(null);
@@ -3630,10 +3717,31 @@ export default function App(){
           <div style={{fontSize:15,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
           <div style={{fontSize:10,color:mut,marginTop:4,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500}}>Wealth Tracker</div>
         </div>
-        <div style={{flex:1,overflowY:"auto",padding:"0 12px"}}>
-          {TABS.map(t=>(
-            <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",padding:"9px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
-              {t.label}
+        <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
+          {NAV.map((section,si)=>(
+            <div key={si} style={{marginBottom:4}}>
+              {section.comingSoon&&section.items.length===0?(
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed"}}>
+                  <span style={{fontSize:12,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{section.section}</span>
+                  <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+                </div>
+              ):(
+                <>
+                  <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"14px 12px 5px",marginTop:si>0?4:0}}>{section.section}</div>
+                  {section.items.map(t=>(
+                    t.comingSoon?(
+                      <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
+                        <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
+                        <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+                      </div>
+                    ):(
+                      <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
+                        {t.label}
+                      </div>
+                    )
+                  ))}
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -3647,18 +3755,30 @@ export default function App(){
       </div>
       {menuOpen&&(
         <div style={{position:"fixed",top:56,left:0,right:0,background:surf,borderBottom:`1px solid ${bdr}`,zIndex:99,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
-          {TABS.map(t=><div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"12px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>)}
+          {NAV.map((section,si)=>(
+            <div key={si}>
+              {section.items.length>0&&<div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 20px 4px",background:surf3}}>{section.section}</div>}
+              {section.comingSoon&&section.items.length===0&&<div style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{section.section}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>coming soon</span></div>}
+              {section.items.map(t=>t.comingSoon?(
+                <div key={t.id} style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{t.label}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>coming soon</span></div>
+              ):(
+                <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"10px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>
+              ))}
+            </div>
+          ))}
         </div>
       )}
       <main className="main-wrap" style={{marginLeft:224,padding:"44px 48px 100px",minHeight:"100vh",background:bg}}>
         {tab==="overview"         &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
-        {tab==="catalog"          &&<Catalog db={db}/>}
         {tab==="my-cards"         &&<MyCards db={db} owners={owners}/>}
         {tab==="my-programs"      &&<MyPrograms db={db} owners={owners}/>}
         {tab==="transfer"         &&<TransferPoints db={db} owners={owners}/>}
         {tab==="transfer-history" &&<TransferHistory db={db} owners={owners}/>}
         {tab==="vouchers"         &&<Vouchers db={db} owners={owners}/>}
-        {tab==="settings"         &&<Settings db={db} owners={owners} reloadOwners={()=>loadOwners()} onDisconnect={()=>setDb(null)}/>}
+        {tab==="setup-owners"     &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
+        {tab==="setup-catalog"    &&<Catalog db={db}/>}
+        {tab==="settings-general" &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
+        {tab==="settings-danger"  &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
       </main>
     </div>
   );
