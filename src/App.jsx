@@ -623,8 +623,8 @@ function OvList({title,items,filterOptions,owners,onNav}){
   const selStyle={fontSize:10,color:mut2,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 8px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
 
   return(
-    <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap",flexShrink:0}}>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",flexShrink:0}}>{title}</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
           <select value={ownerF} onChange={e=>setOwnerF(e.target.value)} style={selStyle}>
@@ -638,6 +638,7 @@ function OvList({title,items,filterOptions,owners,onNav}){
           <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:500,padding:0,fontFamily:"'Manrope',sans-serif",flexShrink:0}}>View all</button>
         </div>
       </div>
+      <div style={{flex:1,overflowY:"auto",minHeight:0}}>
       {items.length===0
         ?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"16px 0"}}>None yet</div>
         :filtered.length===0
@@ -672,6 +673,7 @@ function OvList({title,items,filterOptions,owners,onNav}){
           </div>
         ):null;
       })()}
+      </div>
     </div>
   );
 }
@@ -790,13 +792,12 @@ function Overview({db,owners,onNavigate}){
         @media (min-width: 701px) {
           .ov-grid { display: grid !important; grid-template-columns: 1fr 1fr !important; align-items: start !important; }
           .ov-col  { display: flex !important; flex-direction: column !important; }
-          .ov-col .ov-list-card { flex: 1 !important; }
         }
       `}</style>
       <div className="ov-grid" style={{gap:16,marginBottom:16}}>
         {/* LEFT COL — Loyalty Programs */}
         <div className="ov-col">
-          <Card className="ov-list-card" style={{height:380,overflowY:"auto"}}>
+          <Card className="ov-list-card" style={{height:340,display:"flex",flexDirection:"column"}}>
             <OvList
               title="Loyalty Programs"
               onNav={()=>onNavigate("my-programs")}
@@ -822,7 +823,7 @@ function Overview({db,owners,onNavigate}){
         </div>
         {/* RIGHT COL — Credit Cards */}
         <div className="ov-col">
-          <Card className="ov-list-card" style={{height:380,overflowY:"auto"}}>
+          <Card className="ov-list-card" style={{height:340,display:"flex",flexDirection:"column"}}>
             <OvList
               title="Credit Cards"
               onNav={()=>onNavigate("my-cards")}
