@@ -182,148 +182,152 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const [hover,setHover]=useState(null);
 
   const color=accentColor||acc;
-
-  const periodDays={"1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999};
+  const pDays={"1m":30,"3m":90,"6m":180,"1y":365,"3y":1095,"LT":99999};
 
   const series=useMemo(()=>{
     const now=new Date();
-    const cutoff=new Date(now-periodDays[period]*86400000);
-    const filtered=txns.filter(t=>{
-      const ent=entities.find(e=>e.id===t.entity_id);
-      if(!ent) return false;
+    const cutoff=new Date(now.getTime()-pDays[period]*86400000);
+    const filtered=(txns||[]).filter(t=>{
       if(t.entity_type!==entityType) return false;
+      const ent=(entities||[]).find(e=>e.id===t.entity_id);
+      if(!ent) return false;
       if(ownerF!=="all"&&ent.owner_id!==ownerF) return false;
       if(entityF!=="all"&&ent.id!==entityF) return false;
       return true;
     });
     const entIds=[...new Set(filtered.map(t=>t.entity_id))];
+    if(entIds.length===0) return [];
     const openBals={};
     entIds.forEach(eid=>{
-      const ent=entities.find(e=>e.id===eid);
-      const pre=txns.filter(t=>t.entity_id===eid&&new Date(t.txn_date)<cutoff);
+      const ent=(entities||[]).find(e=>e.id===eid);
+      const pre=(txns||[]).filter(t=>t.entity_id===eid&&new Date(t.txn_date).getTime()<cutoff.getTime());
       openBals[eid]=(ent?.opening_balance||0)+pre.reduce((a,t)=>a+t.points,0);
     });
-    const inRange=filtered.filter(t=>new Date(t.txn_date)>=cutoff);
+    const inRange=filtered.filter(t=>new Date(t.txn_date).getTime()>=cutoff.getTime());
     const dateSet=new Set(inRange.map(t=>t.txn_date));
     dateSet.add(cutoff.toISOString().split("T")[0]);
     dateSet.add(now.toISOString().split("T")[0]);
     const dates=[...dateSet].sort();
     const run={...openBals};
     return dates.map(date=>{
-      inRange.filter(t=>t.txn_date===date).forEach(t=>{ if(run[t.entity_id]!==undefined) run[t.entity_id]+=t.points; });
+      inRange.filter(t=>t.txn_date===date).forEach(t=>{
+        if(run[t.entity_id]!==undefined) run[t.entity_id]+=t.points;
+      });
       let total=0;
       entIds.forEach(eid=>{
-        const ent=entities.find(e=>e.id===eid);
-        const m=masters.find(x=>x.id===ent?.master_id);
+        const ent=(entities||[]).find(e=>e.id===eid);
+        const m=(masters||[]).find(x=>x.id===ent?.master_id);
         total+=metric==="inr"?(run[eid]||0)*(m?.inr_per_point||0):(run[eid]||0);
       });
-      return{date,value:total};
+      return {date,value:total};
     });
   },[txns,entities,masters,ownerF,entityF,period,metric,entityType]);
 
-  const W=600,H=150,PL=48,PR=12,PT=10,PB=28;
+  const W=540,H=140,PL=44,PR=10,PT=8,PB=26;
   const cW=W-PL-PR,cH=H-PT-PB;
   const vals=series.map(s=>s.value);
-  const minV=Math.min(...vals,0),maxV=Math.max(...vals,1),range=maxV-minV||1;
-  const toX=i=>PL+(i/(series.length-1||1))*cW;
+  const isEmpty=series.length<2;
+  const minV=isEmpty?0:Math.min(...vals,0);
+  const maxV=isEmpty?1:Math.max(...vals,1);
+  const range=maxV-minV||1;
+  const toX=i=>PL+(i/(Math.max(series.length-1,1)))*cW;
   const toY=v=>PT+cH-((v-minV)/range)*cH;
-  const pathD=series.length>0?series.map((s,i)=>`${i===0?"M":"L"}${toX(i).toFixed(1)},${toY(s.value).toFixed(1)}`).join(" "):"";
-  const areaD=series.length>1?`${pathD} L${toX(series.length-1).toFixed(1)},${(PT+cH).toFixed(1)} L${toX(0).toFixed(1)},${(PT+cH).toFixed(1)} Z`:"";
-  const yTicks=3;
-  const yTickVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
-  const fmtTick=v=>metric==="inr"?inrFmt(v):(v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(0)+"K":Math.round(v).toString());
-  const xIdxs=series.length<=1?[0]:[0,Math.floor((series.length-1)/2),series.length-1];
-  const fmtDate=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
-  const isEmpty=series.length<2||vals.every(v=>v===0);
-  const latestVal=vals.length>0?vals[vals.length-1]||0:0;
-  const gradId=`g${entityType}`;
+  const latestVal=vals.length>0?(vals[vals.length-1]||0):0;
+  const gradId="grad"+entityType;
 
-  const handleMouseMove=e=>{
-    const svg=e.currentTarget;
-    const rect=svg.getBoundingClientRect();
-    const mx=((e.clientX-rect.left)/rect.width)*W;
-    if(mx<PL||mx>W-PR) return setHover(null);
-    if(series.length<2) return setHover(null);
-    const rawIdx=(mx-PL)/cW*(series.length-1);
-    const idx=Math.round(Math.max(0,Math.min(series.length-1,rawIdx)));
-    const pt=series[idx];
-    if(!pt) return setHover(null);
-    setHover({idx,x:toX(idx),y:toY(pt.value),value:pt.value,date:pt.date});
+  const pathD=series.map((s,i)=>(i===0?"M":"L")+toX(i).toFixed(1)+","+toY(s.value).toFixed(1)).join(" ");
+  const areaD=series.length>1?pathD+" L"+toX(series.length-1).toFixed(1)+","+(PT+cH).toFixed(1)+" L"+toX(0).toFixed(1)+","+(PT+cH).toFixed(1)+" Z":"";
+
+  const yTicks=3;
+  const yVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
+  const fmt=v=>metric==="inr"?inrFmt(v):(v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(0)+"K":Math.round(v).toString());
+  const fmtD=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+  const xIdxs=series.length<=1?[]:[0,Math.floor((series.length-1)/2),series.length-1];
+
+  const onMove=e=>{
+    if(series.length<2) return;
+    const r=e.currentTarget.getBoundingClientRect();
+    const mx=((e.clientX-r.left)/r.width)*W;
+    if(mx<PL||mx>W-PR){setHover(null);return;}
+    const i=Math.round(Math.max(0,Math.min(series.length-1,(mx-PL)/cW*(series.length-1))));
+    if(series[i]) setHover({x:toX(i),y:toY(series[i].value),v:series[i].value,d:series[i].date});
   };
 
-  const ttW=110,ttH=42;
+  const ss={fontSize:10,color:mut2,border:"1px solid "+bdr,borderRadius:6,padding:"3px 7px",background:surf,cursor:"pointer",fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none"};
+  const pb=a=>({padding:"3px 8px",borderRadius:20,border:"1px solid "+(a?txt:bdr),cursor:"pointer",fontSize:10,fontWeight:a?600:400,background:a?txt:"transparent",color:a?"#fff":mut2,fontFamily:"'Manrope',sans-serif"});
+  const entOpts=(entities||[]).filter(e=>ownerF==="all"||e.owner_id===ownerF).map(e=>{const m=(masters||[]).find(x=>x.id===e.master_id);return{id:e.id,name:e.nickname||m?.name||"—"};});
 
-  return(
-    <Card style={{marginTop:12}}>
-      {/* Controls row */}
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:6}}>
+  const ttX=hover?Math.min(hover.x+8,W-PR-112):0;
+  const ttY=hover?Math.max(PT+2,hover.y-40):0;
+
+  return (
+    <div style={{background:surf,border:"1px solid "+bdr,borderRadius:18,padding:"18px 20px",marginTop:12,boxShadow:"0 1px 2px rgba(0,0,0,0.04)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:6}}>
         <div>
-          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:3}}>Points over time</div>
-          {!isEmpty&&<div className="pv-num" style={{fontSize:17,fontWeight:700,color:hover?color:txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.02em",transition:"color 0.1s"}}>
-            {metric==="inr"?inrFmt(hover?hover.value:latestVal):(hover?hover.value:latestVal).toLocaleString("en-IN")}
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:2}}>Points over time</div>
+          {!isEmpty&&<div style={{fontSize:16,fontWeight:700,color:hover?color:txt,fontFamily:"'Manrope',sans-serif",fontVariantNumeric:"tabular-nums"}}>
+            {metric==="inr"?inrFmt(hover?hover.v:latestVal):(hover?hover.v:latestVal).toLocaleString("en-IN")}
             <span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:5}}>{metric==="inr"?"est. value":"pts"}</span>
-            {hover&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:8}}>{fmtDate(hover.date)}</span>}
+            {hover&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:6}}>{fmtD(hover.d)}</span>}
           </div>}
         </div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
           <div style={{display:"flex",gap:2,background:surf3,borderRadius:7,padding:2}}>
             {["points","inr"].map(m=>(
-              <button key={m} onClick={()=>setMetric(m)} style={{padding:"2px 8px",borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,fontSize:10,fontWeight:metric===m?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif",boxShadow:metric===m?"0 1px 2px rgba(0,0,0,0.07)":"none"}}>
-            {m==="inr"?"₹":"Pts"}
-            </button>
+              <button key={m} onClick={()=>setMetric(m)} style={{padding:"2px 8px",borderRadius:6,border:"none",background:metric===m?surf:"transparent",color:metric===m?txt:mut,fontSize:10,fontWeight:metric===m?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+                {m==="inr"?"₹":"Pts"}
+              </button>
             ))}
           </div>
-          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setEntityF("all");}} style={selSt}>
+          <select value={ownerF} onChange={e=>{setOwnerF(e.target.value);setEntityF("all");}} style={ss}>
             <option value="all">All</option>
-            {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+            {(owners||[]).map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
-          <select value={entityF} onChange={e=>setEntityF(e.target.value)} style={selSt}>
+          <select value={entityF} onChange={e=>setEntityF(e.target.value)} style={ss}>
             <option value="all">All</option>
-            {entOptions.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
+            {entOpts.map(e=><option key={e.id} value={e.id}>{e.name}</option>)}
           </select>
         </div>
       </div>
-      {/* Period pills */}
-      <div style={{display:"flex",gap:3,marginBottom:10}}>
+      <div style={{display:"flex",gap:3,marginBottom:8}}>
         {["1m","3m","6m","1y","3y","LT"].map(p=>(
-          <button key={p} onClick={()=>setPeriod(p)} style={pBtnSt(period===p)}>{p==="LT"?"All":p}</button>
+          <button key={p} onClick={()=>setPeriod(p)} style={pb(period===p)}>{p==="LT"?"All":p}</button>
         ))}
       </div>
-      {/* SVG */}
       {isEmpty
-        ?<div style={{height:100,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11,fontWeight:400}}>Add transactions to see trend</div>
-        :<svg
-          viewBox={`0 0 ${W} ${H}`}
-          style={{width:"100%",height:"auto",display:"block",cursor:"crosshair"}}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={()=>setHover(null)}
-        >
-          <defs>
-            <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity="0.10"/>
-              <stop offset="100%" stopColor={color} stopOpacity="0"/>
-            </linearGradient>
-          </defs>
-          {yTickVals.map((v,i)=><line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>)}
-          {yTickVals.map((v,i)=><text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmtTick(v)}</text>)}
-          {xIdxs.map(idx=>series[idx]?<text key={idx} x={toX(idx)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtDate(series[idx].date)}</text>:null)}
-          {areaD&&<path d={areaD} fill={`url(#${gradId})`}/>}
-          {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
-          {/* Hover crosshair */}
-          {hover&&<>
-            <line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={color} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.5"/>
-            <circle cx={hover.x} cy={hover.y} r="3.5" fill={surf} stroke={color} strokeWidth="1.5"/>
-            <rect x={Math.min(hover.x+8,W-PR-ttW-4)} y={Math.max(PT+2,hover.y-ttH-6)} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75"/>
-            <text x={Math.min(hover.x+8,W-PR-ttW-4)+8} y={Math.max(PT+2,hover.y-ttH-6)+14} fontSize="8" fill={mut} fontFamily="Manrope" fontWeight="400">{fmtDate(hover.date)}</text>
-            <text x={Math.min(hover.x+8,W-PR-ttW-4)+8} y={Math.max(PT+2,hover.y-ttH-6)+29} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.value):hover.value.toLocaleString("en-IN")}</text>
-          </>}
-          {/* End dot (when not hovering) */}
-          {!hover&&series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
-        </svg>
+        ?<div style={{height:80,display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:11}}>Add transactions to see trend</div>
+        :<div style={{position:"relative"}}>
+          <svg viewBox={"0 0 "+W+" "+H} style={{width:"100%",height:"auto",display:"block",cursor:"crosshair"}} onMouseMove={onMove} onMouseLeave={()=>setHover(null)}>
+            <defs>
+              <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor={color} stopOpacity="0.10"/>
+                <stop offset="100%" stopColor={color} stopOpacity="0"/>
+              </linearGradient>
+            </defs>
+            {yVals.map((v,i)=>(
+              <line key={i} x1={PL} x2={W-PR} y1={toY(v)} y2={toY(v)} stroke={bdr} strokeWidth="0.5"/>
+            ))}
+            {yVals.map((v,i)=>(
+              <text key={i} x={PL-4} y={toY(v)+3} textAnchor="end" fontSize="8" fill={mut} fontFamily="Manrope">{fmt(v)}</text>
+            ))}
+            {xIdxs.map(i=>(
+              <text key={i} x={toX(i)} y={H-4} textAnchor="middle" fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(series[i].date)}</text>
+            ))}
+            {areaD&&<path d={areaD} fill={"url(#"+gradId+")"}/>}
+            {pathD&&<path d={pathD} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>}
+            {hover&&<line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={color} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.4"/>}
+            {hover&&<circle cx={hover.x} cy={hover.y} r="3" fill={surf} stroke={color} strokeWidth="1.5"/>}
+            {hover&&<rect x={ttX} y={ttY} width="110" height="36" rx="5" fill={surf} stroke={bdr} strokeWidth="0.75"/>}
+            {hover&&<text x={ttX+7} y={ttY+13} fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(hover.d)}</text>}
+            {hover&&<text x={ttX+7} y={ttY+27} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.v):hover.v.toLocaleString("en-IN")}</text>}
+            {!hover&&series.length>0&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
+          </svg>
+        </div>
       }
-    </Card>
+    </div>
   );
 }
+
 
 // ── OvList — filterable overview list panel ────────────────────────────────────
 function OvList({title,items,filterOptions,owners,onNav}){
