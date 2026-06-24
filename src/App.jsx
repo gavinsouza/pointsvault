@@ -2200,7 +2200,7 @@ function Catalog({db}){
       {!detailCard&&!detailProg&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
-          <div style={{fontSize:24,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Catalog</div>
+          <div style={{fontSize:24,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Master</div>
           <div style={{fontSize:13,color:mut,marginTop:5,fontWeight:400}}>Master cards, programs and transfer partners</div>
         </div>
         <button style={{...pbtn,background:acc,border:"none",gap:8}} onClick={()=>setShowLibrary(true)}>
@@ -3574,7 +3574,9 @@ function SettingsDanger({db,owners,onReset}){
 
   const confirm2=(msg)=>{
     const v=window.prompt(msg+"\n\nType DELETE to confirm:");
-    return v==="DELETE";
+    if(v===null) return false; // cancelled
+    if(v!=="DELETE"){ alert("Incorrect entry — action cancelled. Please type DELETE exactly (case-sensitive)."); return false; }
+    return true;
   };
 
   const deleteAllMyCards=async()=>{
@@ -3689,7 +3691,7 @@ const NAV=[
   {section:"Double Dip", comingSoon:true, items:[]},
   {section:"Setup", items:[
     {id:"setup-owners",     label:"Owners"},
-    {id:"setup-catalog",    label:"Catalog"},
+    {id:"setup-catalog",    label:"Master"},
   ]},
   {section:"Settings", items:[
     {id:"settings-general", label:"General"},
@@ -3702,6 +3704,8 @@ export default function App(){
   const [tab,setTab]=useState("overview");
   const [menuOpen,setMenuOpen]=useState(false);
   const [owners,setOwners]=useState([]);
+  const [collapsed,setCollapsed]=useState(new Set()); // set of section indices that are collapsed
+  const toggleCollapse=si=>setCollapsed(prev=>{const n=new Set(prev);n.has(si)?n.delete(si):n.add(si);return n;});
 
   useEffect(()=>{
     const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
@@ -3740,32 +3744,38 @@ export default function App(){
           <div style={{fontSize:10,color:mut,marginTop:4,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500}}>Wealth Tracker</div>
         </div>
         <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
-          {NAV.map((section,si)=>(
-            <div key={si} style={{marginBottom:4}}>
-              {section.comingSoon&&section.items.length===0?(
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed"}}>
-                  <span style={{fontSize:12,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{section.section}</span>
-                  <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+          {NAV.map((section,si)=>{
+            const isCollapsed=collapsed.has(si);
+            const hasItems=section.items.length>0;
+            if(section.comingSoon&&!hasItems) return(
+              <div key={si} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed"}}>
+                <span style={{fontSize:12,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{section.section}</span>
+                <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+              </div>
+            );
+            return(
+              <div key={si} style={{marginBottom:2}}>
+                <div onClick={()=>toggleCollapse(si)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 12px 5px",cursor:"pointer",marginTop:si>0?4:0,borderRadius:6,transition:"background 0.1s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=surf2}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span style={{fontSize:9,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>{section.section}</span>
+                  <span style={{fontSize:10,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
                 </div>
-              ):(
-                <>
-                  <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"14px 12px 5px",marginTop:si>0?4:0}}>{section.section}</div>
-                  {section.items.map(t=>(
-                    t.comingSoon?(
-                      <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
-                        <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
-                        <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
-                      </div>
-                    ):(
-                      <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
-                        {t.label}
-                      </div>
-                    )
-                  ))}
-                </>
-              )}
-            </div>
-          ))}
+                {!isCollapsed&&section.items.map(t=>(
+                  t.comingSoon?(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
+                      <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
+                      <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+                    </div>
+                  ):(
+                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
+                      {t.label}
+                    </div>
+                  )
+                ))}
+              </div>
+            );
+          })}
         </div>
         <div style={{padding:"20px 24px 28px",borderTop:`1px solid ${bdr}`}}>
           <div style={{fontSize:10,color:mut,letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500}}>Secured · Supabase</div>
