@@ -312,18 +312,9 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
           {hover&&<>
             <line x1={hover.x} x2={hover.x} y1={PT} y2={PT+cH} stroke={color} strokeWidth="0.75" strokeDasharray="3,2" opacity="0.5"/>
             <circle cx={hover.x} cy={hover.y} r="3.5" fill={surf} stroke={color} strokeWidth="1.5"/>
-            {/* Tooltip box */}
-            {(()=>{
-              const tx=Math.min(hover.x+8, W-PR-ttW-4);
-              const ty=Math.max(PT+2, hover.y-ttH-6);
-              return <>
-                <rect x={tx} y={ty} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75" style={{filter:"drop-shadow(0 1px 4px rgba(0,0,0,0.08))"}}/>
-                <text x={tx+8} y={ty+14} fontSize="8" fill={mut} fontFamily="Manrope" fontWeight="400">{fmtDate(hover.date)}</text>
-                <text x={tx+8} y={ty+28} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700" style={{fontVariantNumeric:"tabular-nums"}}>
-                  {metric==="inr"?inrFmt(hover.value):hover.value.toLocaleString("en-IN")}
-                </text>
-              </>;
-            })()}
+            <rect x={Math.min(hover.x+8,W-PR-ttW-4)} y={Math.max(PT+2,hover.y-ttH-6)} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75"/>
+            <text x={Math.min(hover.x+8,W-PR-ttW-4)+8} y={Math.max(PT+2,hover.y-ttH-6)+14} fontSize="8" fill={mut} fontFamily="Manrope" fontWeight="400">{fmtDate(hover.date)}</text>
+            <text x={Math.min(hover.x+8,W-PR-ttW-4)+8} y={Math.max(PT+2,hover.y-ttH-6)+29} fontSize="10" fill={color} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.value):hover.value.toLocaleString("en-IN")}</text>
           </>}
           {/* End dot (when not hovering) */}
           {!hover&&<circle cx={toX(series.length-1)} cy={toY(series[series.length-1].value)} r="2.5" fill={color}/>}
