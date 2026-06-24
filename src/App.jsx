@@ -1769,7 +1769,11 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
           <div>
             <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.name}</div>
             <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank&&card.bank+" · "}{card.network}</div>
-            {autoTransferName&&<div style={{fontSize:11,color:acc,fontWeight:500,marginTop:4}}>Co-branded — auto-transfers to {autoTransferName}</div>}
+            {autoTransferName&&<div style={{display:"flex",gap:6,alignItems:"center",marginTop:4}}>
+              <span style={{fontSize:10,fontWeight:600,color:acc,background:acc+"15",padding:"2px 8px",borderRadius:20,border:`1px solid ${acc}33`}}>Co-branded</span>
+              <span style={{fontSize:11,color:mut}}>Points auto-transfer to</span>
+              <span style={{fontSize:11,fontWeight:700,color:txt}}>{autoTransferName}</span>
+            </div>}
           </div>
         </div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
@@ -2176,6 +2180,7 @@ function Catalog({db}){
                       </div>
                     </div>
                     <div style={{fontSize:11,color:mut,fontWeight:400}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" · ₹"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" · ₹"+Number(c.annual_fee).toLocaleString()+" p.a."}</div>
+                    {c.auto_transfer_to&&<div style={{fontSize:10,color:acc,fontWeight:500,marginTop:4}}>Co-branded · {mProgs.find(p=>p.id===c.auto_transfer_to)?.name||"Linked LP"}</div>}
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
                       <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar",auto_transfer_to:c.auto_transfer_to||""});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();delCard(c.id);}}>Del</button>
@@ -2413,6 +2418,10 @@ function MyCards({db,owners}){
     if(!f.master_id) return alert("Select a master card");
     if(!f.owner_id) return alert("Select an owner");
     const master=mCards.find(m=>m.id===f.master_id);
+    if(master?.auto_transfer_to&&!f.linked_program_id){
+      const lpName=mProgNames[master.auto_transfer_to]||"the linked loyalty program";
+      return alert("This is a co-branded card linked to "+lpName+". Please add a "+lpName+" loyalty program to your account first, then come back and add this card.");
+    }
     const dupes=cards.filter(c=>c.master_id===f.master_id&&c.owner_id===f.owner_id&&(!f.nickname||!c.nickname));
     if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
@@ -2530,6 +2539,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const [txns,setTxns]=useState([]);
   const [partners,setPartners]=useState([]);
   const [mProgs,setMProgs]=useState([]);
+  const [myProgs,setMyProgs]=useState([]);
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
@@ -2541,15 +2551,17 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [t,par,mp]=await Promise.all([
+    const [t,par,mp,myp]=await Promise.all([
       db.from("point_transactions").filter("entity_id",card.id),
       db.from("master_partners").filter("from_id",master?.id||"x"),
       db.from("master_programs").select(),
+      db.from("my_programs").select(),
     ]);
     const td=t.data||[];
     setTxns(td.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     setPartners(par.data||[]);
     setMProgs(mp.data||[]);
+    setMyProgs(myp.data||[]);
     const sum=td.reduce((a,t)=>a+t.points,0);
     const correct=(card.opening_balance||0)+sum;
     if(correct!==(card.points_balance||0)){
@@ -2653,7 +2665,16 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             <div>
               <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||master?.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&".... "+card.last4+" · "}{owner?.name||"--"} · {master?.bank||""} {master?.network||""}</div>
-              {master?.auto_transfer_to&&<div style={{fontSize:11,color:acc,fontWeight:500,marginTop:4}}>Points flow to → <span style={{fontWeight:600}}><AutoTransferName masterId={master.auto_transfer_to} db={db}/></span></div>}
+              {master?.auto_transfer_to&&(()=>{
+                const masterLPName=mProgs.find(p=>p.id===master.auto_transfer_to)?.name||"linked program";
+                const myLP=myProgs.find(p=>p.id===card.linked_program_id);
+                const myLPName=myLP?.nickname||masterLPName;
+                return <div style={{fontSize:11,color:acc,fontWeight:500,marginTop:4,display:"flex",gap:6,alignItems:"center"}}>
+                  <span style={{background:acc+"15",padding:"2px 8px",borderRadius:20,border:`1px solid ${acc}33`}}>Co-branded</span>
+                  <span style={{color:mut}}>Points auto-transfer to</span>
+                  <span style={{fontWeight:700,color:txt}}>{myLPName}</span>
+                </div>;
+              })()}
             </div>
           </div>
           <button style={pbtn} onClick={()=>{setF(tf);setShowTxn(true);}}>+ Add Transaction</button>
