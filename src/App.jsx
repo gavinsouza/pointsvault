@@ -3675,6 +3675,28 @@ function SettingsDanger({db,owners,onReset}){
 }
 
 
+const NAV=[
+  {section:"Spend Tracker", comingSoon:true, items:[]},
+  {section:"Points & Miles", items:[
+    {id:"overview",         label:"Overview"},
+    {id:"my-cards",         label:"My Cards"},
+    {id:"my-programs",      label:"My Programs"},
+    {id:"transfer",         label:"Transfer Points"},
+    {id:"transfer-history", label:"Transfer History"},
+    {id:"vouchers",         label:"Vouchers"},
+    {id:"transfer-routes",  label:"Transfer Routes", comingSoon:true},
+  ]},
+  {section:"Double Dip", comingSoon:true, items:[]},
+  {section:"Setup", items:[
+    {id:"setup-owners",     label:"Owners"},
+    {id:"setup-catalog",    label:"Catalog"},
+  ]},
+  {section:"Settings", items:[
+    {id:"settings-general", label:"General"},
+    {id:"settings-danger",  label:"Danger Zone"},
+  ]},
+];
+
 export default function App(){
   const [db,setDb]=useState(null);
   const [tab,setTab]=useState("overview");
