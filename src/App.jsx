@@ -1688,7 +1688,8 @@ function Catalog({db}){
     <div>
       {detailCard&&<MasterCardDetail card={detailCard} db={db} onBack={()=>setDetailCard(null)} onEdit={()=>{setEditItem(detailCard);setFC({name:detailCard.name,bank:detailCard.bank||"",network:detailCard.network||"Visa",points_currency:detailCard.points_currency||"pts",inr_per_point:String(detailCard.inr_per_point||""),annual_fee:String(detailCard.annual_fee||""),fee_waiver_amt:String(detailCard.fee_waiver_amt||""),fee_waiver_cycle:detailCard.fee_waiver_cycle||"calendar",billing_year_start:detailCard.billing_year_start||"",fee_charge_date:detailCard.fee_charge_date||""});setLogoFile(null);setLogoPrev(detailCard.logo_url);setDetailCard(null);setShowCard(true);}} onDelete={async()=>{if(!confirm("Delete this master card?")) return;await db.from("master_cards").delete(detailCard.id);setDetailCard(null);load();}}/>}
       {detailProg&&<MasterProgDetail prog={detailProg} db={db} onBack={()=>setDetailProg(null)} onEdit={()=>{setEditItem(detailProg);setFP({name:detailProg.name,category:detailProg.category||"Airline",points_currency:detailProg.points_currency||"pts",inr_per_point:String(detailProg.inr_per_point||""),expiry_rule:detailProg.expiry_rule||""});setLogoFile(null);setLogoPrev(detailProg.logo_url);setDetailProg(null);setShowProg(true);}} onDelete={async()=>{if(!confirm("Delete this master program?")) return;await db.from("master_programs").delete(detailProg.id);setDetailProg(null);load();}}/>}
-      {!detailCard&&!detailProg&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
+      {!detailCard&&!detailProg&&<div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
           <div style={{fontSize:24,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Catalog</div>
           <div style={{fontSize:13,color:mut,marginTop:5,fontWeight:400}}>Master cards, programs and transfer partners</div>
@@ -1903,6 +1904,7 @@ function Catalog({db}){
         )}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={savePart}>{editItem?"Save Changes":"Add Route"}</button>
       </Modal>
+      </div>}
     </div>
   );
 }
