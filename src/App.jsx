@@ -312,8 +312,8 @@ function Modal({show,onClose,title,children,wide=false}){
   );
 }
 
-function Card({children,style={}}){
-  return <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:"0 1px 2px rgba(0,0,0,0.04),0 0 0 0 transparent",...style}}>{children}</div>;
+function Card({children,style={},...rest}){
+  return <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:"0 1px 2px rgba(0,0,0,0.04),0 0 0 0 transparent",...style}} {...rest}>{children}</div>;
 }
 
 function Hdr({title,sub,action}){
@@ -1726,8 +1726,8 @@ function Catalog({db}){
                     </div>
                     <div style={{fontSize:11,color:mut,fontWeight:400}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" · ₹"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" · ₹"+Number(c.annual_fee).toLocaleString()+" p.a."}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
-                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar"});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
-                      <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delCard(c.id)}>Del</button>
+                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar"});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
+                      <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();delCard(c.id);}}>Del</button>
                     </div>
                   </Card>
                 ))}
