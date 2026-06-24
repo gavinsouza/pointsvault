@@ -605,7 +605,7 @@ function Catalog({db}){
   const [editItem,setEditItem]=useState(null);
   const [logoFile,setLogoFile]=useState(null);
   const [logoPrev,setLogoPrev]=useState(null);
-  const eCard={name:"",bank:"",network:"Visa",points_currency:"pts",inr_per_point:"",annual_fee:"",fee_waiver_amt:"",fee_waiver_cycle:"calendar",billing_year_start:"",fee_charge_date:""};
+  const eCard={name:"",bank:"",network:"Visa",points_currency:"pts",inr_per_point:"",annual_fee:"",fee_waiver_amt:"",fee_waiver_cycle:"calendar"};
   const eProg={name:"",category:"Airline",points_currency:"pts",inr_per_point:"",expiry_rule:""};
   const ePart={from_id:"",from_type:"card",to_id:"",to_type:"program",ratio_from:"1",ratio_to:"1",min_transfer:"",max_monthly:"",transfer_time:"",notes:"",has_reverse:false,reverse_ratio_from:"1",reverse_ratio_to:"1"};
   const [fC,setFC]=useState(eCard);
@@ -638,7 +638,7 @@ function Catalog({db}){
     if(!fC.name.trim()) return alert("Name required");
     const dupes=mCards.filter(c=>c.name.toLowerCase()===fC.name.trim().toLowerCase()&&(!editItem||c.id!==editItem.id));
     if(dupes.length>0) return alert("A master card named '"+fC.name.trim()+"' already exists.");
-    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar",billing_year_start:fC.billing_year_start||null,fee_charge_date:fC.fee_charge_date||null};
+    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar"};
     setSaving(true);
     if(editItem){
       let logo_url=editItem.logo_url;
@@ -718,7 +718,7 @@ function Catalog({db}){
                     </div>
                     <div style={{fontSize:11,color:mut,fontWeight:400}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" · ₹"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" · ₹"+Number(c.annual_fee).toLocaleString()+" p.a."}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
-                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar",billing_year_start:c.billing_year_start||"",fee_charge_date:c.fee_charge_date||""});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
+                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={()=>{setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar"});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={()=>delCard(c.id)}>Del</button>
                     </div>
                   </Card>
@@ -830,10 +830,6 @@ function Catalog({db}){
           <div>{lbl("Fee Waiver Amt (Rs)")}<input style={inp} type="number" placeholder="0" value={fC.fee_waiver_amt} onChange={ucC("fee_waiver_amt")}/></div>
           <div>{lbl("Waiver Cycle")}<select style={inp} value={fC.fee_waiver_cycle} onChange={ucC("fee_waiver_cycle")}><option value="calendar">Calendar Year</option><option value="billing">Billing Year</option></select></div>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={fC.billing_year_start} onChange={ucC("billing_year_start")}/></div>
-          <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={fC.fee_charge_date} onChange={ucC("fee_charge_date")}/></div>
-        </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.6:1}} onClick={saveCard}>{saving?"Saving...":editItem?"Save Changes":"Add Card"}</button>
       </Modal>
 
@@ -912,7 +908,7 @@ function MyCards({db,owners}){
   const [detail,setDetail]=useState(null);
   const [search,setSearch]=useState("");
   const [ownerF,setOwnerF]=useState("all");
-  const eF={master_id:"",owner_id:"",nickname:"",last4:"",opening_balance:"",stmt_date:"",card_expiry:"",fee_override:false,fee_override_value:""};
+  const eF={master_id:"",owner_id:"",nickname:"",last4:"",opening_balance:"",stmt_date:"",card_expiry:"",fee_override:false,fee_override_value:"",billing_year_start:"",fee_charge_date:""};
   const [f,setF]=useState(eF);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
 
@@ -937,7 +933,7 @@ function MyCards({db,owners}){
     const dupes=cards.filter(c=>c.master_id===f.master_id&&c.owner_id===f.owner_id&&(!f.nickname||!c.nickname));
     if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
-    const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:ob,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null};
+    const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:0,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null,billing_year_start:f.billing_year_start||null,fee_charge_date:f.fee_charge_date||null};
     const {data}=await db.from("my_cards").insert(p);
     const newId=data&&data[0]?.id;
     if(newId){
@@ -1021,6 +1017,10 @@ function MyCards({db,owners}){
           Override annual fee (e.g. LTF waiver)
         </label>
         {f.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={up("billing_year_start")}/></div>
+          <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={up("fee_charge_date")}/></div>
+        </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>Add Card</button>
       </Modal>
     </div>
@@ -1078,7 +1078,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
     const sum=txns.reduce((a,t)=>a+t.points,0);
     const nOp=parseInt(ef.opening_balance)||0;
     const nBal=nOp+sum;
-    const p={owner_id:ef.owner_id,nickname:ef.nickname,last4:ef.last4,stmt_date:parseInt(ef.stmt_date)||null,card_expiry:ef.card_expiry||null,opening_balance:nOp,points_balance:nBal,fee_override:ef.fee_override,fee_override_value:ef.fee_override?parseFloat(ef.fee_override_value)||0:null};
+    const p={owner_id:ef.owner_id,nickname:ef.nickname,last4:ef.last4,stmt_date:parseInt(ef.stmt_date)||null,card_expiry:ef.card_expiry||null,opening_balance:nOp,points_balance:nBal,fee_override:ef.fee_override,fee_override_value:ef.fee_override?parseFloat(ef.fee_override_value)||0:null,billing_year_start:ef.billing_year_start||null,fee_charge_date:ef.fee_charge_date||null};
     await db.from("my_cards").update(card.id,p);
     setCard(c=>({...c,...p}));setShowEdit(false);
   };
@@ -1097,7 +1097,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
-          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||"")});setShowEdit(true);}}>Edit</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||""),billing_year_start:card.billing_year_start||"",fee_charge_date:card.fee_charge_date||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
       </div>
@@ -1118,6 +1118,8 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             iv>0&&{label:"INR Value",value:inrFmt(iv),color:grn},
             card.stmt_date&&{label:"Statement",value:ordinal(card.stmt_date)},
             fee>0&&{label:"Annual Fee",value:"Rs"+Number(fee).toLocaleString("en-IN"),color:red},
+            card.billing_year_start&&{label:"Billing Yr Start",value:card.billing_year_start},
+            card.fee_charge_date&&{label:"Fee Charge Date",value:card.fee_charge_date},
           ].filter(Boolean).map((s,i)=>(
             <div key={i} style={{background:surf2,borderRadius:12,padding:"14px 18px",minWidth:110,border:`1px solid ${bdr}`}}>
               <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{s.label}</div>
@@ -1152,7 +1154,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","Description","Points","Opening","Closing"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"?"left":"right",fontWeight:600}}>{h}</th>)}
+                {["Date","Description","Points","Balance"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"?"left":"right",fontWeight:600}}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {disp.map(t=>(
@@ -1160,7 +1162,6 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
@@ -1193,6 +1194,10 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
           Override annual fee
         </label>
         {ef.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" value={ef.fee_override_value||""} onChange={eup("fee_override_value")}/></>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start||""} onChange={eup("billing_year_start")}/></div>
+          <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date||""} onChange={eup("fee_charge_date")}/></div>
+        </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveEdit}>Save Changes</button>
       </Modal>
     </div>
@@ -1230,7 +1235,7 @@ function MyPrograms({db,owners}){
     if(!f.master_id) return alert("Select a master program");
     if(!f.owner_id) return alert("Select an owner");
     const ob=parseInt(f.opening_balance)||0;
-    const {data}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:ob,expiry_date:f.expiry_date||null});
+    const {data}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:0,expiry_date:f.expiry_date||null});
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
@@ -1434,7 +1439,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","Description","Points","Opening","Closing"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"?"left":"right",fontWeight:600}}>{h}</th>)}
+                {["Date","Description","Points","Balance"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"?"left":"right",fontWeight:600}}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {disp.map(t=>(
@@ -1442,7 +1447,6 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut,fontWeight:400}}>{t.opening.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
                   </tr>
                 ))}
