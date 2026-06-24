@@ -179,6 +179,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const [ownerF,setOwnerF]=useState("all");
   const [entityF,setEntityF]=useState("all");
   const [metric,setMetric]=useState("points");
+  const [hover,setHover]=useState(null);
 
   const color=accentColor||acc;
 
@@ -236,8 +237,6 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
   const isEmpty=series.length<2||vals.every(v=>v===0);
   const latestVal=vals.length>0?vals[vals.length-1]||0:0;
   const gradId=`g${entityType}`;
-
-  const [hover,setHover]=useState(null); // {idx,x,y,value,date}
 
   const handleMouseMove=e=>{
     const svg=e.currentTarget;
@@ -1764,6 +1763,18 @@ function TransferHistory({db,owners}){
 }
 
 // Vouchers
+
+function Secret({label,value}){
+  const [vis,setVis]=useState(false);
+  return(
+    <div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
+      <span style={{color:mut}}>{label}:</span>
+      <span style={{fontFamily:"monospace",fontWeight:600,color:vis?acc:mut,background:surf2,padding:"1px 6px",borderRadius:4,minWidth:50,display:"inline-block"}}>{vis?value:"*".repeat(Math.min(value.length,8))}</span>
+      <button onClick={()=>setVis(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"0 2px"}}>{vis?"hide":"show"}</button>
+    </div>
+  );
+}
+
 function Vouchers({db,owners}){
   const [rows,setRows]=useState([]);
   const [busy,setBusy]=useState(true);
@@ -1794,17 +1805,6 @@ function Vouchers({db,owners}){
     if(filter==="redeemed") return v.redeemed;
     return true;
   });
-
-  function Secret({label,value}){
-    const [vis,setVis]=useState(false);
-    return(
-      <div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-        <span style={{color:mut}}>{label}:</span>
-        <span style={{fontFamily:"monospace",fontWeight:600,color:vis?acc:mut,background:surf2,padding:"1px 6px",borderRadius:4,minWidth:50,display:"inline-block"}}>{vis?value:"*".repeat(Math.min(value.length,8))}</span>
-        <button onClick={()=>setVis(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"0 2px"}}>{vis?"hide":"show"}</button>
-      </div>
-    );
-  }
 
   return(
     <div>
