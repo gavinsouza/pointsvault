@@ -2067,8 +2067,36 @@ function Catalog({db}){
     setShowPart(false);setEditItem(null);load();
   };
 
-  const delCard=async id=>{if(confirm("Delete?")){await db.from("master_cards").delete(id);load();}};
-  const delProg=async id=>{if(confirm("Delete?")){await db.from("master_programs").delete(id);load();}};
+  const delCard=async id=>{
+    const {data:linked}=await db.from("my_cards").filter("master_id",id);
+    if((linked||[]).length>0){
+      const names=(linked||[]).map(c=>c.nickname||c.last4||c.id).join(", ");
+      return alert(`Cannot delete — ${linked.length} linked card${linked.length>1?"s":""}: ${names}`);
+    }
+    if(!confirm("Delete this master card and all its transfer partner routes?")) return;
+    const {data:pOut}=await db.from("master_partners").filter("from_id",id);
+    const {data:pIn}=await db.from("master_partners").filter("to_id",id);
+    for(const p of [...(pOut||[]),...(pIn||[])]) await db.from("master_partners").delete(p.id);
+    const {data:ms}=await db.from("master_milestones").filter("master_card_id",id);
+    for(const m of (ms||[])) await db.from("master_milestones").delete(m.id);
+    await db.from("master_cards").delete(id);
+    load();
+  };
+  const delProg=async id=>{
+    // Check if any my_programs are linked
+    const {data:linked}=await db.from("my_programs").filter("master_id",id);
+    if((linked||[]).length>0){
+      const names=(linked||[]).map(p=>p.nickname||p.membership_number||p.id).join(", ");
+      return alert(`Cannot delete — ${linked.length} linked program${linked.length>1?"s":""}: ${names}`);
+    }
+    if(!confirm("Delete this master program and all its transfer partner routes?")) return;
+    // Delete all master_partners where from_id or to_id = id
+    const {data:pOut}=await db.from("master_partners").filter("from_id",id);
+    const {data:pIn}=await db.from("master_partners").filter("to_id",id);
+    for(const p of [...(pOut||[]),...(pIn||[])]) await db.from("master_partners").delete(p.id);
+    await db.from("master_programs").delete(id);
+    load();
+  };
   const delPart=async id=>{if(confirm("Delete?")){await db.from("master_partners").delete(id);load();}};
   const gName=(type,id)=>type==="card"?mCards.find(m=>m.id===id)?.name||"--":mProgs.find(m=>m.id===id)?.name||"--";
   const gLogo=(type,id)=>type==="card"?mCards.find(m=>m.id===id)?.logo_url:mProgs.find(m=>m.id===id)?.logo_url;
@@ -2076,8 +2104,34 @@ function Catalog({db}){
 
   return(
     <div>
-      {detailCard&&<MasterCardDetail card={detailCard} db={db} onBack={()=>setDetailCard(null)} onEdit={()=>{setEditItem(detailCard);setFC({name:detailCard.name,bank:detailCard.bank||"",network:detailCard.network||"Visa",points_currency:detailCard.points_currency||"pts",inr_per_point:String(detailCard.inr_per_point||""),annual_fee:String(detailCard.annual_fee||""),fee_waiver_amt:String(detailCard.fee_waiver_amt||""),fee_waiver_cycle:detailCard.fee_waiver_cycle||"calendar",billing_year_start:detailCard.billing_year_start||"",fee_charge_date:detailCard.fee_charge_date||""});setLogoFile(null);setLogoPrev(detailCard.logo_url);setDetailCard(null);setShowCard(true);}} onDelete={async()=>{if(!confirm("Delete this master card?")) return;await db.from("master_cards").delete(detailCard.id);setDetailCard(null);load();}}/>}
-      {detailProg&&<MasterProgDetail prog={detailProg} db={db} onBack={()=>setDetailProg(null)} onEdit={()=>{setEditItem(detailProg);setFP({name:detailProg.name,category:detailProg.category||"Airline",points_currency:detailProg.points_currency||"pts",inr_per_point:String(detailProg.inr_per_point||""),expiry_rule:detailProg.expiry_rule||""});setLogoFile(null);setLogoPrev(detailProg.logo_url);setDetailProg(null);setShowProg(true);}} onDelete={async()=>{if(!confirm("Delete this master program?")) return;await db.from("master_programs").delete(detailProg.id);setDetailProg(null);load();}}/>}
+      {detailCard&&<MasterCardDetail card={detailCard} db={db} onBack={()=>setDetailCard(null)} onEdit={()=>{setEditItem(detailCard);setFC({name:detailCard.name,bank:detailCard.bank||"",network:detailCard.network||"Visa",points_currency:detailCard.points_currency||"pts",inr_per_point:String(detailCard.inr_per_point||""),annual_fee:String(detailCard.annual_fee||""),fee_waiver_amt:String(detailCard.fee_waiver_amt||""),fee_waiver_cycle:detailCard.fee_waiver_cycle||"calendar",billing_year_start:detailCard.billing_year_start||"",fee_charge_date:detailCard.fee_charge_date||""});setLogoFile(null);setLogoPrev(detailCard.logo_url);setDetailCard(null);setShowCard(true);}} onDelete={async()=>{
+              const {data:linked}=await db.from("my_cards").filter("master_id",detailCard.id);
+              if((linked||[]).length>0){
+                const names=(linked||[]).map(c=>c.nickname||c.last4||c.id).join(", ");
+                return alert(`Cannot delete — ${linked.length} linked card${linked.length>1?"s":""}: ${names}`);
+              }
+              if(!confirm("Delete this master card and all its transfer routes?")) return;
+              const {data:pOut}=await db.from("master_partners").filter("from_id",detailCard.id);
+              const {data:pIn}=await db.from("master_partners").filter("to_id",detailCard.id);
+              for(const p of [...(pOut||[]),...(pIn||[])]) await db.from("master_partners").delete(p.id);
+              const {data:ms}=await db.from("master_milestones").filter("master_card_id",detailCard.id);
+              for(const m of (ms||[])) await db.from("master_milestones").delete(m.id);
+              await db.from("master_cards").delete(detailCard.id);
+              setDetailCard(null);load();
+            }}/>}
+      {detailProg&&<MasterProgDetail prog={detailProg} db={db} onBack={()=>setDetailProg(null)} onEdit={()=>{setEditItem(detailProg);setFP({name:detailProg.name,category:detailProg.category||"Airline",points_currency:detailProg.points_currency||"pts",inr_per_point:String(detailProg.inr_per_point||""),expiry_rule:detailProg.expiry_rule||""});setLogoFile(null);setLogoPrev(detailProg.logo_url);setDetailProg(null);setShowProg(true);}} onDelete={async()=>{
+              const {data:linked}=await db.from("my_programs").filter("master_id",detailProg.id);
+              if((linked||[]).length>0){
+                const names=(linked||[]).map(p=>p.nickname||p.membership_number||p.id).join(", ");
+                return alert(`Cannot delete — ${linked.length} linked program${linked.length>1?"s":""}: ${names}`);
+              }
+              if(!confirm("Delete this master program and all its transfer routes?")) return;
+              const {data:pOut}=await db.from("master_partners").filter("from_id",detailProg.id);
+              const {data:pIn}=await db.from("master_partners").filter("to_id",detailProg.id);
+              for(const p of [...(pOut||[]),...(pIn||[])]) await db.from("master_partners").delete(p.id);
+              await db.from("master_programs").delete(detailProg.id);
+              setDetailProg(null);load();
+            }}/>}
       {!detailCard&&!detailProg&&<div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
         <div>
@@ -2112,7 +2166,7 @@ function Catalog({db}){
             </div>
             {(()=>{const filtMC=mCards.filter(c=>!cardSearch||c.name.toLowerCase().includes(cardSearch.toLowerCase())||(c.bank||"").toLowerCase().includes(cardSearch.toLowerCase()));return filtMC.length===0?<Empty icon="CC" msg="No master cards yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-                {mCards.map(c=>(
+                {filtMC.map(c=>(
                   <Card key={c.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailCard(c)}>
                     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
                       <LogoCircle url={c.logo_url} name={c.name} size={40}/>
@@ -2143,7 +2197,7 @@ function Catalog({db}){
             </div>
             {(()=>{const filtMP=mProgs.filter(p=>!progSearch||p.name.toLowerCase().includes(progSearch.toLowerCase())||(p.category||"").toLowerCase().includes(progSearch.toLowerCase()));return filtMP.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-                {mProgs.map(p=>(
+                {filtMP.map(p=>(
                   <Card key={p.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailProg(p)}>
                     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
                       <LogoCircle url={p.logo_url} name={p.name} size={40}/>
