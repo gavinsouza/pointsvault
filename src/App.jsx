@@ -3759,7 +3759,7 @@ export default function App(){
                   onMouseEnter={e=>e.currentTarget.style.background=surf2}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <span style={{fontSize:9,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>{section.section}</span>
-                  <span style={{fontSize:10,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
+                  <span style={{fontSize:14,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1,fontWeight:400}}>▾</span>
                 </div>
                 {!isCollapsed&&section.items.map(t=>(
                   t.comingSoon?(
