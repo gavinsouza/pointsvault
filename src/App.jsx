@@ -497,7 +497,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
     });
   },[txns,entities,masters,ownerF,entityF,period,metric,entityType]);
 
-  const W=540,H=140,PL=44,PR=10,PT=8,PB=26;
+  const W=540,H=160,PL=56,PR=10,PT=10,PB=28;
   const cW=W-PL-PR,cH=H-PT-PB;
   const vals=series.map(s=>s.value);
   const isEmpty=series.length<2;
@@ -514,7 +514,7 @@ function PortfolioChart({txns,entities,masters,owners,entityType,accentColor}){
 
   const yTicks=3;
   const yVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
-  const fmt=v=>metric==="inr"?inrFmt(v):(v>=100000?(v/100000).toFixed(1)+"L":v>=1000?(v/1000).toFixed(0)+"K":Math.round(v).toString());
+  const fmt=v=>metric==="inr"?inrFmt(v):Math.round(v).toLocaleString("en-IN");
   const fmtD=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
   const xIdxs=series.length<=1?[]:[0,Math.floor((series.length-1)/2),series.length-1];
 
@@ -1989,7 +1989,7 @@ function Catalog({db}){
   const [editItem,setEditItem]=useState(null);
   const [logoFile,setLogoFile]=useState(null);
   const [logoPrev,setLogoPrev]=useState(null);
-  const eCard={name:"",bank:"",network:"Visa",points_currency:"pts",inr_per_point:"",annual_fee:"",fee_waiver_amt:"",fee_waiver_cycle:"calendar"};
+  const eCard={name:"",bank:"",network:"Visa",points_currency:"pts",inr_per_point:"",annual_fee:"",fee_waiver_amt:"",fee_waiver_cycle:"calendar",auto_transfer_to:""};
   const eProg={name:"",category:"Airline",points_currency:"pts",inr_per_point:"",expiry_rule:""};
   const ePart={from_id:"",from_type:"card",to_id:"",to_type:"program",ratio_from:"1",ratio_to:"1",min_transfer:"",max_monthly:"",transfer_time:"",notes:"",has_reverse:false,reverse_ratio_from:"1",reverse_ratio_to:"1"};
   const [fC,setFC]=useState(eCard);
@@ -2022,7 +2022,7 @@ function Catalog({db}){
     if(!fC.name.trim()) return alert("Name required");
     const dupes=mCards.filter(c=>c.name.toLowerCase()===fC.name.trim().toLowerCase()&&(!editItem||c.id!==editItem.id));
     if(dupes.length>0) return alert("A master card named '"+fC.name.trim()+"' already exists.");
-    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar"};
+    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar",auto_transfer_to:(fC.auto_transfer_to&&fC.auto_transfer_to!=="pending")?fC.auto_transfer_to:null};
     setSaving(true);
     if(editItem){
       let logo_url=editItem.logo_url;
@@ -2177,7 +2177,7 @@ function Catalog({db}){
                     </div>
                     <div style={{fontSize:11,color:mut,fontWeight:400}}>{c.points_currency||"pts"}{c.inr_per_point>0&&" · ₹"+c.inr_per_point+"/pt"}{c.annual_fee>0&&" · ₹"+Number(c.annual_fee).toLocaleString()+" p.a."}</div>
                     <div style={{position:"absolute",top:12,right:12,display:"flex",gap:4}}>
-                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar"});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
+                      <button style={{...gbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();setEditItem(c);setFC({name:c.name,bank:c.bank||"",network:c.network||"Visa",points_currency:c.points_currency||"pts",inr_per_point:String(c.inr_per_point||""),annual_fee:String(c.annual_fee||""),fee_waiver_amt:String(c.fee_waiver_amt||""),fee_waiver_cycle:c.fee_waiver_cycle||"calendar",auto_transfer_to:c.auto_transfer_to||""});setLogoFile(null);setLogoPrev(c.logo_url);setShowCard(true);}}>Edit</button>
                       <button style={{...dbtn,padding:"4px 8px",fontSize:11}} onClick={e=>{e.stopPropagation();delCard(c.id);}}>Del</button>
                     </div>
                   </Card>
@@ -2299,6 +2299,16 @@ function Catalog({db}){
           <div>{lbl("Fee Waiver Amt (Rs)")}<input style={inp} type="number" placeholder="0" value={fC.fee_waiver_amt} onChange={ucC("fee_waiver_amt")}/></div>
           <div>{lbl("Waiver Cycle")}<select style={inp} value={fC.fee_waiver_cycle} onChange={ucC("fee_waiver_cycle")}><option value="calendar">Calendar Year</option><option value="billing">Billing Year</option></select></div>
         </div>
+        <div style={{marginBottom:12}}>
+          <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:txt,fontWeight:500,marginBottom:8}}>
+            <input type="checkbox" checked={!!fC.auto_transfer_to} onChange={e=>ucC("auto_transfer_to")({target:{value:e.target.checked?"pending":""}})} style={{accentColor:acc,width:16,height:16}}/>
+            Co-branded card (points auto-transfer to a loyalty program)
+          </label>
+          {!!fC.auto_transfer_to&&<select style={inp} value={fC.auto_transfer_to==="pending"?"":fC.auto_transfer_to} onChange={ucC("auto_transfer_to")}>
+            <option value="">Select linked loyalty program…</option>
+            {mProgs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>}
+        </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.6:1}} onClick={saveCard}>{saving?"Saving...":editItem?"Save Changes":"Add Card"}</button>
       </Modal>
 
@@ -2377,7 +2387,7 @@ function MyCards({db,owners}){
   const [detail,setDetail]=useState(null);
   const [search,setSearch]=useState("");
   const [ownerF,setOwnerF]=useState("all");
-  const eF={master_id:"",owner_id:"",nickname:"",last4:"",opening_balance:"",stmt_date:"",card_expiry:"",fee_override:false,fee_override_value:"",billing_year_start:"",fee_charge_date:""};
+  const eF={master_id:"",owner_id:"",nickname:"",last4:"",opening_balance:"",stmt_date:"",card_expiry:"",fee_override:false,fee_override_value:"",billing_year_start:"",fee_charge_date:"",linked_program_id:""};
   const [f,setF]=useState(eF);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
 
@@ -2402,7 +2412,7 @@ function MyCards({db,owners}){
     const dupes=cards.filter(c=>c.master_id===f.master_id&&c.owner_id===f.owner_id&&(!f.nickname||!c.nickname));
     if(dupes.length>0&&!f.nickname) return alert("You already have a "+master?.name+" card for this owner. Add a nickname to distinguish them, or edit the existing one.");
     const ob=parseInt(f.opening_balance)||0;
-    const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:0,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null,billing_year_start:f.billing_year_start||null,fee_charge_date:f.fee_charge_date||null};
+    const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:0,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null,billing_year_start:f.billing_year_start||null,fee_charge_date:f.fee_charge_date||null,linked_program_id:f.linked_program_id||null};
     const {data,error}=await db.from("my_cards").insert(p);
     if(error){ alert("Failed to add card: "+JSON.stringify(error)); return; }
     const newId=data&&data[0]?.id;
@@ -2491,6 +2501,20 @@ function MyCards({db,owners}){
           <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={up("billing_year_start")}/></div>
           <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={up("fee_charge_date")}/></div>
         </div>
+        {(()=>{
+          const master=mCards.find(m=>m.id===f.master_id);
+          if(!master?.auto_transfer_to) return null;
+          const linkedMasterProg=mCards.find(()=>false)||{id:master.auto_transfer_to};
+          const eligibleProgs=progs.filter(p=>p.master_id===master.auto_transfer_to&&(f.owner_id==="all"||p.owner_id===f.owner_id||!f.owner_id));
+          const masterProgName=mProgs?.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
+          return(<div>
+            {lbl("Link to "+masterProgName+" account")}
+            <select style={inp} value={f.linked_program_id} onChange={up("linked_program_id")}>
+              <option value="">Select your {masterProgName} account…</option>
+              {eligibleProgs.map(p=><option key={p.id} value={p.id}>{p.nickname||masterProgName}{owners?.find(o=>o.id===p.owner_id)?" ("+owners.find(o=>o.id===p.owner_id).name+")":""}</option>)}
+            </select>
+          </div>);
+        })()}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>Add Card</button>
       </Modal>
     </div>
@@ -2539,11 +2563,14 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
     // Auto-transfer: if this card has auto_transfer_to, block if LP not in portfolio, else create paired txns
     if(master?.auto_transfer_to&&!f.override_auto){
       const {data:myProgs}=await db.from("my_programs").select();
-      const {data:mProgs}=await db.from("master_programs").select();
-      const autoMaster=mProgs?.find(m=>m.id===master.auto_transfer_to);
-      const linkedProg=myProgs?.find(p=>p.master_id===master.auto_transfer_to&&p.owner_id===card.owner_id);
+      const {data:mProgsData}=await db.from("master_programs").select();
+      const autoMaster=mProgsData?.find(m=>m.id===master.auto_transfer_to);
+      // Use explicitly linked program first, fall back to owner match
+      const linkedProg=card.linked_program_id
+        ?(myProgs||[]).find(p=>p.id===card.linked_program_id)
+        :(myProgs||[]).find(p=>p.master_id===master.auto_transfer_to&&p.owner_id===card.owner_id);
       if(!linkedProg){
-        return alert("This is a co-branded card that auto-transfers to "+( autoMaster?.name||"a linked loyalty program")+". Please add that program to your account first before logging transactions.");
+        return alert("This co-branded card needs a linked "+( autoMaster?.name||"loyalty program")+" account. Edit the card and select which account to link.");
       }
       // Record earn on card
       await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description||"Earn",txn_date:f.txn_date});
@@ -2573,7 +2600,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
     const sum=txns.reduce((a,t)=>a+t.points,0);
     const nOp=parseInt(ef.opening_balance)||0;
     const nBal=nOp+sum;
-    const p={owner_id:ef.owner_id,nickname:ef.nickname,last4:ef.last4,stmt_date:parseInt(ef.stmt_date)||null,card_expiry:ef.card_expiry||null,opening_balance:nOp,points_balance:nBal,fee_override:ef.fee_override,fee_override_value:ef.fee_override?parseFloat(ef.fee_override_value)||0:null,billing_year_start:ef.billing_year_start||null,fee_charge_date:ef.fee_charge_date||null};
+    const p={owner_id:ef.owner_id,nickname:ef.nickname,last4:ef.last4,stmt_date:parseInt(ef.stmt_date)||null,card_expiry:ef.card_expiry||null,opening_balance:nOp,points_balance:nBal,fee_override:ef.fee_override,fee_override_value:ef.fee_override?parseFloat(ef.fee_override_value)||0:null,billing_year_start:ef.billing_year_start||null,fee_charge_date:ef.fee_charge_date||null,linked_program_id:ef.linked_program_id||null};
     await db.from("my_cards").update(card.id,p);
     setCard(c=>({...c,...p}));setShowEdit(false);
   };
@@ -2599,7 +2626,12 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const ob=card.opening_balance||0;
   const iv=(card.points_balance||0)*(master?.inr_per_point||0);
   const fee=card.fee_override?card.fee_override_value:master?.annual_fee;
-  const sorted=[...txns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+  const sorted=[...txns].sort((a,b)=>{
+    const aIsOB=a.description==="Opening balance";
+    const bIsOB=b.description==="Opening balance";
+    if(aIsOB) return -1; if(bIsOB) return 1;
+    return new Date(a.txn_date)-new Date(b.txn_date);
+  });
   let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); const disp=rows.reverse();
 
   return(
@@ -2607,7 +2639,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
-          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||""),billing_year_start:card.billing_year_start||"",fee_charge_date:card.fee_charge_date||""});setShowEdit(true);}}>Edit</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||""),billing_year_start:card.billing_year_start||"",fee_charge_date:card.fee_charge_date||"",linked_program_id:card.linked_program_id||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
       </div>
@@ -2652,7 +2684,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
               <tbody>
                 {disp.map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
@@ -2698,6 +2730,17 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
           <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start||""} onChange={eup("billing_year_start")}/></div>
           <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date||""} onChange={eup("fee_charge_date")}/></div>
         </div>
+        {master?.auto_transfer_to&&(()=>{
+          const masterProgName=mProgs?.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
+          const eligibleProgs=myProgs?.filter(p=>p.master_id===master.auto_transfer_to)||[];
+          return(<div>
+            {lbl("Linked "+masterProgName+" account")}
+            <select style={inp} value={ef.linked_program_id||""} onChange={eup("linked_program_id")}>
+              <option value="">Select account…</option>
+              {eligibleProgs.map(p=><option key={p.id} value={p.id}>{p.nickname||masterProgName}</option>)}
+            </select>
+          </div>);
+        })()}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveEdit}>Save Changes</button>
       </Modal>
     </div>
@@ -2889,7 +2932,12 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const iv=(prog.points_balance||0)*(master?.inr_per_point||0);
   const days=prog.expiry_date?Math.round((new Date(prog.expiry_date)-new Date())/86400000):null;
   const exp=days!==null&&days<=60;
-  const sorted=[...txns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+  const sorted=[...txns].sort((a,b)=>{
+    const aIsOB=a.description==="Opening balance";
+    const bIsOB=b.description==="Opening balance";
+    if(aIsOB) return -1; if(bIsOB) return 1;
+    return new Date(a.txn_date)-new Date(b.txn_date);
+  });
   let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); const disp=rows.reverse();
 
   return(
@@ -2939,7 +2987,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
               <tbody>
                 {disp.map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
