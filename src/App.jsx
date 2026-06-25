@@ -3401,13 +3401,46 @@ function TransferHistory({db,owners}){
 
 // Vouchers
 
-function Secret({label,value}){
-  const [vis,setVis]=useState(false);
+function Secret({onConnect}){
+  const [url,setUrl]=useState(localStorage.getItem("pv_u")||"");
+  const [key,setKey]=useState(localStorage.getItem("pv_k")||"");
+  const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+
+  const connect=async()=>{
+    if(!url.trim()||!key.trim()) return setErr("Both fields required");
+    setBusy(true); setErr("");
+    try{
+      const c=createClient(url.trim(),key.trim());
+      const {error}=await c.from("owners").select();
+      if(error) throw error;
+      localStorage.setItem("pv_u",url.trim());
+      localStorage.setItem("pv_k",key.trim());
+      onConnect(url.trim(),key.trim());
+    }catch(e){
+      setErr("Connection failed: "+(e.message||"check your URL and key"));
+    }
+    setBusy(false);
+  };
+
   return(
-    <div style={{fontSize:11,marginBottom:4,display:"flex",alignItems:"center",gap:6}}>
-      <span style={{color:mut}}>{label}:</span>
-      <span style={{fontFamily:"monospace",fontWeight:600,color:vis?acc:mut,background:surf2,padding:"1px 6px",borderRadius:4,minWidth:50,display:"inline-block"}}>{vis?value:"*".repeat(Math.min(value.length,8))}</span>
-      <button onClick={()=>setVis(v=>!v)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"0 2px"}}>{vis?"hide":"show"}</button>
+    <div>
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>Supabase URL</div>
+        <input style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid ${bdr}`,fontSize:13,fontFamily:"'Manrope',sans-serif",background:surf,color:txt,outline:"none",boxSizing:"border-box"}}
+          placeholder="https://xxxx.supabase.co" value={url} onChange={e=>setUrl(e.target.value)}/>
+      </div>
+      <div style={{marginBottom:20}}>
+        <div style={{fontSize:11,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>Anon Key</div>
+        <input type="password" style={{width:"100%",padding:"10px 12px",borderRadius:10,border:`1px solid ${bdr}`,fontSize:13,fontFamily:"'Manrope',sans-serif",background:surf,color:txt,outline:"none",boxSizing:"border-box"}}
+          placeholder="eyJhbGc..." value={key} onChange={e=>setKey(e.target.value)}
+          onKeyDown={e=>e.key==="Enter"&&connect()}/>
+      </div>
+      {err&&<div style={{fontSize:12,color:red,marginBottom:12}}>{err}</div>}
+      <button onClick={connect} disabled={busy}
+        style={{width:"100%",padding:"12px",borderRadius:10,background:txt,color:surf,border:"none",cursor:busy?"not-allowed":"pointer",fontSize:13,fontWeight:600,fontFamily:"'Manrope',sans-serif",opacity:busy?0.7:1}}>
+        {busy?"Connecting…":"Connect to Supabase"}
+      </button>
     </div>
   );
 }
