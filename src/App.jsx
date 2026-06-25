@@ -655,12 +655,12 @@ function UnifiedChart({txns,cards,progs,mc,mp,owners}){
               const ttW=130,ttH=mode==="individual"?14+series.length*14:42;
               const tx=Math.min(hover.x+10,W-PR-ttW-4);
               const ty=Math.max(PT+2,hover.ys[0]-ttH-6);
-              return <>
+              return <g>
                 <rect x={tx} y={ty} width={ttW} height={ttH} rx="5" fill={surf} stroke={bdr} strokeWidth="0.75"/>
                 <text x={tx+7} y={ty+13} fontSize="8" fill={mut} fontFamily="Manrope">{fmtD(hover.d)}</text>
                 {mode==="total"&&<text x={tx+7} y={ty+27} fontSize="11" fill={colors[0]} fontFamily="Manrope" fontWeight="700">{metric==="inr"?inrFmt(hover.vs[0]):hover.vs[0].toLocaleString("en-IN")}</text>}
                 {mode==="individual"&&hover.vs.map((v,i)=><text key={i} x={tx+7} y={ty+27+i*14} fontSize="9" fill={colors[i]} fontFamily="Manrope" fontWeight="600">{labels[i]}: {metric==="inr"?inrFmt(v):v.toLocaleString("en-IN")}</text>)}
-              </>;
+              </g>;
             })()}
             {!hover&&paths.map((p,i)=>series[i].length>0&&<circle key={i} cx={toX(series[i].length-1,series[i].length)} cy={toY(series[i][series[i].length-1].value)} r="2.5" fill={colors[i]}/>)}
           </svg>
