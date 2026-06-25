@@ -3828,22 +3828,21 @@ function SpendUpload({db,owners}){
   },[db]);
 
   const parseDate=(str,fmt)=>{
-    str=(str||"").trim().replace(/['"]/g,"");
-    if(fmt==="DD/MM/YYYY"){
-      const [d,m,y]=str.split(/[\/\-\.]/);
-      return y&&m&&d?`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`:"";
+    str=(str||"").trim().replace(/^["']+|["']+$/g,"");
+    // Strip time component if present (e.g. "02/05/2026 15:49:44")
+    str=str.split(" ")[0].split("T")[0];
+    if(fmt==="DD/MM/YYYY"||fmt==="auto"){
+      const p=str.split(/[\/\-\.]/);
+      if(p.length===3){
+        if(p[0].length===4) return `${p[0]}-${p[1].padStart(2,"0")}-${p[2].padStart(2,"0")}`;
+        return `${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;
+      }
     }
     if(fmt==="MM/DD/YYYY"){
-      const [m,d,y]=str.split(/[\/\-\.]/);
-      return y&&m&&d?`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`:"";
+      const p=str.split(/[\/\-\.]/);
+      if(p.length===3) return `${p[2]}-${p[0].padStart(2,"0")}-${p[1].padStart(2,"0")}`;
     }
     if(fmt==="YYYY-MM-DD") return str.substring(0,10);
-    // Try auto-detect
-    const parts=str.split(/[\/\-\.]/);
-    if(parts.length===3){
-      if(parts[0].length===4) return `${parts[0]}-${parts[1].padStart(2,"0")}-${parts[2].padStart(2,"0")}`;
-      return `${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
-    }
     return str;
   };
 
@@ -3876,7 +3875,7 @@ function SpendUpload({db,owners}){
       const dateStr=parseDate(row[dateCol]||"",dateFormat);
       let amount=0;
       if(amtType==="single"){
-        const raw=(row[amtCol]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const raw=(row[amtCol]||"").replace(/[,'"₹Rs\s]/g,"").trim();
         amount=Math.abs(parseFloat(raw)||0);
       } else {
         const dRaw=(row[debitCol]||"").replace(/[,'"₹Rs]/g,"").trim();
