@@ -3926,8 +3926,12 @@ function SpendUpload({db,owners}){
 
   const upd=(i,field,val)=>setParsed(prev=>prev.map((r,ri)=>ri===i?{...r,[field]:val}:r));
 
-  const colLbl=i=>`Col ${i+1}${rawRows[skipRows]?` (${(rawRows[skipRows][i]||"").substring(0,12)})`:""}`
-  const colOpts=(rawRows[0]||[]).map((_,i)=>colLbl(i));
+  // Use max columns across all rows for column options
+  const maxCols=Math.max(...rawRows.map(r=>r.length),1);
+  // Show transaction header row labels (skipRows-1 is usually the header)
+  const headerRow=rawRows[skipRows>0?skipRows-1:0]||[];
+  const colLbl=i=>`Col ${i+1}${headerRow[i]?` (${headerRow[i].substring(0,14)})`:""}`;
+  const colOpts=Array.from({length:maxCols},(_,i)=>colLbl(i));
 
   const ss={...{fontSize:12,border:`1px solid ${bdr}`,borderRadius:8,padding:"7px 10px",background:surf,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",width:"100%"}};
   const total=parsed.filter(r=>!r.skip).length;
@@ -4081,7 +4085,7 @@ function SpendUpload({db,owners}){
             <div>
               {lbl("Skip header rows")}
               <select style={ss} value={skipRows} onChange={e=>setSkipRows(Number(e.target.value))}>
-                {[0,1,2,3,4,5,6,7,8,9,10,12,15,18,20,22,25,28,30].map(n=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
+                {Array.from({length:31},(_,n)=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
               </select>
             </div>
             <div>
