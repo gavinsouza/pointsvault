@@ -3668,6 +3668,16 @@ function SettingsDanger({db,owners,onReset}){
       <div style={{maxWidth:560}}>
         {dangerItem("Delete all My Cards","Deletes all your My Cards and every transaction linked to them. Master cards in the catalog are unaffected.","Delete all My Cards",deleteAllMyCards,"mycards")}
         {dangerItem("Delete all My Loyalty Programs","Deletes all your My Programs and every transaction linked to them. Master programs in the catalog are unaffected.","Delete all My LPs",deleteAllMyLPs,"mylps")}
+        {dangerItem("Reset spend categories to defaults","Deletes all custom categories and restores the original default list.","Reset categories to defaults",async()=>{
+          if(!confirm2("This will delete all custom categories and restore defaults.")) return;
+          setBusy("categories");
+          const {data:existing}=await db.from("spend_categories").select();
+          for(const c of (existing||[])) await db.from("spend_categories").delete(c.id);
+          for(const name of ["Dining","Travel","Fuel","Groceries","Shopping","Utilities","Entertainment","Healthcare","Education","Rent","Insurance","Vouchers / Wallet","Reimbursable","Other"]){
+            await db.from("spend_categories").insert({name,is_default:true});
+          }
+          setBusy(null);alert("Categories reset to defaults.");
+        },"categories")}
         {dangerItem("Reset all balances & transactions","Wipes all transaction history and resets every card and LP balance to 0. Your cards and programs remain — just the history is cleared.","Reset all balances & transactions",deleteAllBalancesAndTxns,"balances")}
         {dangerItem("Delete all transfer partner routes","Removes all transfer partner routes from the catalog. Master cards and programs are unaffected.","Delete all transfer routes",deleteAllTransferPartners,"partners")}
         {dangerItem("Reset everything","Permanently deletes ALL data including owners, catalog, cards, programs, transactions and transfers. Cannot be undone.","Reset everything — start fresh",resetAll,"all")}
@@ -3676,6 +3686,102 @@ function SettingsDanger({db,owners,onReset}){
   );
 }
 
+
+
+// ── SetupCategories ───────────────────────────────────────────────────────────
+const DEFAULT_CATEGORIES=[
+  "Dining","Travel","Fuel","Groceries","Shopping","Utilities",
+  "Entertainment","Healthcare","Education","Rent","Insurance",
+  "Vouchers / Wallet","Reimbursable","Other"
+];
+
+async function seedCategories(db){
+  for(const name of DEFAULT_CATEGORIES){
+    await db.from("spend_categories").insert({name,is_default:true});
+  }
+}
+
+function SetupCategories({db}){
+  const [cats,setCats]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [newName,setNewName]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const {data}=await db.from("spend_categories").select();
+    let rows=data||[];
+    if(rows.length===0){
+      await seedCategories(db);
+      const {data:d2}=await db.from("spend_categories").select();
+      rows=d2||[];
+    }
+    setCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
+    setBusy(false);
+  },[db]);
+
+  useEffect(()=>{load();},[load]);
+
+  const add=async()=>{
+    if(!newName.trim()) return;
+    await db.from("spend_categories").insert({name:newName.trim(),is_default:false});
+    setNewName("");load();
+  };
+  const del=async id=>{
+    if(!confirm("Delete this category?")) return;
+    await db.from("spend_categories").delete(id);load();
+  };
+  const startEdit=(c)=>{setEditId(c.id);setEditName(c.name);};
+  const saveEdit=async()=>{
+    if(!editName.trim()) return;
+    await db.from("spend_categories").update(editId,{name:editName.trim()});
+    setEditId(null);setEditName("");load();
+  };
+
+  return(
+    <div>
+      <Hdr title="Categories" sub="Manage spend categories for transaction tagging"/>
+      <div style={{maxWidth:520}}>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Add Category</div>
+          <div style={{display:"flex",gap:8}}>
+            <input style={{...inp,marginBottom:0,flex:1}} placeholder="e.g. Investments" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+            <button style={pbtn} onClick={add}>Add</button>
+          </div>
+        </Card>
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Categories ({cats.length})</div>
+            <div style={{fontSize:10,color:mut}}>Reset to defaults available in Settings → Danger Zone</div>
+          </div>
+          {busy?<div style={{color:mut,fontSize:12}}>Loading…</div>:cats.map(c=>(
+            <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
+              {editId===c.id?(
+                <div style={{display:"flex",gap:6,flex:1}}>
+                  <input style={{...inp,marginBottom:0,flex:1,fontSize:12,padding:"4px 8px"}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                  <button style={{...pbtn,padding:"4px 12px",fontSize:12}} onClick={saveEdit}>Save</button>
+                  <button style={{...gbtn,padding:"4px 10px",fontSize:12}} onClick={()=>setEditId(null)}>Cancel</button>
+                </div>
+              ):(
+                <>
+                  <div style={{flex:1}}>
+                    <span style={{fontSize:13,fontWeight:500,color:txt}}>{c.name}</span>
+                    {c.is_default&&<span style={{fontSize:9,color:mut,marginLeft:8,textTransform:"uppercase",letterSpacing:"0.07em"}}>default</span>}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button style={{...gbtn,padding:"3px 10px",fontSize:11}} onClick={()=>startEdit(c)}>Edit</button>
+                    <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>del(c.id)}>Delete</button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
 
 // ── SetupPeople ───────────────────────────────────────────────────────────────
 function SetupPeople({db}){
@@ -3802,6 +3908,7 @@ function SpendUpload({db,owners}){
   const [parsed,setParsed]=useState([]); // [{date,desc,amount,category,reimbursable,person_id,skip}]
   const [importing,setImporting]=useState(false);
   const [importResult,setImportResult]=useState(null);
+  const [categories,setCategories]=useState(DEFAULT_CATEGORIES);
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
@@ -3822,18 +3929,22 @@ function SpendUpload({db,owners}){
 
   useEffect(()=>{
     (async()=>{
-      const [c,mc,p,r,dbRules]=await Promise.all([
+      const [c,mc,p,r,dbRules,dbCats]=await Promise.all([
         db.from("my_cards").select(),
         db.from("master_cards").select(),
         db.from("people").select(),
         db.from("csv_mappings").select(),
         db.from("merchant_rules").select(),
+        db.from("spend_categories").select(),
       ]);
       setCards(c.data||[]);
       setMCards(mc.data||[]);
       setPeople(p.data||[]);
       setMappings(r.data||[]);
       setRules([...DEFAULT_RULES,...(dbRules.data||[])]);
+      // Use DB categories if available, else defaults
+      const dbCatList=(dbCats.data||[]).map(x=>x.name);
+      if(dbCatList.length>0) setCategories(dbCatList);
     })();
   },[db]);
 
@@ -4244,7 +4355,7 @@ function SpendUpload({db,owners}){
                 <td style={{padding:"7px 10px"}}>
                   <select value={row.category} onChange={e=>upd(i,"category",e.target.value)}
                     style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}}>
-                    {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                    {categories.map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </td>
                 <td style={{padding:"7px 10px",textAlign:"center"}}>
@@ -4292,26 +4403,25 @@ function SpendUpload({db,owners}){
 
 const NAV=[
   {section:"Spend Tracker", items:[
-    {id:"spend-upload", label:"CC Statement Upload", beta:true},
+    {id:"spend-upload",       label:"CC Statement Upload", beta:true},
+    {id:"spend-setup-people",     label:"People", indent:true},
+    {id:"spend-setup-categories", label:"Categories", indent:true},
   ]},
   {section:"Points & Miles", items:[
-    {id:"overview",         label:"Overview"},
-    {id:"my-cards",         label:"My Cards"},
-    {id:"my-programs",      label:"My Programs"},
-    {id:"transfer",         label:"Transfer Points"},
-    {id:"transfer-history", label:"Transfer History"},
-    {id:"vouchers",         label:"Vouchers"},
-    {id:"transfer-routes",  label:"Transfer Routes", comingSoon:true},
+    {id:"overview",           label:"Overview"},
+    {id:"my-cards",           label:"My Cards"},
+    {id:"my-programs",        label:"My Programs"},
+    {id:"transfer",           label:"Transfer Points"},
+    {id:"transfer-history",   label:"Transfer History"},
+    {id:"vouchers",           label:"Vouchers"},
+    {id:"transfer-routes",    label:"Transfer Routes", comingSoon:true},
+    {id:"pm-setup-owners",    label:"Owners", indent:true},
+    {id:"pm-setup-catalog",   label:"Master", indent:true},
   ]},
   {section:"Double Dip", comingSoon:true, items:[]},
-  {section:"Setup", items:[
-    {id:"setup-owners",     label:"Owners"},
-    {id:"setup-people",     label:"People"},
-    {id:"setup-catalog",    label:"Master"},
-  ]},
   {section:"Settings", items:[
-    {id:"settings-general", label:"General"},
-    {id:"settings-danger",  label:"Danger Zone"},
+    {id:"settings-general",   label:"General"},
+    {id:"settings-danger",    label:"Danger Zone"},
   ]},
 ];
 
@@ -4377,14 +4487,17 @@ export default function App(){
                   <span style={{fontSize:9,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>{section.section}</span>
                   <span style={{fontSize:14,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1,fontWeight:400}}>▾</span>
                 </div>
+                {!isCollapsed&&section.items.map((t,ti)=>(
+                  <>{t.indent&&(ti===0||!section.items[ti-1].indent)&&<div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 12px 3px",opacity:0.7}}>Setup</div>}</>
+                ))}
                 {!isCollapsed&&section.items.map(t=>(
                   t.comingSoon?(
-                    <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
+                    <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",paddingLeft:t.indent?20:12,borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
                       <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
                       <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
                     </div>
                   ):(
-                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
+                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",paddingLeft:t.indent?20:12,cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
                       <span>{t.label}</span>
                       {t.beta&&<span style={{fontSize:8,color:acc,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",background:acc+"15",padding:"2px 5px",borderRadius:8,border:"1px solid "+acc+"33"}}>beta</span>}
                     </div>
@@ -4424,12 +4537,13 @@ export default function App(){
         {tab==="transfer"         &&<TransferPoints db={db} owners={owners}/>}
         {tab==="transfer-history" &&<TransferHistory db={db} owners={owners}/>}
         {tab==="vouchers"         &&<Vouchers db={db} owners={owners}/>}
-        {tab==="setup-owners"     &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
-        {tab==="setup-people"     &&<SetupPeople db={db}/>}
-        {tab==="setup-catalog"    &&<Catalog db={db}/>}
-        {tab==="settings-general" &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
-        {tab==="settings-danger"  &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
-        {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
+        {tab==="pm-setup-owners"      &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
+        {tab==="pm-setup-catalog"     &&<Catalog db={db}/>}
+        {tab==="spend-setup-people"   &&<SetupPeople db={db}/>}
+        {tab==="spend-setup-categories"&&<SetupCategories db={db}/>}
+        {tab==="settings-general"     &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
+        {tab==="settings-danger"      &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
+        {tab==="spend-upload"         &&<SpendUpload db={db} owners={owners}/>}
       </main>
     </div>
   );
