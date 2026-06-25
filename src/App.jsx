@@ -4463,6 +4463,7 @@ function SpendUpload({db,owners}){
 
 const NAV=[
   {section:"Spend Tracker", items:[
+    {id:"spend-overview",   label:"Overview"},
     {id:"spend-cards",      label:"My Cards"},
     {id:"spend-ledger",     label:"Ledger"},
     {id:"spend-upload",     label:"CC Statement Upload", beta:true},
@@ -4498,7 +4499,7 @@ export default function App(){
   const [tab,setTab]=useState("overview");
   const [menuOpen,setMenuOpen]=useState(false);
   const [owners,setOwners]=useState([]);
-  const [collapsed,setCollapsed]=useState(new Set());
+  const [collapsed,setCollapsed]=useState(()=>{const s=new Set();[0,1,2,3,4].forEach(i=>s.add('s'+i));return s;});
 
   useEffect(()=>{
     const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
@@ -4527,8 +4528,8 @@ export default function App(){
         <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
       </div>
     ):(
-      <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",paddingLeft:pl,cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
-        <span>{t.label}</span>
+      <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",paddingLeft:pl,cursor:"pointer",background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s"}}>
+        <span style={{fontSize:12,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut}}>{t.label}</span>
         {t.beta&&<span style={{fontSize:8,color:acc,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",background:acc+"15",padding:"2px 5px",borderRadius:8,border:"1px solid "+acc+"33"}}>beta</span>}
       </div>
     )
@@ -4549,18 +4550,18 @@ export default function App(){
             const isCollapsed=collapsed.has("s"+si);
             const hasItems=(section.items||[]).length>0||(section.sub||[]).length>0;
             if(section.comingSoon&&!hasItems) return(
-              <div key={si} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed"}}>
+              <div key={si} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed",marginTop:si>0?20:0}}>
                 <span style={{fontSize:12,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{section.section}</span>
                 <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
               </div>
             );
             return(
-              <div key={si} style={{marginBottom:2,marginTop:si>0?8:0}}>
+              <div key={si} style={{marginBottom:2,marginTop:si>0?20:0}}>
                 <div onClick={()=>setCollapsed(prev=>{const n=new Set(prev);n.has("s"+si)?n.delete("s"+si):n.add("s"+si);return n;})}
                   style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 12px 5px",cursor:"pointer",marginTop:si>0?4:0,borderRadius:6,transition:"background 0.1s"}}
                   onMouseEnter={e=>e.currentTarget.style.background=surf2}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                  <span style={{fontSize:9,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>{section.section}</span>
+                  <span style={{fontSize:11,fontWeight:700,color:txt,letterSpacing:"0.04em",textTransform:"uppercase"}}>{section.section}</span>
                   <span style={{fontSize:14,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
                 </div>
                 {!isCollapsed&&<>
@@ -4574,7 +4575,7 @@ export default function App(){
                           style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",borderRadius:6,transition:"background 0.1s"}}
                           onMouseEnter={e=>e.currentTarget.style.background=surf2}
                           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                          <span style={{fontSize:11,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{sub.label}</span>
+                          <span style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.05em",textTransform:"uppercase"}}>{sub.label}</span>
                           <span style={{fontSize:12,color:mut,transform:subCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
                         </div>
                         {!subCollapsed&&(sub.items||[]).map(t=>renderItem(t,20))}
@@ -4666,9 +4667,97 @@ export default function App(){
         {tab==="settings-general"  &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
         {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
-        {tab==="spend-cards"       &&<SpendCards db={db} owners={owners}/>}
+        {tab==="spend-overview"    &&<SpendOverview db={db} owners={owners}/>}
+        {tab==="spend-cards"       &&<SpendCards db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="spend-ledger"      &&<SpendLedger db={db} owners={owners}/>}
       </main>
+    </div>
+  );
+}
+
+
+// ── SpendOverview ──────────────────────────────────────────────────────────────
+function SpendOverview({db,owners}){
+  const [txns,setTxns]=useState([]);
+  const [cards,setCards]=useState([]);
+  const [mCards,setMCards]=useState([]);
+  const [busy,setBusy]=useState(true);
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const [t,c,mc]=await Promise.all([
+      db.from("spend_transactions").select(),
+      db.from("my_cards").select(),
+      db.from("master_cards").select(),
+    ]);
+    setTxns(t.data||[]); setCards(c.data||[]); setMCards(mc.data||[]);
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const now=new Date();
+  const ytdStart=now.getFullYear()+"-01-01";
+  const thisMonth=now.toISOString().slice(0,7);
+  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart).reduce((a,t)=>a+Number(t.amount||0),0);
+  const monthSpend=txns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth).reduce((a,t)=>a+Number(t.amount||0),0);
+
+  const catTotals={};
+  txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+  const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,6);
+  const totalSpend=txns.reduce((a,t)=>a+Number(t.amount||0),0);
+
+  const cardSpend=cards.map(c=>{
+    const m=mCards.find(x=>x.id===c.master_id);
+    const spend=txns.filter(t=>t.card_id===c.id).reduce((a,t)=>a+Number(t.amount||0),0);
+    return{name:c.nickname||m?.name||"Card",spend};
+  }).filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend);
+
+  return(
+    <div>
+      <Hdr title="Spend Overview" sub="All cards combined"/>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
+        {[
+          {label:"This Month",value:monthSpend},
+          {label:"Year to Date",value:ytdSpend},
+          {label:"All Time",value:totalSpend},
+          {label:"Total Transactions",value:txns.length,plain:true},
+        ].map((s,i)=>(
+          <Card key={i} style={{padding:"14px 16px"}}>
+            <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>{s.label}</div>
+            <div style={{fontSize:18,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{s.plain?s.value:"₹"+s.value.toLocaleString("en-IN")}</div>
+          </Card>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+          {topCats.map(([cat,val],i)=>(
+            <div key={i} style={{marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
+                <span style={{color:txt}}>{cat}</span>
+                <span style={{fontWeight:600,color:txt}}>₹{val.toLocaleString("en-IN")}</span>
+              </div>
+              <div style={{height:4,background:bdr,borderRadius:2}}>
+                <div style={{height:4,background:acc,borderRadius:2,width:(totalSpend>0?(val/totalSpend*100):0)+"%"}}/>
+              </div>
+            </div>
+          ))}
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Card</div>
+          {cardSpend.length===0?<div style={{color:mut,fontSize:12}}>No spend data yet</div>:cardSpend.map((c,i)=>(
+            <div key={i} style={{marginBottom:8}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
+                <span style={{color:txt}}>{c.name}</span>
+                <span style={{fontWeight:600,color:txt}}>₹{c.spend.toLocaleString("en-IN")}</span>
+              </div>
+              <div style={{height:4,background:bdr,borderRadius:2}}>
+                <div style={{height:4,background:grn,borderRadius:2,width:(totalSpend>0?(c.spend/totalSpend*100):0)+"%"}}/>
+              </div>
+            </div>
+          ))}
+        </Card>
+      </div>
     </div>
   );
 }
@@ -4942,7 +5031,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
   );
 }
 
-function SpendCards({db,owners}){
+function SpendCards({db,owners,onNavigate}){
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
   const [stmts,setStmts]=useState([]);
@@ -4950,8 +5039,7 @@ function SpendCards({db,owners}){
   const [busy,setBusy]=useState(true);
   const [selCard,setSelCard]=useState(null);
   const [tab,setTab]=useState("cards"); // "cards" | "untagged"
-  const [showEdit,setShowEdit]=useState(false);
-  const [editCard,setEditCard]=useState(null);
+
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -4976,11 +5064,16 @@ function SpendCards({db,owners}){
 
   if(selCard){
     const mc=mCards.find(x=>x.id===selCard.master_id);
-    return <SpendCardDetail
-      card={selCard} mCard={mc} db={db} owners={owners}
-      onBack={()=>setSelCard(null)}
-      onEdit={()=>{setEditCard(selCard);setShowEdit(true);}}
-    />;
+    return(
+      <div>
+        <SpendCardDetail
+          card={selCard} mCard={mc} db={db} owners={owners}
+          onBack={()=>setSelCard(null)}
+          onEdit={()=>{setSelCard(null);onNavigate&&onNavigate("my-cards");}}
+        />
+
+      </div>
+    );
   }
 
   const visibleCards=cards.filter(c=>!c.hidden_in_spend);
