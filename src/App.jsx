@@ -3760,12 +3760,15 @@ function applyRules(desc, rules){
 
 function parseCSV(text){
   const allLines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
-  // Auto-detect delimiter from first non-empty line
-  const sample=allLines[0]||"";
-  const delim=sample.includes("~I~")?"~I~":sample.includes("\t")?"\t":sample.includes(";")?";":",";
+  // Auto-detect delimiter from first few lines
+  const sample=allLines.slice(0,3).join("\n");
+  let delim=",";
+  if(sample.includes("~I~")) delim="~I~";
+  else if((sample.match(/~/g)||[]).length>3) delim="~";
+  else if(sample.includes("\t")) delim="\t";
+  else if(sample.includes(";")) delim=";";
   return allLines.map(line=>{
     if(delim===","){
-      // Handle quoted commas
       const cols=[]; let cur=""; let inQ=false;
       for(let i=0;i<line.length;i++){
         const ch=line[i];
@@ -3775,9 +3778,8 @@ function parseCSV(text){
       }
       cols.push(cur.trim());
       return cols;
-    } else {
-      return line.split(delim).map(c=>c.trim());
     }
+    return line.split(delim).map(c=>c.replace(/^"|"$/g,"").trim());
   });
 }
 
@@ -3992,7 +3994,19 @@ function SpendUpload({db,owners}){
               </tbody>
             </table>
           </div>
-          <div style={{fontSize:11,color:acc,marginTop:6}}>↑ Highlighted row {skipRows} = first data row based on your "Skip header rows" setting</div>
+          <div style={{fontSize:11,color:acc,marginTop:6,display:"flex",alignItems:"center",gap:10}}>
+            <span>↑ Highlighted row {skipRows} = first data row based on your "Skip header rows" setting</span>
+            <button style={{...gbtn,fontSize:11,padding:"3px 10px"}} onClick={()=>{
+              // Find first row that looks like a transaction (has a date-like value)
+              const dateRe=/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/;
+              for(let i=1;i<rawRows.length;i++){
+                if(rawRows[i].some(cell=>dateRe.test(cell))){
+                  setSkipRows(i);
+                  break;
+                }
+              }
+            }}>Auto-detect start row</button>
+          </div>
         </Card>
 
         <Card>
