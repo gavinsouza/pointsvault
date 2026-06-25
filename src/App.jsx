@@ -4517,7 +4517,7 @@ export default function App(){
                   {(()=>{
                     if(section.comingSoon&&!(section.items||[]).length&&!(section.sub||[]).length)
                       return <div style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{section.section}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>soon</span></div>;
-                    return <div>
+                    return <div key="nav-section">
                       <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 20px 4px",background:surf3}}>{section.section}</div>
                       {(section.items||[]).map(t=>t.comingSoon?(
                         <div key={t.id} style={{padding:"9px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{t.label}<span style={{fontSize:9,textTransform:"uppercase"}}>soon</span></div>
