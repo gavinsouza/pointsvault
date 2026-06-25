@@ -3936,18 +3936,28 @@ function SpendUpload({db,owners}){
   const reimb=parsed.filter(r=>!r.skip&&r.reimbursable).length;
 
   // ── Step 1: Upload ──────────────────────────────────────────────────────────
+  const [uploadError,setUploadError]=useState("");
+
   const processFile=file=>{
     if(!file) return;
+    setUploadError("");
     setFileName(file.name);
     const reader=new FileReader();
     reader.onload=ev=>{
-      const rows=parseCSV(ev.target.result, manualDelim==="auto"?undefined:manualDelim);
-      setRawRows(rows);
-      setRawText(ev.target.result);
-      setColWidths([]);
-      setStep(2);
+      try{
+        const text=ev.target.result;
+        if(!text||text.length===0){setUploadError("File appears to be empty");return;}
+        const rows=parseCSV(text, manualDelim==="auto"?undefined:manualDelim);
+        if(!rows||rows.length===0){setUploadError("Could not parse any rows from file");return;}
+        setRawRows(rows);
+        setRawText(text);
+        setColWidths([]);
+        setStep(2);
+      }catch(err){
+        setUploadError("Parse error: "+err.message);
+      }
     };
-    reader.onerror=()=>alert("Error reading file");
+    reader.onerror=()=>setUploadError("Could not read file: "+reader.error);
     reader.readAsText(file);
   };
 
@@ -3966,6 +3976,8 @@ function SpendUpload({db,owners}){
               if(file) processFile(file);
             }}
           />
+          {fileName&&!uploadError&&<div style={{fontSize:12,color:grn,marginTop:8,fontWeight:500}}>✓ {fileName} — processing…</div>}
+          {uploadError&&<div style={{fontSize:12,color:red,marginTop:8,fontWeight:500}}>✗ {uploadError}</div>}
           <div style={{fontSize:11,color:mut,marginTop:10}}>Supported: CSV files from HDFC, Axis, Amex etc.</div>
           {mappings.length>0&&<div style={{marginTop:20}}>
             <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Saved mappings</div>
