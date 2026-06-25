@@ -4789,9 +4789,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
       const o=owners.find(o=>o.id===c.owner_id);
       return`${c.id}|${c.nickname||m?.name||c.id}${o?" ("+o.name+")":""}`;
     });
-    const sel=window.prompt("Reassign to which card? Enter card number:
-"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("
-"));
+    const sel=window.prompt("Reassign to which card? Enter card number:\n"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("\n"));
     if(!sel) return;
     const idx=parseInt(sel)-1;
     if(isNaN(idx)||idx<0||idx>=cardOptions.length) return alert("Invalid selection");
@@ -5001,9 +4999,7 @@ function SpendCards({db,owners}){
       const o=owners.find(o=>o.id===c.owner_id);
       return`${c.id}|${c.nickname||m?.name||c.id}${o?" ("+o.name+")":""}`;
     });
-    const sel=window.prompt("Tag to which card? Enter number:
-"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("
-"));
+    const sel=window.prompt("Tag to which card? Enter number:\n"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("\n"));
     if(!sel) return;
     const idx=parseInt(sel)-1;
     if(isNaN(idx)||idx<0||idx>=cardOptions.length) return alert("Invalid selection");
