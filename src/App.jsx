@@ -3983,7 +3983,11 @@ function SpendUpload({db,owners}){
         {/* Preview of raw CSV */}
         <Card style={{marginBottom:16,maxWidth:"100%"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-            <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — drag ↔ handle to resize columns)</div>
+            <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview — drag ↔ to resize columns</div>
+            <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>{
+              const text=rawRows.slice(0,30).map((row,ri)=>ri+"\t"+row.join("\t")).join("\n");
+              navigator.clipboard.writeText(text).then(()=>alert("Copied 30 rows to clipboard!"));
+            }}>Copy preview</button>
           </div>
           {(()=>{
             const numCols=Math.max(...rawRows.slice(0,30).map(r=>r.length),1);
@@ -3994,12 +3998,11 @@ function SpendUpload({db,owners}){
               const startX=e.clientX;
               const startW=widths[ci];
               const move=ev=>{
-                const diff=ev.clientX-startX;
-                const nw=Math.max(50,startW+diff);
-                setColWidths(w=>{
-                  const arr=w.length===numCols?[...w]:Array(numCols).fill(160);
+                const nw=Math.max(50,startW+(ev.clientX-startX));
+                setColWidths(prev=>{
+                  const arr=[...(prev.length===numCols?prev:Array(numCols).fill(160))];
                   arr[ci]=nw;
-                  return [...arr];
+                  return arr;
                 });
               };
               const up=()=>{
@@ -4011,7 +4014,7 @@ function SpendUpload({db,owners}){
             };
 
             return(
-              <div style={{overflowX:"auto",maxHeight:340,overflowY:"auto",border:`1px solid ${bdr}`,borderRadius:8}}>
+              <div style={{overflowX:"auto",maxHeight:360,overflowY:"auto",border:`1px solid ${bdr}`,borderRadius:8}}>
                 <table style={{borderCollapse:"collapse",fontSize:11,tableLayout:"fixed",width:"max-content",minWidth:"100%"}}>
                   <colgroup>
                     <col style={{width:36}}/>
@@ -4025,7 +4028,7 @@ function SpendUpload({db,owners}){
                           <span>Col {ci+1}</span>
                           <span
                             onMouseDown={e=>onResizeStart(e,ci)}
-                            style={{position:"absolute",right:0,top:0,bottom:0,width:8,cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:10,fontWeight:700,background:"transparent"}}
+                            style={{position:"absolute",right:0,top:0,bottom:0,width:12,cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:acc,fontWeight:700,background:surf2}}
                             title="Drag to resize"
                           >↔</span>
                         </th>
@@ -4035,9 +4038,9 @@ function SpendUpload({db,owners}){
                   <tbody>
                     {rawRows.slice(0,30).map((row,ri)=>(
                       <tr key={ri} style={{background:ri===skipRows?acc+"15":ri%2===0?surf:surf2,borderBottom:`1px solid ${bdr}`}}>
-                        <td style={{padding:"5px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:400}}>{ri}</td>
+                        <td style={{padding:"5px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:400,whiteSpace:"nowrap",verticalAlign:"top"}}>{ri}</td>
                         {widths.map((_,ci)=>(
-                          <td key={ci} style={{padding:"5px 8px",color:ri===skipRows?acc:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          <td key={ci} style={{padding:"5px 8px",color:ri===skipRows?acc:txt,wordBreak:"break-word",whiteSpace:"normal",verticalAlign:"top",maxWidth:widths[ci]}}>
                             {row[ci]||""}
                           </td>
                         ))}
