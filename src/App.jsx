@@ -3760,11 +3760,10 @@ function applyRules(desc, rules){
 
 function parseCSV(text){
   const allLines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
-  // Auto-detect delimiter from first few lines
-  const sample=allLines.slice(0,3).join("\n");
+  // Auto-detect delimiter — check for ~I~ first (HDFC), then other delimiters
+  const sample=allLines.slice(0,5).join("\n");
   let delim=",";
   if(sample.includes("~I~")) delim="~I~";
-  else if((sample.match(/~/g)||[]).length>3) delim="~";
   else if(sample.includes("\t")) delim="\t";
   else if(sample.includes(";")) delim=";";
   return allLines.map(line=>{
