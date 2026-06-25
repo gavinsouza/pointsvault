@@ -3938,7 +3938,6 @@ function SpendUpload({db,owners}){
   // ── Step 1: Upload ──────────────────────────────────────────────────────────
   const processFile=file=>{
     if(!file) return;
-    if(!file.name.match(/\.(csv|txt)$/i)) return alert("Please upload a CSV or TXT file");
     setFileName(file.name);
     const reader=new FileReader();
     reader.onload=ev=>{
@@ -3948,27 +3947,26 @@ function SpendUpload({db,owners}){
       setColWidths([]);
       setStep(2);
     };
+    reader.onerror=()=>alert("Error reading file");
     reader.readAsText(file);
   };
 
   if(step===1) return(
     <div>
       <Hdr title="CC Statement Upload" sub="Import credit card transactions from CSV"/>
-      <div style={{maxWidth:600}}>
+      <div style={{maxWidth:520}}>
         <Card>
-          <div
-            onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=acc+"08";e.currentTarget.style.borderColor=acc;}}
-            onDragLeave={e=>{e.currentTarget.style.background=surf2;e.currentTarget.style.borderColor=bdr;}}
-            onDrop={e=>{e.preventDefault();e.currentTarget.style.background=surf2;e.currentTarget.style.borderColor=bdr;processFile(e.dataTransfer.files[0]);}}
-            style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",border:`2px dashed ${bdr}`,borderRadius:14,padding:"40px 20px",background:surf2,transition:"all 0.15s"}}>
-            <div style={{fontSize:32,marginBottom:12}}>📄</div>
-            <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:6}}>Drop your CSV file here</div>
-            <div style={{fontSize:12,color:mut,marginBottom:16}}>or click the button below to browse</div>
-            <label style={{cursor:"pointer"}}>
-              <input type="file" accept=".csv,.txt" onChange={e=>processFile(e.target.files[0])} style={{display:"none"}}/>
-              <span style={{...gbtn,display:"inline-flex",alignItems:"center",padding:"8px 20px",cursor:"pointer"}}>Choose CSV file</span>
-            </label>
-          </div>
+          <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:16}}>Select your CSV file</div>
+          <input
+            type="file"
+            accept=".csv,.txt,text/csv,text/plain"
+            style={{display:"block",width:"100%",padding:"12px",border:`2px solid ${bdr}`,borderRadius:10,fontSize:13,background:surf2,cursor:"pointer",color:txt,fontFamily:"'Manrope',sans-serif"}}
+            onChange={e=>{
+              const file=e.target.files&&e.target.files[0];
+              if(file) processFile(file);
+            }}
+          />
+          <div style={{fontSize:11,color:mut,marginTop:10}}>Supported: CSV files from HDFC, Axis, Amex etc.</div>
           {mappings.length>0&&<div style={{marginTop:20}}>
             <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Saved mappings</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
