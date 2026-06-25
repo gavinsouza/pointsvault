@@ -3759,17 +3759,25 @@ function applyRules(desc, rules){
 }
 
 function parseCSV(text){
-  const lines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
-  return lines.map(line=>{
-    const cols=[]; let cur=""; let inQ=false;
-    for(let i=0;i<line.length;i++){
-      const ch=line[i];
-      if(ch==='"'){inQ=!inQ;}
-      else if(ch===","&&!inQ){cols.push(cur.trim());cur="";}
-      else cur+=ch;
+  const allLines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+  // Auto-detect delimiter from first non-empty line
+  const sample=allLines[0]||"";
+  const delim=sample.includes("~I~")?"~I~":sample.includes("\t")?"\t":sample.includes(";")?";":",";
+  return allLines.map(line=>{
+    if(delim===","){
+      // Handle quoted commas
+      const cols=[]; let cur=""; let inQ=false;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch==='"'){inQ=!inQ;}
+        else if(ch===","&&!inQ){cols.push(cur.trim());cur="";}
+        else cur+=ch;
+      }
+      cols.push(cur.trim());
+      return cols;
+    } else {
+      return line.split(delim).map(c=>c.trim());
     }
-    cols.push(cur.trim());
-    return cols;
   });
 }
 
@@ -3971,19 +3979,20 @@ function SpendUpload({db,owners}){
 
         {/* Preview of raw CSV */}
         <Card style={{marginBottom:16}}>
-          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 5 rows)</div>
-          <div style={{overflowX:"auto"}}>
+          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — find where transactions start)</div>
+          <div style={{overflowX:"auto",maxHeight:300,overflowY:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
               <tbody>
-                {rawRows.slice(0,5).map((row,ri)=>(
-                  <tr key={ri} style={{background:ri===0?surf2:surf,borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"4px 8px",color:mut,fontWeight:600,width:24}}>{ri}</td>
-                    {row.map((cell,ci)=><td key={ci} style={{padding:"4px 8px",color:ri===0?acc:txt,whiteSpace:"nowrap",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{cell}</td>)}
+                {rawRows.slice(0,30).map((row,ri)=>(
+                  <tr key={ri} style={{background:ri===skipRows?acc+"12":ri===0?surf2:surf,borderBottom:`1px solid ${bdr}`}}>
+                    <td style={{padding:"4px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:600,width:24}}>{ri}</td>
+                    {row.map((cell,ci)=><td key={ci} style={{padding:"4px 8px",color:ri===skipRows?acc:ri===0?acc:txt,whiteSpace:"nowrap",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}>{cell}</td>)}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          <div style={{fontSize:11,color:acc,marginTop:6}}>↑ Highlighted row {skipRows} = first data row based on your "Skip header rows" setting</div>
         </Card>
 
         <Card>
@@ -4002,7 +4011,7 @@ function SpendUpload({db,owners}){
             <div>
               {lbl("Skip header rows")}
               <select style={ss} value={skipRows} onChange={e=>setSkipRows(Number(e.target.value))}>
-                {[0,1,2,3].map(n=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
+                {[0,1,2,3,4,5,6,7,8,9,10,12,15,18,20,22,25,28,30].map(n=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
               </select>
             </div>
             <div>
