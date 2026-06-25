@@ -3795,6 +3795,7 @@ function SpendUpload({db,owners}){
   const [parsed,setParsed]=useState([]); // [{date,desc,amount,category,reimbursable,person_id,skip}]
   const [importing,setImporting]=useState(false);
   const [importResult,setImportResult]=useState(null);
+  const [colWidths,setColWidths]=useState([]);
 
   // Mapping form state
   const [mapName,setMapName]=useState("");
@@ -3981,19 +3982,59 @@ function SpendUpload({db,owners}){
 
         {/* Preview of raw CSV */}
         <Card style={{marginBottom:16,maxWidth:"100%"}}>
-          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — find where transactions start)</div>
-          <div style={{overflowX:"auto",maxHeight:300,overflowY:"auto",width:"100%"}}>
-            <table style={{borderCollapse:"collapse",fontSize:11,minWidth:"100%"}}>
-              <tbody>
-                {rawRows.slice(0,30).map((row,ri)=>(
-                  <tr key={ri} style={{background:ri===skipRows?acc+"12":ri===0?surf2:surf,borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"4px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:600,width:24,whiteSpace:"nowrap"}}>{ri}</td>
-                    {row.map((cell,ci)=><td key={ci} style={{padding:"4px 10px",color:ri===skipRows?acc:ri===0?acc:txt,whiteSpace:"nowrap"}}>{cell}</td>)}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — drag column edges to resize)</div>
+          {(()=>{
+            const numCols=Math.max(...rawRows.slice(0,30).map(r=>r.length),1);
+            const widths=colWidths.length===numCols?colWidths:Array(numCols).fill(160);
+            const startDrag=(e,ci)=>{
+              e.preventDefault();
+              const startX=e.clientX;
+              const startW=widths[ci];
+              const onMove=mv=>{
+                const newW=Math.max(60,startW+(mv.clientX-startX));
+                setColWidths(prev=>{const n=prev.length===numCols?[...prev]:Array(numCols).fill(160);n[ci]=newW;return n;});
+              };
+              const onUp=()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
+              window.addEventListener("mousemove",onMove);
+              window.addEventListener("mouseup",onUp);
+            };
+            return(
+              <div style={{overflowX:"auto",maxHeight:320,overflowY:"auto",width:"100%"}}>
+                <table style={{borderCollapse:"collapse",fontSize:11,tableLayout:"fixed"}}>
+                  <colgroup>
+                    <col style={{width:30}}/>
+                    {widths.map((w,i)=><col key={i} style={{width:w}}/>)}
+                  </colgroup>
+                  <thead>
+                    <tr style={{background:surf3,borderBottom:`2px solid ${bdr}`,position:"sticky",top:0,zIndex:2}}>
+                      <th style={{padding:"4px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left"}}>#</th>
+                      {widths.map((w,ci)=>(
+                        <th key={ci} style={{padding:"4px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left",position:"relative",userSelect:"none",background:surf3}}>
+                          Col {ci+1}
+                          <div onMouseDown={e=>startDrag(e,ci)}
+                            style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:1}}
+                            onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
+                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rawRows.slice(0,30).map((row,ri)=>(
+                      <tr key={ri} style={{background:ri===skipRows?acc+"12":ri%2===0?surf:surf2,borderBottom:`1px solid ${bdr}`}}>
+                        <td style={{padding:"4px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:400,whiteSpace:"nowrap"}}>{ri}</td>
+                        {widths.map((_,ci)=>(
+                          <td key={ci} style={{padding:"4px 8px",color:ri===skipRows?acc:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                            {row[ci]||""}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
           <div style={{fontSize:11,color:acc,marginTop:6,display:"flex",alignItems:"center",gap:10}}>
             <span>↑ Highlighted row {skipRows} = first data row based on your "Skip header rows" setting</span>
             <button style={{...gbtn,fontSize:11,padding:"3px 10px"}} onClick={()=>{
