@@ -3860,10 +3860,11 @@ function SpendUpload({db,owners}){
 
   const applyMapping=m=>{
     setMapName(m.name); setSelCard(m.card_id||"");
-    setDateCol(m.date_col||0); setDescCol(m.desc_col||1);
-    setAmtType(m.amount_type||"single"); setAmtCol(m.amount_col||2);
-    setDebitCol(m.debit_col||2); setCreditCol(m.credit_col||3);
-    setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(m.skip_rows||1);
+    setDateCol(Number(m.date_col)||0); setDescCol(Number(m.desc_col)||1);
+    setAmtType(m.amount_type||"single"); setAmtCol(Number(m.amount_col)||2);
+    setDebitCol(Number(m.debit_col)||2); setCreditCol(Number(m.credit_col)||3);
+    setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(Number(m.skip_rows)||1);
+    setManualDelim(m.delimiter||"auto");
     setSelMapping(m.id);
   };
 
@@ -3889,7 +3890,7 @@ function SpendUpload({db,owners}){
   };
 
   const saveMapping=async()=>{
-    const p={name:mapName||"My Mapping",card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows};
+    const p={name:mapName||"My Mapping",card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,delimiter:manualDelim};
     if(selMapping){await db.from("csv_mappings").update(selMapping,p);}
     else{await db.from("csv_mappings").insert(p);}
     const {data}=await db.from("csv_mappings").select();
@@ -3984,8 +3985,9 @@ function SpendUpload({db,owners}){
               {mappings.map(m=>{
                 const card=cards.find(c=>c.id===m.card_id);
                 const mc=card&&mCards.find(x=>x.id===card.master_id);
-                return<div key={m.id} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${bdr}`,fontSize:12,color:mut,background:surf2}}>
-                  {m.name}{mc&&" · "+mc.name}
+                return<div key={m.id} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${bdr}`,fontSize:12,color:mut,background:surf2,display:"flex",alignItems:"center",gap:8}}>
+                  <span>{m.name}{mc&&" · "+mc.name}</span>
+                  <button onClick={async()=>{if(!confirm("Delete mapping "+m.name+"?")) return;await db.from("csv_mappings").delete(m.id);const {data}=await db.from("csv_mappings").select();setMappings(data||[]);}} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:13,padding:0,lineHeight:1}}>×</button>
                 </div>;
               })}
             </div>
@@ -4195,7 +4197,10 @@ function SpendUpload({db,owners}){
     <div>
       <Hdr title="Review Transactions" sub={`${total} transactions · ₹${totalAmt.toLocaleString("en-IN")}`}/>
       <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-        <div style={{fontSize:12,color:mut}}>{reimb>0&&<span style={{color:acc,fontWeight:500}}>{reimb} reimbursable · </span>}Review and adjust categories before importing.</div>
+        <div style={{fontSize:12,color:mut}}>
+          {total===0&&<div style={{color:red,fontWeight:500,marginBottom:6}}>No transactions found. Check: Skip rows={skipRows}, Date col={dateCol+1}, Desc col={descCol+1}, Amt col={amtCol+1}</div>}
+          {reimb>0&&<span style={{color:acc,fontWeight:500}}>{reimb} reimbursable · </span>}Review and adjust categories before importing.
+        </div>
         <div style={{display:"flex",gap:8}}>
           <button style={gbtn} onClick={()=>setStep(2)}>← Back</button>
           <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
