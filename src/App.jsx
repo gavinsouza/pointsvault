@@ -3677,8 +3677,26 @@ function SettingsDanger({db,owners,onReset}){
 }
 
 
+// ── SpendUpload ───────────────────────────────────────────────────────────────
+function SpendUpload({db,owners}){
+  return(
+    <div>
+      <Hdr title="CC Statement Upload" sub="Import credit card transactions from CSV — Beta"/>
+      <Card style={{maxWidth:600}}>
+        <div style={{textAlign:"center",padding:"32px 0"}}>
+          <div style={{fontSize:32,marginBottom:12}}>📂</div>
+          <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:8}}>Coming soon</div>
+          <div style={{fontSize:12,color:mut}}>CSV upload with column mapping, category tagging and reimbursement tracking.</div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 const NAV=[
-  {section:"Spend Tracker", comingSoon:true, items:[]},
+  {section:"Spend Tracker", items:[
+    {id:"spend-upload", label:"CC Statement Upload", beta:true},
+  ]},
   {section:"Points & Miles", items:[
     {id:"overview",         label:"Overview"},
     {id:"my-cards",         label:"My Cards"},
@@ -3768,8 +3786,9 @@ export default function App(){
                       <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
                     </div>
                   ):(
-                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
-                      {t.label}
+                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
+                      <span>{t.label}</span>
+                      {t.beta&&<span style={{fontSize:8,color:acc,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",background:acc+"15",padding:"2px 5px",borderRadius:8,border:"1px solid "+acc+"33"}}>beta</span>}
                     </div>
                   )
                 ))}
@@ -3811,6 +3830,7 @@ export default function App(){
         {tab==="setup-catalog"    &&<Catalog db={db}/>}
         {tab==="settings-general" &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
         {tab==="settings-danger"  &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
+        {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
       </main>
     </div>
   );
