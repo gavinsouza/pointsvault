@@ -4049,8 +4049,16 @@ function SpendUpload({db,owners}){
   const doImport=async()=>{
     setImporting(true);
     let added=0,skipped=0;
-    // Create statement record
+    // Check for duplicate statement (same card + same month)
     const stmtMonth=stmtMonthSel||new Date().toISOString().slice(0,7);
+    if(selCard){
+      const {data:existingStmts}=await db.from("statements").filter("card_id",selCard);
+      const dup=(existingStmts||[]).find(s=>s.statement_month===stmtMonth);
+      if(dup){
+        setImporting(false);
+        return alert("A statement for "+stmtMonth+" already exists for this card. Delete it first (Spend Tracker → My Cards → View Statements) or choose a different month.");
+      }
+    }
     let stmtId=null;
     try{
       const {data:stmtData}=await db.from("statements").insert({
@@ -4058,6 +4066,7 @@ function SpendUpload({db,owners}){
         statement_month:stmtMonth,
         transaction_count:parsed.filter(r=>!r.skip).length,
         total_spend:parsed.filter(r=>!r.skip).reduce((a,r)=>a+r.amount,0),
+        file_name:fileName,
       });
       stmtId=stmtData?.[0]?.id||null;
     }catch(e){console.warn("statements table:",e);}
@@ -4270,7 +4279,20 @@ function SpendUpload({db,owners}){
               {lbl("Card (optional — link transactions to a My Card)")}
               <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
                 <option value="">No card selected</option>
-                {cards.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
+                {(()=>{
+                  const grouped={};
+                  cards.forEach(c=>{
+                    const owner=owners.find(o=>o.id===c.owner_id);
+                    const ownerName=owner?.name||"Unknown";
+                    if(!grouped[ownerName]) grouped[ownerName]=[];
+                    grouped[ownerName].push(c);
+                  });
+                  return Object.entries(grouped).map(([ownerName,ownerCards])=>(
+                    <optgroup key={ownerName} label={"── "+ownerName+" ──"}>
+                      {ownerCards.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
+                    </optgroup>
+                  ));
+                })()}
               </select>
               {cards.length===0&&<div style={{fontSize:11,color:mut,marginTop:4}}>Add a My Card in Points & Miles → My Cards to link transactions to a card.</div>}
             </div>
@@ -4442,7 +4464,6 @@ function SpendUpload({db,owners}){
 const NAV=[
   {section:"Spend Tracker", items:[
     {id:"spend-cards",      label:"My Cards"},
-    {id:"spend-txns",       label:"Transactions"},
     {id:"spend-ledger",     label:"Ledger"},
     {id:"spend-upload",     label:"CC Statement Upload", beta:true},
   ], sub:[
@@ -4646,20 +4667,293 @@ export default function App(){
         {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
         {tab==="spend-cards"       &&<SpendCards db={db} owners={owners}/>}
-        {tab==="spend-txns"        &&<SpendTransactions db={db} owners={owners}/>}
         {tab==="spend-ledger"      &&<SpendLedger db={db} owners={owners}/>}
       </main>
     </div>
   );
 }
 
-// ── SpendCards ─────────────────────────────────────────────────────────────────
+// ── SpendCards ────────────────────────────────────────────────────────────────
+function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
+  const [txns,setTxns]=useState([]);
+  const [stmts,setStmts]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [page,setPage]=useState(0);
+  const [showStmts,setShowStmts]=useState(false);
+  const [allCards,setAllCards]=useState([]);
+  const [allMCards,setAllMCards]=useState([]);
+  const PAGE=15;
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const [t,s,c,mc]=await Promise.all([
+      db.from("spend_transactions").filter("card_id",card.id),
+      db.from("statements").filter("card_id",card.id),
+      db.from("my_cards").select(),
+      db.from("master_cards").select(),
+    ]);
+    setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    setStmts((s.data||[]).sort((a,b)=>b.statement_month?.localeCompare(a.statement_month||"")||0));
+    setAllCards(c.data||[]); setAllMCards(mc.data||[]);
+    setBusy(false);
+  },[db,card.id]);
+  useEffect(()=>{load();},[load]);
+
+  const owner=owners.find(o=>o.id===card.owner_id);
+
+  // Stats
+  const now=new Date();
+  const ytdStart=now.getFullYear()+"-01-01";
+  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart).reduce((a,t)=>a+Number(t.amount||0),0);
+  const lastStmt=stmts[0];
+  const lastStmtSpend=txns.filter(t=>t.statement_month===lastStmt?.statement_month).reduce((a,t)=>a+Number(t.amount||0),0);
+
+  // Billing YTD
+  let billingYtdSpend=null;
+  let billingYtdMsg=null;
+  if(card.billing_year_start){
+    const [bm,bd]=card.billing_year_start.split("-").map(Number);
+    let billingStart=new Date(now.getFullYear(),bm-1,bd);
+    if(billingStart>now) billingStart=new Date(now.getFullYear()-1,bm-1,bd);
+    const bStartStr=billingStart.toISOString().split("T")[0];
+    billingYtdSpend=txns.filter(t=>t.txn_date>=bStartStr).reduce((a,t)=>a+Number(t.amount||0),0);
+  } else {
+    billingYtdMsg="Set billing year start in card settings";
+  }
+
+  // Category breakdown for pie chart
+  const catTotals={};
+  txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+  const catData=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const total=catData.reduce((a,[,v])=>a+v,0);
+  const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9","#e67e22","#16a085","#8a8883"];
+
+  // Pie chart SVG
+  const makePie=()=>{
+    if(!total||catData.length===0) return null;
+    let angle=0;
+    const cx=80,cy=80,r=70;
+    const slices=catData.map(([cat,val],i)=>{
+      const pct=val/total;
+      const a1=angle; const a2=angle+pct*2*Math.PI;
+      angle=a2;
+      const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
+      const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
+      const large=pct>0.5?1:0;
+      return{cat,val,pct,color:PIE_COLORS[i%PIE_COLORS.length],
+        d:`M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${large},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`};
+    });
+    return slices;
+  };
+  const pieSlices=makePie();
+
+  // Pagination
+  const totalPages=Math.ceil(txns.length/PAGE);
+  const pageTxns=txns.slice(page*PAGE,(page+1)*PAGE);
+
+  // Delete statement
+  const deleteStmt=async(stmt)=>{
+    // Check for ledger entries
+    const stmtTxnIds=(txns.filter(t=>t.statement_id===stmt.id)).map(t=>t.id);
+    let ledgerCount=0;
+    for(const tid of stmtTxnIds){
+      const {data:le}=await db.from("ledger_entries").filter("transaction_id",tid);
+      ledgerCount+=(le||[]).length;
+    }
+    let deleteLedger=false;
+    if(ledgerCount>0){
+      const ans=confirm(`This statement has ${ledgerCount} linked ledger entr${ledgerCount>1?"ies":"y"}. Delete them too?`);
+      if(ans===null) return; // cancelled
+      deleteLedger=ans;
+    } else {
+      if(!confirm(`Delete statement ${stmt.statement_month} and all its ${stmtTxnIds.length} transactions?`)) return;
+    }
+    if(deleteLedger){
+      for(const tid of stmtTxnIds){
+        const {data:le}=await db.from("ledger_entries").filter("transaction_id",tid);
+        for(const e of (le||[])) await db.from("ledger_entries").delete(e.id);
+      }
+    }
+    // Delete transactions
+    const allTxns=txns.filter(t=>t.statement_id===stmt.id);
+    for(const t of allTxns) await db.from("spend_transactions").delete(t.id);
+    // Delete statement
+    await db.from("statements").delete(stmt.id);
+    load();
+  };
+
+  // Reassign statement
+  const reassignStmt=async(stmt)=>{
+    const cardOptions=allCards.map(c=>{
+      const m=allMCards.find(x=>x.id===c.master_id);
+      const o=owners.find(o=>o.id===c.owner_id);
+      return`${c.id}|${c.nickname||m?.name||c.id}${o?" ("+o.name+")":""}`;
+    });
+    const sel=window.prompt("Reassign to which card? Enter card number:
+"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("
+"));
+    if(!sel) return;
+    const idx=parseInt(sel)-1;
+    if(isNaN(idx)||idx<0||idx>=cardOptions.length) return alert("Invalid selection");
+    const newCardId=cardOptions[idx].split("|")[0];
+    await db.from("statements").update(stmt.id,{card_id:newCardId});
+    // Update all transactions
+    const stmtTxns=txns.filter(t=>t.statement_id===stmt.id);
+    for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:newCardId});
+    alert("Statement reassigned successfully");
+    load();
+  };
+
+  if(showStmts) return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={()=>setShowStmts(false)} style={{...gbtn,fontSize:12}}>← Back to card</button>
+        <div style={{fontSize:18,fontWeight:700,color:txt}}>Statements — {card.nickname||mCard?.name}</div>
+      </div>
+      {stmts.length===0?<Empty icon="S" msg="No statements uploaded yet"/>:(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {stmts.map(s=>(
+            <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:700,color:txt}}>{s.statement_month}</div>
+                <div style={{fontSize:11,color:mut,marginTop:2}}>
+                  {s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}
+                  {s.file_name&&<span style={{marginLeft:8,opacity:0.6}}>· {s.file_name}</span>}
+                  {s.uploaded_at&&<span style={{marginLeft:8,opacity:0.6}}>· Uploaded {new Date(s.uploaded_at).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</span>}
+                </div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>reassignStmt(s)}>Change card</button>
+                <button style={{...dbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>deleteStmt(s)}>Delete</button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  return(
+    <div>
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <button onClick={onBack} style={{...gbtn,fontSize:12}}>← My Cards</button>
+          <div>
+            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{card.nickname||mCard?.name}</div>
+            <div style={{fontSize:12,color:mut,marginTop:2}}>{owner?.name||""}{mCard?.bank?" · "+mCard.bank:""}{mCard?.network?" · "+mCard.network:""}{card.last4?" · ····"+card.last4:""}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
+          <button style={pbtn} onClick={onEdit}>Edit Card</button>
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
+        {[
+          {label:"Year to Date",value:ytdSpend},
+          {label:"Last Statement"+(lastStmt?" ("+lastStmt.statement_month+")":""),value:lastStmtSpend,show:!!lastStmt},
+          {label:"Billing Year to Date",value:billingYtdSpend,msg:billingYtdMsg},
+        ].map((s,i)=>(
+          <Card key={i} style={{padding:"14px 16px"}}>
+            <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>{s.label}</div>
+            {s.msg?<div style={{fontSize:11,color:acc}}>{s.msg}</div>:
+            <div style={{fontSize:18,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{(s.value||0).toLocaleString("en-IN")}</div>}
+          </Card>
+        ))}
+        <Card style={{padding:"14px 16px"}}>
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>Total Transactions</div>
+          <div style={{fontSize:18,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{txns.length}</div>
+        </Card>
+      </div>
+
+      {/* Category Pie Chart */}
+      {pieSlices&&pieSlices.length>0&&<Card style={{marginBottom:20}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+        <div style={{display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
+          <svg width="160" height="160" viewBox="0 0 160 160">
+            {pieSlices.map((s,i)=>(
+              <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1.5" opacity="0.9"/>
+            ))}
+          </svg>
+          <div style={{flex:1,minWidth:180}}>
+            {pieSlices.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:10,height:10,borderRadius:2,background:s.color,flexShrink:0}}/>
+                  <span style={{fontSize:12,color:txt}}>{s.cat}</span>
+                </div>
+                <div style={{textAlign:"right",marginLeft:12}}>
+                  <span style={{fontSize:12,fontWeight:600,color:txt}}>₹{s.val.toLocaleString("en-IN")}</span>
+                  <span style={{fontSize:10,color:mut,marginLeft:6}}>{(s.pct*100).toFixed(0)}%</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>}
+
+      {/* Transactions */}
+      <Card>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>
+            Transactions ({txns.length})
+          </div>
+          {totalPages>1&&<div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:mut}}>
+            <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"3px 10px",opacity:page===0?0.4:1}}>←</button>
+            <span>Page {page+1} of {totalPages}</span>
+            <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"3px 10px",opacity:page===totalPages-1?0.4:1}}>→</button>
+          </div>}
+        </div>
+        {busy?<div style={{color:mut,padding:16}}>Loading…</div>:txns.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:24}}>No transactions yet — upload a statement</div>:(
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead>
+              <tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>
+                <th style={{padding:"6px 8px",textAlign:"left"}}>Date</th>
+                <th style={{padding:"6px 8px",textAlign:"left"}}>Description</th>
+                <th style={{padding:"6px 8px",textAlign:"left"}}>Category</th>
+                <th style={{padding:"6px 8px",textAlign:"right"}}>Amount</th>
+                <th style={{padding:"6px 8px",textAlign:"center"}}>Stmt</th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageTxns.map(t=>(
+                <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
+                  <td style={{padding:"7px 8px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date}</td>
+                  <td style={{padding:"7px 8px",color:txt,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
+                  <td style={{padding:"7px 8px"}}>
+                    <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:10,color:mut}}>{t.category}</span>
+                    {t.is_reimbursable&&<span style={{background:acc+"15",padding:"2px 7px",borderRadius:10,fontSize:10,color:acc,marginLeft:4}}>Split</span>}
+                  </td>
+                  <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
+                  <td style={{padding:"7px 8px",textAlign:"center",fontSize:10,color:mut}}>{t.statement_month||"—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {totalPages>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,fontSize:12,color:mut}}>
+          <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"4px 12px",opacity:page===0?0.4:1}}>← Prev</button>
+          <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,txns.length)} of {txns.length}</span>
+          <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
+        </div>}
+      </Card>
+    </div>
+  );
+}
+
 function SpendCards({db,owners}){
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
   const [stmts,setStmts]=useState([]);
   const [txns,setTxns]=useState([]);
   const [busy,setBusy]=useState(true);
+  const [selCard,setSelCard]=useState(null);
+  const [tab,setTab]=useState("cards"); // "cards" | "untagged"
+  const [showEdit,setShowEdit]=useState(false);
+  const [editCard,setEditCard]=useState(null);
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -4680,66 +4974,107 @@ function SpendCards({db,owners}){
     load();
   };
 
+  const mCard=id=>mCards.find(x=>x.id===cards.find(c=>c.id===id)?.master_id);
+
+  if(selCard){
+    const mc=mCards.find(x=>x.id===selCard.master_id);
+    return <SpendCardDetail
+      card={selCard} mCard={mc} db={db} owners={owners}
+      onBack={()=>setSelCard(null)}
+      onEdit={()=>{setEditCard(selCard);setShowEdit(true);}}
+    />;
+  }
+
   const visibleCards=cards.filter(c=>!c.hidden_in_spend);
   const hiddenCards=cards.filter(c=>c.hidden_in_spend);
+  const untaggedStmts=stmts.filter(s=>!s.card_id);
 
-  if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
+  const cardSpend=id=>txns.filter(t=>t.card_id===id).reduce((a,t)=>a+Number(t.amount||0),0);
+  const cardStmtCount=id=>stmts.filter(s=>s.card_id===id).length;
+
+  const tabBtn=active=>({padding:"7px 16px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut,fontFamily:"'Manrope',sans-serif"});
+
+  // Reassign untagged statement
+  const tagStmt=async(stmt)=>{
+    const cardOptions=cards.map(c=>{
+      const m=mCards.find(x=>x.id===c.master_id);
+      const o=owners.find(o=>o.id===c.owner_id);
+      return`${c.id}|${c.nickname||m?.name||c.id}${o?" ("+o.name+")":""}`;
+    });
+    const sel=window.prompt("Tag to which card? Enter number:
+"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("
+"));
+    if(!sel) return;
+    const idx=parseInt(sel)-1;
+    if(isNaN(idx)||idx<0||idx>=cardOptions.length) return alert("Invalid selection");
+    const newCardId=cardOptions[idx].split("|")[0];
+    await db.from("statements").update(stmt.id,{card_id:newCardId});
+    const stmtTxns=txns.filter(t=>t.statement_id===stmt.id);
+    for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:newCardId});
+    load();
+  };
 
   return(
     <div>
-      <Hdr title="My Cards" sub="Spend tracking view"/>
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16,marginBottom:24}}>
-        {visibleCards.map(card=>{
-          const m=mCards.find(x=>x.id===card.master_id);
-          const cardTxns=txns.filter(t=>t.card_id===card.id);
-          const cardStmts=stmts.filter(s=>s.card_id===card.id);
-          const totalSpend=cardTxns.reduce((a,t)=>a+Number(t.amount||0),0);
-          const thisMonth=new Date().toISOString().slice(0,7);
-          const monthSpend=cardTxns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth).reduce((a,t)=>a+Number(t.amount||0),0);
-          const byCategory={};
-          cardTxns.forEach(t=>{byCategory[t.category]=(byCategory[t.category]||0)+Number(t.amount||0);});
-          const topCat=Object.entries(byCategory).sort((a,b)=>b[1]-a[1])[0];
-          return(
-            <Card key={card.id}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:txt,letterSpacing:"-0.02em"}}>{card.nickname||m?.name||"Card"}</div>
-                  <div style={{fontSize:11,color:mut,marginTop:2}}>{m?.bank||""}{m?.network?" · "+m.network:""}{card.last4?" · ····"+card.last4:""}</div>
-                </div>
-                <button onClick={()=>toggleHide(card)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:mut}}>Hide</button>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
-                <div style={{background:surf2,borderRadius:8,padding:"10px 12px"}}>
-                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:2}}>This Month</div>
-                  <div style={{fontSize:16,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{monthSpend.toLocaleString("en-IN")}</div>
-                </div>
-                <div style={{background:surf2,borderRadius:8,padding:"10px 12px"}}>
-                  <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:2}}>All Time</div>
-                  <div style={{fontSize:16,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{totalSpend.toLocaleString("en-IN")}</div>
-                </div>
-              </div>
-              {topCat&&<div style={{fontSize:11,color:mut,marginBottom:8}}>Top category: <span style={{fontWeight:600,color:txt}}>{topCat[0]}</span> (₹{topCat[1].toLocaleString("en-IN")})</div>}
-              <div style={{fontSize:11,color:mut}}>{cardStmts.length} statement{cardStmts.length!==1?"s":""} · {cardTxns.length} transactions</div>
-              {cardStmts.length>0&&<div style={{marginTop:8,display:"flex",gap:4,flexWrap:"wrap"}}>
-                {cardStmts.sort((a,b)=>b.statement_month?.localeCompare(a.statement_month||"")||0).slice(0,4).map(s=>(
-                  <span key={s.id} style={{fontSize:10,background:surf3,padding:"2px 8px",borderRadius:10,color:mut,border:`1px solid ${bdr}`}}>{s.statement_month}</span>
-                ))}
-              </div>}
-            </Card>
-          );
-        })}
+      <Hdr title="My Cards" sub="Spend tracker view"/>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        <button style={tabBtn(tab==="cards")} onClick={()=>setTab("cards")}>Cards ({visibleCards.length})</button>
+        <button style={tabBtn(tab==="untagged")} onClick={()=>setTab("untagged")}>
+          Untagged Statements {untaggedStmts.length>0&&<span style={{background:red,color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,marginLeft:6}}>{untaggedStmts.length}</span>}
+        </button>
       </div>
-      {hiddenCards.length>0&&(
-        <div style={{marginTop:8}}>
-          <div style={{fontSize:11,color:mut,marginBottom:8}}>Hidden cards ({hiddenCards.length})</div>
+
+      {tab==="cards"&&<>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
+          {visibleCards.map(card=>{
+            const m=mCards.find(x=>x.id===card.master_id);
+            const o=owners.find(x=>x.id===card.owner_id);
+            const spend=cardSpend(card.id);
+            const stmtCount=cardStmtCount(card.id);
+            const lastStmt=stmts.filter(s=>s.card_id===card.id).sort((a,b)=>b.statement_month?.localeCompare(a.statement_month||"")||0)[0];
+            return(
+              <Card key={card.id} style={{cursor:"pointer",position:"relative"}} onClick={()=>setSelCard(card)}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:txt,letterSpacing:"-0.02em"}}>{card.nickname||m?.name||"Card"}</div>
+                    <div style={{fontSize:11,color:mut,marginTop:2}}>{o?.name||""}{m?.bank?" · "+m.bank:""}{card.last4?" · ····"+card.last4:""}</div>
+                  </div>
+                  <button onClick={e=>{e.stopPropagation();toggleHide(card);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:mut,padding:"2px 6px"}}>Hide</button>
+                </div>
+                <div style={{fontSize:20,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",marginBottom:4}}>
+                  ₹{spend.toLocaleString("en-IN")}
+                </div>
+                <div style={{fontSize:11,color:mut}}>{stmtCount} statement{stmtCount!==1?"s":" "}{lastStmt&&"· Last: "+lastStmt.statement_month}</div>
+              </Card>
+            );
+          })}
+        </div>
+        {hiddenCards.length>0&&<div>
+          <div style={{fontSize:11,color:mut,marginBottom:8}}>Hidden ({hiddenCards.length})</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
             {hiddenCards.map(card=>{
               const m=mCards.find(x=>x.id===card.master_id);
-              return <button key={card.id} onClick={()=>toggleHide(card)} style={{...gbtn,fontSize:11}}>{card.nickname||m?.name||"Card"} — Show</button>;
+              return <button key={card.id} onClick={()=>toggleHide(card)} style={{...gbtn,fontSize:11}}>{card.nickname||m?.name} — Show</button>;
             })}
           </div>
-        </div>
-      )}
+        </div>}
+      </>}
+
+      {tab==="untagged"&&<div>
+        {untaggedStmts.length===0?<Empty icon="S" msg="All statements are tagged to a card"/>:(
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {untaggedStmts.map(s=>(
+              <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+                <div>
+                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{s.statement_month||"Unknown month"}</div>
+                  <div style={{fontSize:11,color:mut,marginTop:2}}>{s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}{s.file_name&&" · "+s.file_name}</div>
+                </div>
+                <button style={{...pbtn,fontSize:12}} onClick={()=>tagStmt(s)}>Tag to card</button>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>}
     </div>
   );
 }
