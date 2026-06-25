@@ -3786,7 +3786,7 @@ function parseCSV(text, forcedDelim){
       cols.push(cur.trim());
       return cols;
     }
-    return line.split(delim).map(c=>c.replace(/^"|"$/g,"").trim());
+    return line.split(delim).map(c=>c.replace(/^"|"$/g,"").replace(/~/g,"").trim());
   });
 }
 
