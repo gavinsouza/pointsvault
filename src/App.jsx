@@ -3982,49 +3982,62 @@ function SpendUpload({db,owners}){
 
         {/* Preview of raw CSV */}
         <Card style={{marginBottom:16,maxWidth:"100%"}}>
-          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — drag column edges to resize)</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — drag ↔ handle to resize columns)</div>
+          </div>
           {(()=>{
             const numCols=Math.max(...rawRows.slice(0,30).map(r=>r.length),1);
             const widths=colWidths.length===numCols?colWidths:Array(numCols).fill(160);
-            const startDrag=(e,ci)=>{
+
+            const onResizeStart=(e,ci)=>{
               e.preventDefault();
               const startX=e.clientX;
               const startW=widths[ci];
-              const onMove=mv=>{
-                const newW=Math.max(60,startW+(mv.clientX-startX));
-                setColWidths(prev=>{const n=prev.length===numCols?[...prev]:Array(numCols).fill(160);n[ci]=newW;return n;});
+              const move=ev=>{
+                const diff=ev.clientX-startX;
+                const nw=Math.max(50,startW+diff);
+                setColWidths(w=>{
+                  const arr=w.length===numCols?[...w]:Array(numCols).fill(160);
+                  arr[ci]=nw;
+                  return [...arr];
+                });
               };
-              const onUp=()=>{window.removeEventListener("mousemove",onMove);window.removeEventListener("mouseup",onUp);};
-              window.addEventListener("mousemove",onMove);
-              window.addEventListener("mouseup",onUp);
+              const up=()=>{
+                document.removeEventListener("mousemove",move);
+                document.removeEventListener("mouseup",up);
+              };
+              document.addEventListener("mousemove",move);
+              document.addEventListener("mouseup",up);
             };
+
             return(
-              <div style={{overflowX:"auto",maxHeight:320,overflowY:"auto",width:"100%"}}>
-                <table style={{borderCollapse:"collapse",fontSize:11,tableLayout:"fixed"}}>
+              <div style={{overflowX:"auto",maxHeight:340,overflowY:"auto",border:`1px solid ${bdr}`,borderRadius:8}}>
+                <table style={{borderCollapse:"collapse",fontSize:11,tableLayout:"fixed",width:"max-content",minWidth:"100%"}}>
                   <colgroup>
-                    <col style={{width:30}}/>
+                    <col style={{width:36}}/>
                     {widths.map((w,i)=><col key={i} style={{width:w}}/>)}
                   </colgroup>
-                  <thead>
-                    <tr style={{background:surf3,borderBottom:`2px solid ${bdr}`,position:"sticky",top:0,zIndex:2}}>
-                      <th style={{padding:"4px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left"}}>#</th>
+                  <thead style={{position:"sticky",top:0,zIndex:2}}>
+                    <tr style={{background:surf3,borderBottom:`2px solid ${bdr}`}}>
+                      <th style={{padding:"6px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left",background:surf3}}>#</th>
                       {widths.map((w,ci)=>(
-                        <th key={ci} style={{padding:"4px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left",position:"relative",userSelect:"none",background:surf3}}>
-                          Col {ci+1}
-                          <div onMouseDown={e=>startDrag(e,ci)}
-                            style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",zIndex:1}}
-                            onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
-                            onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
+                        <th key={ci} style={{padding:"6px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left",position:"relative",background:surf3,userSelect:"none"}}>
+                          <span>Col {ci+1}</span>
+                          <span
+                            onMouseDown={e=>onResizeStart(e,ci)}
+                            style={{position:"absolute",right:0,top:0,bottom:0,width:8,cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",color:mut,fontSize:10,fontWeight:700,background:"transparent"}}
+                            title="Drag to resize"
+                          >↔</span>
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
                     {rawRows.slice(0,30).map((row,ri)=>(
-                      <tr key={ri} style={{background:ri===skipRows?acc+"12":ri%2===0?surf:surf2,borderBottom:`1px solid ${bdr}`}}>
-                        <td style={{padding:"4px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:400,whiteSpace:"nowrap"}}>{ri}</td>
+                      <tr key={ri} style={{background:ri===skipRows?acc+"15":ri%2===0?surf:surf2,borderBottom:`1px solid ${bdr}`}}>
+                        <td style={{padding:"5px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:400}}>{ri}</td>
                         {widths.map((_,ci)=>(
-                          <td key={ci} style={{padding:"4px 8px",color:ri===skipRows?acc:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                          <td key={ci} style={{padding:"5px 8px",color:ri===skipRows?acc:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
                             {row[ci]||""}
                           </td>
                         ))}
