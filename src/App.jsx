@@ -344,6 +344,14 @@ const num={fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"};
 
 function lbl(t){return <div style={{fontSize:10,color:mut,fontWeight:500,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:6,fontFamily:"'Manrope',sans-serif"}}>{t}</div>;}
 function inrFmt(v){if(v>=100000)return"₹"+(v/100000).toFixed(1)+"L";if(v>=1000)return"₹"+(v/1000).toFixed(1)+"K";return"₹"+Math.round(v).toLocaleString("en-IN");}
+function fmtMonth(ym){
+  if(!ym) return "—";
+  const [y,m]=ym.split("-");
+  if(!y||!m) return ym;
+  const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return(months[parseInt(m)-1]||m)+" '"+y.slice(2);
+}
+
 function ordinal(n){const s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);}
 
 function Modal({show,onClose,title,children,wide=false}){
@@ -2596,6 +2604,95 @@ function MyCards({db,owners}){
 }
 
 // CardDetail
+
+// ── EditCardModal — shared edit modal used by both P&M and Spend Tracker ──────
+function EditCardModal({card, db, mCards, owners, onSave, onClose}){
+  const master=mCards.find(m=>m.id===card.master_id);
+  const [ef,setEf]=useState({
+    owner_id:card.owner_id||"",
+    nickname:card.nickname||"",
+    last4:card.last4||"",
+    stmt_date:String(card.stmt_date||""),
+    card_expiry:card.card_expiry||"",
+    opening_balance:String(card.opening_balance||""),
+    fee_override:card.fee_override||false,
+    fee_override_value:String(card.fee_override_value||""),
+    billing_year_start:card.billing_year_start||"",
+    fee_charge_date:card.fee_charge_date||"",
+    linked_program_id:card.linked_program_id||"",
+  });
+  const [mProgs,setMProgs]=useState([]);
+  const [myProgs,setMyProgs]=useState([]);
+  const [saving,setSaving]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      const [mp,myp]=await Promise.all([db.from("master_programs").select(),db.from("my_programs").select()]);
+      setMProgs(mp.data||[]); setMyProgs(myp.data||[]);
+    })();
+  },[db]);
+
+  const eup=k=>e=>setEf(p=>({...p,[k]:e.target.value}));
+
+  const save=async()=>{
+    if(!ef.owner_id) return alert("Select owner");
+    setSaving(true);
+    const p={
+      owner_id:ef.owner_id,
+      nickname:ef.nickname,
+      last4:ef.last4,
+      stmt_date:parseInt(ef.stmt_date)||null,
+      card_expiry:ef.card_expiry||null,
+      opening_balance:parseInt(ef.opening_balance)||0,
+      fee_override:ef.fee_override,
+      fee_override_value:ef.fee_override?parseFloat(ef.fee_override_value)||0:null,
+      billing_year_start:ef.billing_year_start||null,
+      fee_charge_date:ef.fee_charge_date||null,
+      linked_program_id:ef.linked_program_id||null,
+    };
+    await db.from("my_cards").update(card.id,p);
+    setSaving(false);
+    onSave&&onSave();
+    onClose&&onClose();
+  };
+
+  return(
+    <Modal show={true} onClose={onClose} title="Edit Card">
+      {lbl("Owner")}<select style={inp} value={ef.owner_id} onChange={eup("owner_id")}><option value="">-- select --</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
+      {lbl("Nickname")}<input style={inp} value={ef.nickname} onChange={eup("nickname")}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>{lbl("Last 4")}<input style={inp} maxLength={4} value={ef.last4} onChange={eup("last4")}/></div>
+        <div>{lbl("Statement Date")}<input style={inp} type="number" value={ef.stmt_date} onChange={eup("stmt_date")}/></div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>{lbl("Card Expiry")}<input style={inp} placeholder="MM/YY" value={ef.card_expiry} onChange={eup("card_expiry")}/></div>
+        <div>{lbl("Opening Balance")}<input style={inp} type="number" value={ef.opening_balance} onChange={eup("opening_balance")}/></div>
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12,fontSize:13,color:txt}}>
+        <input type="checkbox" checked={ef.fee_override} onChange={e=>setEf(p=>({...p,fee_override:e.target.checked}))} style={{accentColor:acc}}/>
+        Override annual fee
+      </label>
+      {ef.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" value={ef.fee_override_value} onChange={eup("fee_override_value")}/></>}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start} onChange={eup("billing_year_start")}/></div>
+        <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date} onChange={eup("fee_charge_date")}/></div>
+      </div>
+      {master?.auto_transfer_to&&(()=>{
+        const masterProgName=mProgs.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
+        const eligibleProgs=myProgs.filter(p=>p.master_id===master.auto_transfer_to)||[];
+        return(<div>
+          {lbl("Linked "+masterProgName+" account")}
+          <select style={inp} value={ef.linked_program_id} onChange={eup("linked_program_id")}>
+            <option value="">Select account…</option>
+            {eligibleProgs.map(p=><option key={p.id} value={p.id}>{p.nickname||masterProgName}</option>)}
+          </select>
+        </div>);
+      })()}
+      <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.6:1}} onClick={save}>{saving?"Saving…":"Save Changes"}</button>
+    </Modal>
+  );
+}
+
 function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete}){
   const [card,setCard]=useState(initCard);
   const [txns,setTxns]=useState([]);
@@ -2796,39 +2893,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         </label>}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
-      <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Card">
-        {lbl("Owner")}<select style={inp} value={ef.owner_id||""} onChange={eup("owner_id")}><option value="">-- select --</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
-        {lbl("Nickname")}<input style={inp} value={ef.nickname||""} onChange={eup("nickname")}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Last 4")}<input style={inp} maxLength={4} value={ef.last4||""} onChange={eup("last4")}/></div>
-          <div>{lbl("Statement Date")}<input style={inp} type="number" value={ef.stmt_date||""} onChange={eup("stmt_date")}/></div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Card Expiry")}<input style={inp} placeholder="MM/YY" value={ef.card_expiry||""} onChange={eup("card_expiry")}/></div>
-          <div>{lbl("Opening Balance")}<input style={inp} type="number" value={ef.opening_balance||""} onChange={eup("opening_balance")}/></div>
-        </div>
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12,fontSize:13,color:txt}}>
-          <input type="checkbox" checked={ef.fee_override||false} onChange={e=>setEf(p=>({...p,fee_override:e.target.checked}))} style={{accentColor:acc}}/>
-          Override annual fee
-        </label>
-        {ef.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" value={ef.fee_override_value||""} onChange={eup("fee_override_value")}/></>}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start||""} onChange={eup("billing_year_start")}/></div>
-          <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date||""} onChange={eup("fee_charge_date")}/></div>
-        </div>
-        {master?.auto_transfer_to&&(()=>{
-          const masterProgName=mProgs?.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
-          const eligibleProgs=myProgs?.filter(p=>p.master_id===master.auto_transfer_to)||[];
-          return(<div>
-            {lbl("Linked "+masterProgName+" account")}
-            <select style={inp} value={ef.linked_program_id||""} onChange={eup("linked_program_id")}>
-              <option value="">Select account…</option>
-              {eligibleProgs.map(p=><option key={p.id} value={p.id}>{p.nickname||masterProgName}</option>)}
-            </select>
-          </div>);
-        })()}
-        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveEdit}>Save Changes</button>
-      </Modal>
+      {showEdit&&<EditCardModal card={card} db={db} mCards={mCards} owners={owners} onSave={()=>{load();}} onClose={()=>setShowEdit(false)}/>}
     </div>
   );
 }
@@ -4042,6 +4107,7 @@ function SpendUpload({db,owners}){
   };
 
   const goToPreview=()=>{
+    if(!stmtMonthSel) return alert("Please select a statement month before previewing.");
     setParsed(buildParsed());
     setStep(3);
   };
@@ -4297,8 +4363,18 @@ function SpendUpload({db,owners}){
               {cards.length===0&&<div style={{fontSize:11,color:mut,marginTop:4}}>Add a My Card in Points & Miles → My Cards to link transactions to a card.</div>}
             </div>
             <div>
-              {lbl("Statement Month")}
-              <input type="month" style={ss} value={stmtMonthSel} onChange={e=>setStmtMonthSel(e.target.value)}/>
+              {lbl("Statement Month *")}
+              <div style={{display:"flex",gap:8}}>
+                <select style={{...ss,flex:1}} value={stmtMonthSel?stmtMonthSel.split("-")[1]||"":""} onChange={e=>{const y=stmtMonthSel?stmtMonthSel.split("-")[0]||new Date().getFullYear().toString():new Date().getFullYear().toString();setStmtMonthSel(e.target.value?y+"-"+e.target.value:"");}}>
+                  <option value="">Month…</option>
+                  {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=><option key={m} value={m}>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i]}</option>)}
+                </select>
+                <select style={{...ss,flex:1}} value={stmtMonthSel?stmtMonthSel.split("-")[0]||"":""} onChange={e=>{const m=stmtMonthSel?stmtMonthSel.split("-")[1]||"01":"01";setStmtMonthSel(e.target.value?e.target.value+"-"+m:"");}}>
+                  <option value="">Year…</option>
+                  {Array.from({length:5},(_,i)=>(new Date().getFullYear()-2+i).toString()).map(y=><option key={y} value={y}>'{y.slice(2)}</option>)}
+                </select>
+              </div>
+              {!stmtMonthSel&&<div style={{fontSize:11,color:red,marginTop:4}}>Required — select month and year</div>}
             </div>
             <div>
               {lbl("Delimiter")}
@@ -4575,7 +4651,7 @@ export default function App(){
                           style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",borderRadius:6,transition:"background 0.1s"}}
                           onMouseEnter={e=>e.currentTarget.style.background=surf2}
                           onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                          <span style={{fontSize:10,fontWeight:600,color:mut,letterSpacing:"0.05em",textTransform:"uppercase"}}>{sub.label}</span>
+                          <span style={{fontSize:12,fontWeight:400,color:mut}}>{sub.label}</span>
                           <span style={{fontSize:12,color:mut,transform:subCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
                         </div>
                         {!subCollapsed&&(sub.items||[]).map(t=>renderItem(t,20))}
@@ -4763,27 +4839,24 @@ function SpendOverview({db,owners}){
 }
 
 // ── SpendCards ────────────────────────────────────────────────────────────────
-function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
+function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [txns,setTxns]=useState([]);
   const [stmts,setStmts]=useState([]);
   const [busy,setBusy]=useState(true);
   const [page,setPage]=useState(0);
   const [showStmts,setShowStmts]=useState(false);
-  const [allCards,setAllCards]=useState([]);
-  const [allMCards,setAllMCards]=useState([]);
+  const [selStmt,setSelStmt]=useState(null);
+  const [showEditCard,setShowEditCard]=useState(false);
   const PAGE=15;
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [t,s,c,mc]=await Promise.all([
+    const [t,s]=await Promise.all([
       db.from("spend_transactions").filter("card_id",card.id),
       db.from("statements").filter("card_id",card.id),
-      db.from("my_cards").select(),
-      db.from("master_cards").select(),
     ]);
     setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     setStmts((s.data||[]).sort((a,b)=>b.statement_month?.localeCompare(a.statement_month||"")||0));
-    setAllCards(c.data||[]); setAllMCards(mc.data||[]);
     setBusy(false);
   },[db,card.id]);
   useEffect(()=>{load();},[load]);
@@ -4872,24 +4945,45 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
   };
 
   // Reassign statement
-  const reassignStmt=async(stmt)=>{
-    const cardOptions=allCards.map(c=>{
-      const m=allMCards.find(x=>x.id===c.master_id);
-      const o=owners.find(o=>o.id===c.owner_id);
-      return`${c.id}|${c.nickname||m?.name||c.id}${o?" ("+o.name+")":""}`;
-    });
-    const sel=window.prompt("Reassign to which card? Enter card number:\n"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("\n"));
-    if(!sel) return;
-    const idx=parseInt(sel)-1;
-    if(isNaN(idx)||idx<0||idx>=cardOptions.length) return alert("Invalid selection");
-    const newCardId=cardOptions[idx].split("|")[0];
-    await db.from("statements").update(stmt.id,{card_id:newCardId});
-    // Update all transactions
-    const stmtTxns=txns.filter(t=>t.statement_id===stmt.id);
-    for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:newCardId});
-    alert("Statement reassigned successfully");
-    load();
+  const [reassignTarget,setReassignTarget]=useState(null);
+  const [reassignCardId,setReassignCardId]=useState("");
+  const doReassign=async()=>{
+    if(!reassignCardId||!reassignTarget) return;
+    await db.from("statements").update(reassignTarget.id,{card_id:reassignCardId});
+    const stmtTxns=txns.filter(t=>t.statement_id===reassignTarget.id);
+    for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:reassignCardId});
+    setReassignTarget(null); setReassignCardId(""); load();
   };
+
+  if(reassignTarget) return(
+    <div>
+      <Hdr title={"Reassign Statement — "+fmtMonth(reassignTarget.statement_month)} sub="Choose a different card for this statement"/>
+      <Card style={{maxWidth:480}}>
+        {lbl("Assign to card")}
+        <select style={inp} value={reassignCardId} onChange={e=>setReassignCardId(e.target.value)}>
+          <option value="">Select card…</option>
+          {(()=>{
+            const grouped={};
+            allCards.forEach(c=>{
+              const o=owners.find(x=>x.id===c.owner_id);
+              const n=o?.name||"Unknown";
+              if(!grouped[n]) grouped[n]=[];
+              grouped[n].push(c);
+            });
+            return Object.entries(grouped).map(([on,oc])=>(
+              <optgroup key={on} label={"── "+on+" ──"}>
+                {oc.map(c=>{const m=allMCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
+              </optgroup>
+            ));
+          })()}
+        </select>
+        <div style={{display:"flex",gap:8,marginTop:8}}>
+          <button style={gbtn} onClick={()=>setReassignTarget(null)}>Cancel</button>
+          <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={doReassign}>Reassign Statement</button>
+        </div>
+      </Card>
+    </div>
+  );
 
   if(showStmts) return(
     <div>
@@ -4901,8 +4995,8 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {stmts.map(s=>(
             <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-              <div>
-                <div style={{fontSize:14,fontWeight:700,color:txt}}>{s.statement_month}</div>
+              <div style={{cursor:"pointer"}} onClick={()=>setSelStmt(s)}>
+                <div style={{fontSize:14,fontWeight:700,color:acc,textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmtMonth(s.statement_month)}</div>
                 <div style={{fontSize:11,color:mut,marginTop:2}}>
                   {s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}
                   {s.file_name&&<span style={{marginLeft:8,opacity:0.6}}>· {s.file_name}</span>}
@@ -4910,7 +5004,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
                 </div>
               </div>
               <div style={{display:"flex",gap:8}}>
-                <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>reassignStmt(s)}>Change card</button>
+                <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>{setReassignTarget(s);setReassignCardId(s.card_id||"");}}>Change card</button>
                 <button style={{...dbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>deleteStmt(s)}>Delete</button>
               </div>
             </Card>
@@ -4933,7 +5027,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
         </div>
         <div style={{display:"flex",gap:8}}>
           <button style={{...gbtn,fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
-          <button style={pbtn} onClick={onEdit}>Edit Card</button>
+          <button style={pbtn} onClick={()=>setShowEditCard(true)}>Edit Card</button>
         </div>
       </div>
 
@@ -4941,7 +5035,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
         {[
           {label:"Year to Date",value:ytdSpend},
-          {label:"Last Statement"+(lastStmt?" ("+lastStmt.statement_month+")":""),value:lastStmtSpend,show:!!lastStmt},
+          {label:"Last Statement"+(lastStmt?" ("+fmtMonth(lastStmt.statement_month)+")":""),value:lastStmtSpend,show:!!lastStmt},
           {label:"Billing Year to Date",value:billingYtdSpend,msg:billingYtdMsg},
         ].map((s,i)=>(
           <Card key={i} style={{padding:"14px 16px"}}>
@@ -5015,7 +5109,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
                     {t.is_reimbursable&&<span style={{background:acc+"15",padding:"2px 7px",borderRadius:10,fontSize:10,color:acc,marginLeft:4}}>Split</span>}
                   </td>
                   <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
-                  <td style={{padding:"7px 8px",textAlign:"center",fontSize:10,color:mut}}>{t.statement_month||"—"}</td>
+                  <td style={{padding:"7px 8px",textAlign:"center",fontSize:10,color:mut}}>{fmtMonth(t.statement_month)||"—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -5028,6 +5122,8 @@ function SpendCardDetail({card,mCard,db,owners,onBack,onEdit}){
         </div>}
       </Card>
     </div>
+    {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
+    {selStmt&&<StmtDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)} db={db} owners={owners} onBack={()=>setSelStmt(null)} onSave={load}/>}
   );
 }
 
@@ -5068,8 +5164,8 @@ function SpendCards({db,owners,onNavigate}){
       <div>
         <SpendCardDetail
           card={selCard} mCard={mc} db={db} owners={owners}
+          allCards={cards} allMCards={mCards}
           onBack={()=>setSelCard(null)}
-          onEdit={()=>{setSelCard(null);onNavigate&&onNavigate("my-cards");}}
         />
 
       </div>
@@ -5533,6 +5629,199 @@ function SpendLedger({db,owners}){
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ── StmtDetail — statement detail with editable transactions ──────────────────
+function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
+  const [txns,setTxns]=useState(initTxns||[]);
+  const [people,setPeople]=useState([]);
+  const [categories,setCategories]=useState([]);
+  const [search,setSearch]=useState("");
+  const [sortBy,setSortBy]=useState("date"); // date|amount|category|desc
+  const [sortDir,setSortDir]=useState("desc");
+  const [editId,setEditId]=useState(null);
+  const [editRow,setEditRow]=useState(null);
+  const [showSplit,setShowSplit]=useState(null);
+  const [splits,setSplits]=useState([]);
+  const [page,setPage]=useState(0);
+  const PAGE=15;
+
+  useEffect(()=>{
+    (async()=>{
+      const [p,cats,t]=await Promise.all([
+        db.from("people").select(),
+        db.from("spend_categories").select(),
+        db.from("spend_transactions").filter("statement_id",stmt.id),
+      ]);
+      setPeople(p.data||[]);
+      setCategories((cats.data||[]).map(x=>x.name).sort());
+      setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    })();
+  },[db,stmt.id]);
+
+  const filtered=txns.filter(t=>!search||t.description?.toLowerCase().includes(search.toLowerCase())||t.category?.toLowerCase().includes(search.toLowerCase()));
+  const sorted=[...filtered].sort((a,b)=>{
+    let v=0;
+    if(sortBy==="date") v=new Date(a.txn_date)-new Date(b.txn_date);
+    else if(sortBy==="amount") v=Number(a.amount||0)-Number(b.amount||0);
+    else if(sortBy==="category") v=(a.category||"").localeCompare(b.category||"");
+    else if(sortBy==="desc") v=(a.description||"").localeCompare(b.description||"");
+    return sortDir==="desc"?-v:v;
+  });
+  const totalPages=Math.ceil(sorted.length/PAGE);
+  const pageTxns=sorted.slice(page*PAGE,(page+1)*PAGE);
+  const total=txns.reduce((a,t)=>a+Number(t.amount||0),0);
+
+  const sortHdr=(col,label)=>(
+    <th onClick={()=>{if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortBy(col);setSortDir("desc");}}}
+      style={{padding:"6px 8px",textAlign:col==="amount"?"right":"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,whiteSpace:"nowrap"}}>
+      {label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
+    </th>
+  );
+
+  const saveEdit=async()=>{
+    await db.from("spend_transactions").update(editId,{
+      category:editRow.category,description:editRow.description,
+      is_reimbursable:editRow.is_reimbursable,person_id:editRow.person_id||null,
+    });
+    setEditId(null);
+    const {data}=await db.from("spend_transactions").filter("statement_id",stmt.id);
+    setTxns((data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    onSave&&onSave();
+  };
+
+  const openSplit=t=>{setShowSplit(t);setSplits([{person_id:"",amount:t.amount,is_personal:true}]);};
+  const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
+  const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
+  const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
+  const splitRemaining=showSplit?(showSplit.amount-splitTotal):0;
+
+  const saveSplit=async()=>{
+    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+showSplit.amount.toLocaleString("en-IN"));
+    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
+    for(const s of (existing||[])) await db.from("transaction_splits").delete(s.id);
+    for(const s of splits){
+      if(Number(s.amount)<=0) continue;
+      await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
+      if(!s.is_personal&&s.person_id){
+        await db.from("ledger_entries").insert({person_id:s.person_id,direction:"owed_to_me",amount:Number(s.amount),description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
+      }
+    }
+    const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
+    await db.from("spend_transactions").update(showSplit.id,{is_reimbursable:hasReimb});
+    setShowSplit(null);
+    const {data}=await db.from("spend_transactions").filter("statement_id",stmt.id);
+    setTxns((data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    onSave&&onSave();
+  };
+
+  const ss2={fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"4px 8px",background:surf,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none"};
+
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <button onClick={onBack} style={{...gbtn,fontSize:12}}>← Back</button>
+        <div>
+          <div style={{fontSize:18,fontWeight:700,color:txt}}>{fmtMonth(stmt.statement_month)}</div>
+          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions · ₹{total.toLocaleString("en-IN")}</div>
+        </div>
+      </div>
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <input style={{...inp,marginBottom:0,flex:1,minWidth:180,fontSize:12}} placeholder="Search transactions…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
+        <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={sortBy+"-"+sortDir} onChange={e=>{const[s,d]=e.target.value.split("-");setSortBy(s);setSortDir(d);}}>
+          <option value="date-desc">Date (newest)</option>
+          <option value="date-asc">Date (oldest)</option>
+          <option value="amount-desc">Amount (high-low)</option>
+          <option value="amount-asc">Amount (low-high)</option>
+          <option value="category-asc">Category A-Z</option>
+        </select>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${bdr}`}}>
+              {sortHdr("date","Date")}
+              {sortHdr("desc","Description")}
+              {sortHdr("category","Category")}
+              {sortHdr("amount","Amount")}
+              <th style={{padding:"6px 8px",textAlign:"center",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>Split</th>
+              <th style={{padding:"6px 8px",textAlign:"center",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>Edit</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageTxns.map(t=>(
+              <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
+                <td style={{padding:"7px 8px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date}</td>
+                <td style={{padding:"7px 8px",color:txt,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {editId===t.id?<input style={{...ss2,width:"100%"}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
+                </td>
+                <td style={{padding:"7px 8px"}}>
+                  {editId===t.id?
+                    <select style={ss2} value={editRow.category} onChange={e=>setEditRow(r=>({...r,category:e.target.value}))}>
+                      {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>:
+                    <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:11}}>{t.category}</span>
+                  }
+                </td>
+                <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
+                <td style={{padding:"7px 8px",textAlign:"center"}}>
+                  <button onClick={()=>openSplit(t)} style={{background:"none",border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",fontSize:11,padding:"2px 8px",color:t.is_reimbursable?acc:mut}}>
+                    {t.is_reimbursable?"Split ✓":"Split"}
+                  </button>
+                </td>
+                <td style={{padding:"7px 8px",textAlign:"center"}}>
+                  {editId===t.id?(
+                    <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                      <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={saveEdit}>Save</button>
+                      <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>setEditId(null)}>×</button>
+                    </div>
+                  ):(
+                    <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>{setEditId(t.id);setEditRow({...t});}}>Edit</button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {totalPages>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,fontSize:12,color:mut}}>
+        <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"4px 12px",opacity:page===0?0.4:1}}>← Prev</button>
+        <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,sorted.length)} of {sorted.length}</span>
+        <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
+      </div>}
+
+      <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
+        {showSplit&&<>
+          <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{showSplit.description}</div>
+          <div style={{fontSize:12,color:mut,marginBottom:16}}>Total: ₹{Number(showSplit.amount).toLocaleString("en-IN")}</div>
+          {splits.map((s,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,padding:"10px 12px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
+              <div style={{flex:1}}>
+                {s.is_personal?<span style={{fontSize:12,fontWeight:600,color:txt}}>Mine (personal)</span>:
+                  <select style={{...inp,marginBottom:0,fontSize:12}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
+                    <option value="">Select person…</option>
+                    {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                }
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:12,color:mut}}>₹</span>
+                <input type="number" style={{...inp,marginBottom:0,width:100,fontSize:12,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+              </div>
+              {!s.is_personal&&<button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:16,lineHeight:1}}>×</button>}
+            </div>
+          ))}
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            <button style={{...gbtn,fontSize:12}} onClick={addSplit}>+ Add person</button>
+            <div style={{flex:1,textAlign:"right",fontSize:12,color:Math.abs(splitRemaining)<0.01?grn:red,fontWeight:600,padding:"8px 0"}}>
+              {Math.abs(splitRemaining)<0.01?"✓ Balanced":`Remaining: ₹${splitRemaining.toLocaleString("en-IN")}`}
+            </div>
+          </div>
+          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.4}} onClick={saveSplit}>Save Split</button>
+        </>}
+      </Modal>
     </div>
   );
 }
