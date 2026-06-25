@@ -3412,101 +3412,8 @@ function Secret({label,value}){
   );
 }
 
-function Vouchers({db,owners}){
-  const [rows,setRows]=useState([]);
-  const [busy,setBusy]=useState(true);
-  const [show,setShow]=useState(false);
-  const [edit,setEdit]=useState(null);
-  const [filter,setFilter]=useState("active");
-  const [ownerF,setOwnerF]=useState("all");
-  const eF={owner_id:"",program:"",description:"",value:"",expiry_date:"",redeemed:false,voucher_code:"",voucher_pin:"",received_from:"",notes:""};
-  const [f,setF]=useState(eF);
-  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-  const load=useCallback(async()=>{setBusy(true);const {data}=await db.from("vouchers").select();setRows(data||[]);setBusy(false);},[db]);
-  useEffect(()=>{load();},[load]);
-  const openEdit=r=>{setEdit(r);setF({owner_id:r.owner_id||"",program:r.program||"",description:r.description||"",value:r.value||"",expiry_date:r.expiry_date||"",redeemed:r.redeemed||false,voucher_code:r.voucher_code||"",voucher_pin:r.voucher_pin||"",received_from:r.received_from||"",notes:r.notes||""});setShow(true);};
-  const save=async()=>{
-    if(!f.program.trim()) return alert("Program required");
-    if(!f.owner_id) return alert("Select an owner");
-    const p={...f,expiry_date:f.expiry_date||null};
-    if(edit) await db.from("vouchers").update(edit.id,p);
-    else await db.from("vouchers").insert(p);
-    setShow(false);setEdit(null);load();
-  };
-  const del=async id=>{if(confirm("Delete?")){await db.from("vouchers").delete(id);load();}};
-  const toggle=async v=>{await db.from("vouchers").update(v.id,{redeemed:!v.redeemed});load();};
-  const days=d=>d?Math.round((new Date(d)-new Date())/86400000):null;
-  const shown=rows.filter(v=>{
-    if(ownerF!=="all"&&v.owner_id!==ownerF) return false;
-    if(filter==="active") return !v.redeemed;
-    if(filter==="redeemed") return v.redeemed;
-    return true;
-  });
+function Vouchers({db,owners})
 
-  return(
-    <div>
-      <Hdr title="Vouchers" sub={rows.filter(v=>!v.redeemed).length+" active · "+rows.filter(v=>v.redeemed).length+" redeemed"}
-        action={<button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>}/>
-      <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-        {["active","redeemed","all"].map(t=><button key={t} onClick={()=>setFilter(t)} style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${filter===t?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:filter===t?600:400,background:filter===t?txt:"transparent",color:filter===t?"#fff":mut2,textTransform:"capitalize"}}>{t}</button>)}
-        <select style={{...inp,marginBottom:0,width:"auto",padding:"6px 10px",fontSize:12}} value={ownerF} onChange={e=>setOwnerF(e.target.value)}>
-          <option value="all">All Owners</option>
-          {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
-        </select>
-      </div>
-      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:shown.length===0?<Empty icon="V" msg="No vouchers here"/>:(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
-          {shown.map(v=>{
-            const d=days(v.expiry_date); const exp=d!==null&&d<30&&!v.redeemed;
-            const owner=owners.find(o=>o.id===v.owner_id);
-            return(
-              <div key={v.id} style={{background:surf,border:`1px solid ${exp?amb+"55":bdr}`,borderRadius:18,padding:"20px 22px",opacity:v.redeemed?0.5:1,position:"relative",overflow:"hidden"}}>
-                <div style={{position:"absolute",top:0,left:0,right:0,height:1,background:v.redeemed?bdr:exp?amb:grn,borderRadius:"18px 18px 0 0",opacity:0.5}}/>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginTop:4,marginBottom:10}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:600,color:txt}}>{v.program}</div>
-                    {v.description&&<div style={{fontSize:11,color:mut,marginTop:1}}>{v.description}</div>}
-                  </div>
-                  <span style={{fontSize:10,fontWeight:500,padding:"3px 10px",borderRadius:20,border:`1px solid ${v.redeemed?bdr:exp?amb+"44":grn+"33"}`,background:"transparent",color:v.redeemed?mut:exp?amb:grn,marginLeft:8,flexShrink:0,letterSpacing:"0.07em",fontFamily:"'Manrope',sans-serif"}}>{v.redeemed?"USED":exp?"EXPIRING":"ACTIVE"}</span>
-                </div>
-                {owner&&<div style={{fontSize:11,color:mut,marginBottom:6}}>Owner: <span style={{color:txt,fontWeight:500}}>{owner.name}</span></div>}
-                {v.value&&<div style={{fontSize:18,fontWeight:700,color:txt,marginBottom:6}}>{v.value}</div>}
-                {v.received_from&&<div style={{fontSize:11,color:mut,marginBottom:4}}>From: <span style={{color:txt,fontWeight:500}}>{v.received_from}</span></div>}
-                {v.voucher_code&&<Secret label="Code" value={v.voucher_code}/>}
-                {v.voucher_pin&&<Secret label="PIN" value={v.voucher_pin}/>}
-                {v.expiry_date&&<div style={{fontSize:11,color:exp?red:mut,marginBottom:8}}>Exp {new Date(v.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}{d!==null&&<span style={{fontWeight:exp?600:400}}> · {d>0?d+"d":"Expired"}</span>}</div>}
-                {v.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic",marginBottom:8}}>{v.notes}</div>}
-                <div style={{display:"flex",gap:6,borderTop:`1px solid ${bdr}`,paddingTop:10}}>
-                  <button onClick={()=>toggle(v)} style={{...pbtn,padding:"5px 12px",fontSize:11,background:v.redeemed?surf:txt,color:v.redeemed?mut:"#fff",border:`1.5px solid ${v.redeemed?bdr:txt}`}}>{v.redeemed?"Restore":"Mark Used"}</button>
-                  <button style={{...gbtn,padding:"5px 8px",fontSize:11}} onClick={()=>openEdit(v)}>Edit</button>
-                  <button style={{...dbtn,padding:"5px 8px",fontSize:11}} onClick={()=>del(v.id)}>Del</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <Modal show={show} onClose={()=>{setShow(false);setEdit(null);}} title={edit?"Edit Voucher":"Add Voucher"}>
-        {lbl("Owner *")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}><option value="">-- select owner --</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
-        {lbl("Program / Issuer *")}<input style={inp} placeholder="Marriott Bonvoy..." value={f.program} onChange={up("program")}/>
-        {lbl("Description")}<input style={inp} placeholder="Free night award" value={f.description} onChange={up("description")}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Value")}<input style={inp} placeholder="Rs 5000 / 1 Night" value={f.value} onChange={up("value")}/></div>
-          <div>{lbl("Expiry Date")}<input style={{...inp,colorScheme:"light"}} type="date" value={f.expiry_date||""} onChange={up("expiry_date")}/></div>
-        </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Voucher Code")}<input style={inp} placeholder="ABC123" value={f.voucher_code} onChange={up("voucher_code")}/></div>
-          <div>{lbl("Voucher PIN")}<input style={inp} placeholder="1234" value={f.voucher_pin} onChange={up("voucher_pin")}/></div>
-        </div>
-        {lbl("Received From")}<input style={inp} placeholder="SmartBuy, Infinia CC..." value={f.received_from} onChange={up("received_from")}/>
-        {lbl("Notes")}<input style={inp} placeholder="Conditions, notes..." value={f.notes} onChange={up("notes")}/>
-        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>{edit?"Save Changes":"Add Voucher"}</button>
-      </Modal>
-    </div>
-  );
-}
-
-// Settings
 // ── SetupOwners ───────────────────────────────────────────────────────────────
 function SetupOwners({db,owners,reloadOwners}){
   const [showAdd,setShowAdd]=useState(false);
@@ -4400,28 +4307,33 @@ function SpendUpload({db,owners}){
   return null;
 }
 
-
 const NAV=[
   {section:"Spend Tracker", items:[
-    {id:"spend-upload",       label:"CC Statement Upload", beta:true},
-    {id:"spend-setup-people",     label:"People", indent:true},
-    {id:"spend-setup-categories", label:"Categories", indent:true},
+    {id:"spend-upload", label:"CC Statement Upload", beta:true},
+  ], sub:[
+    {label:"Setup", items:[
+      {id:"spend-setup-people",      label:"People"},
+      {id:"spend-setup-categories",  label:"Categories"},
+    ]},
   ]},
   {section:"Points & Miles", items:[
-    {id:"overview",           label:"Overview"},
-    {id:"my-cards",           label:"My Cards"},
-    {id:"my-programs",        label:"My Programs"},
-    {id:"transfer",           label:"Transfer Points"},
-    {id:"transfer-history",   label:"Transfer History"},
-    {id:"vouchers",           label:"Vouchers"},
-    {id:"transfer-routes",    label:"Transfer Routes", comingSoon:true},
-    {id:"pm-setup-owners",    label:"Owners", indent:true},
-    {id:"pm-setup-catalog",   label:"Master", indent:true},
+    {id:"overview",         label:"Overview"},
+    {id:"my-cards",         label:"My Cards"},
+    {id:"my-programs",      label:"My Programs"},
+    {id:"transfer",         label:"Transfer Points"},
+    {id:"transfer-history", label:"Transfer History"},
+    {id:"vouchers",         label:"Vouchers"},
+  ], sub:[
+    {label:"Setup", items:[
+      {id:"pm-setup-catalog", label:"Master"},
+      {id:"pm-setup-owners",  label:"Owners"},
+    ]},
   ]},
-  {section:"Double Dip", comingSoon:true, items:[]},
+  {section:"Transfer Routes", comingSoon:true, items:[]},
+  {section:"Double Dip",      comingSoon:true, items:[]},
   {section:"Settings", items:[
-    {id:"settings-general",   label:"General"},
-    {id:"settings-danger",    label:"Danger Zone"},
+    {id:"settings-general", label:"General"},
+    {id:"settings-danger",  label:"Danger Zone"},
   ]},
 ];
 
@@ -4430,8 +4342,7 @@ export default function App(){
   const [tab,setTab]=useState("overview");
   const [menuOpen,setMenuOpen]=useState(false);
   const [owners,setOwners]=useState([]);
-  const [collapsed,setCollapsed]=useState(new Set()); // set of section indices that are collapsed
-  const toggleCollapse=si=>setCollapsed(prev=>{const n=new Set(prev);n.has(si)?n.delete(si):n.add(si);return n;});
+  const [collapsed,setCollapsed]=useState(new Set());
 
   useEffect(()=>{
     const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
@@ -4443,36 +4354,44 @@ export default function App(){
     setOwners(data||[]);
   };
 
-  if(!db) return <Setup onDone={c=>{setDb(c);loadOwners(c);}}/>;
+  if(!db) return(
+    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:bg,fontFamily:"'Manrope',sans-serif"}}>
+      <div style={{width:"100%",maxWidth:400,padding:"0 24px"}}>
+        <div style={{fontSize:28,fontWeight:700,color:txt,letterSpacing:"-0.04em",marginBottom:6}}>PointsVault</div>
+        <div style={{fontSize:13,color:mut,marginBottom:32,fontWeight:400,textTransform:"uppercase",letterSpacing:"0.08em"}}>Wealth Tracker</div>
+        <Secret onConnect={(u,k)=>{const c=createClient(u,k);setDb(c);loadOwners(c);}}/>
+      </div>
+    </div>
+  );
+
+  const renderItem=(t,pl)=>(
+    t.comingSoon?(
+      <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",paddingLeft:pl,borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
+        <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
+        <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+      </div>
+    ):(
+      <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",paddingLeft:pl,cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
+        <span>{t.label}</span>
+        {t.beta&&<span style={{fontSize:8,color:acc,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",background:acc+"15",padding:"2px 5px",borderRadius:8,border:"1px solid "+acc+"33"}}>beta</span>}
+      </div>
+    )
+  );
 
   return(
-    <div style={{minHeight:"100vh",background:bg,color:txt,fontFamily:"'Manrope',system-ui,sans-serif",fontSize:14,fontWeight:400}}>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
-        *{box-sizing:border-box;margin:0;padding:0;}
-        html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
-        body{background:${bg};font-family:'Manrope',system-ui,sans-serif;font-weight:400;color:${txt};}
-        @media(max-width:640px){.desk-nav{display:none!important}.mob-hdr{display:flex!important}.main-wrap{margin-left:0!important;padding:20px 16px 80px!important;padding-top:72px!important}}
-        @media(min-width:641px){.mob-hdr{display:none!important}}
-        input,select,textarea{font-family:'Manrope',sans-serif!important;}
-        button{font-family:'Manrope',sans-serif!important;}
-        input:focus,select:focus{border-color:${txt}!important;box-shadow:none!important;outline:none;}
-        input::placeholder{color:${mut};opacity:0.7;}
-        tr:hover td{background:${surf2};}
-        ::-webkit-scrollbar{width:3px;height:3px;}
-        ::-webkit-scrollbar-track{background:transparent;}
-        ::-webkit-scrollbar-thumb{background:${bdr2};border-radius:10px;}
-        .pv-num{font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
-      `}</style>
-      <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:224,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10}}>
-        <div style={{padding:"32px 24px 28px"}}>
-          <div style={{fontSize:15,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
-          <div style={{fontSize:10,color:mut,marginTop:4,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500}}>Wealth Tracker</div>
+    <div style={{display:"flex",height:"100vh",overflow:"hidden",fontFamily:"'Manrope',sans-serif",background:bg}}>
+
+      {/* ── Desktop Sidebar ── */}
+      <aside style={{width:220,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
+        <div style={{padding:"22px 20px 12px"}}>
+          <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.04em"}}>PointsVault</div>
+          <div style={{fontSize:9,color:mut,marginTop:2,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:500}}>Wealth Tracker</div>
         </div>
+
         <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
           {NAV.map((section,si)=>{
-            const isCollapsed=collapsed.has(si);
-            const hasItems=section.items.length>0;
+            const isCollapsed=collapsed.has("s"+si);
+            const hasItems=(section.items||[]).length>0||(section.sub||[]).length>0;
             if(section.comingSoon&&!hasItems) return(
               <div key={si} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed"}}>
                 <span style={{fontSize:12,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{section.section}</span>
@@ -4481,69 +4400,116 @@ export default function App(){
             );
             return(
               <div key={si} style={{marginBottom:2}}>
-                <div onClick={()=>toggleCollapse(si)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 12px 5px",cursor:"pointer",marginTop:si>0?4:0,borderRadius:6,transition:"background 0.1s"}}
+                <div onClick={()=>setCollapsed(prev=>{const n=new Set(prev);n.has("s"+si)?n.delete("s"+si):n.add("s"+si);return n;})}
+                  style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 12px 5px",cursor:"pointer",marginTop:si>0?4:0,borderRadius:6,transition:"background 0.1s"}}
                   onMouseEnter={e=>e.currentTarget.style.background=surf2}
                   onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                   <span style={{fontSize:9,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>{section.section}</span>
-                  <span style={{fontSize:14,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1,fontWeight:400}}>▾</span>
+                  <span style={{fontSize:14,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
                 </div>
-                {!isCollapsed&&section.items.map((t,ti)=>(
-                  <>{t.indent&&(ti===0||!section.items[ti-1].indent)&&<div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 12px 3px",opacity:0.7}}>Setup</div>}</>
-                ))}
-                {!isCollapsed&&section.items.map(t=>(
-                  t.comingSoon?(
-                    <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",paddingLeft:t.indent?20:12,borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
-                      <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
-                      <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
-                    </div>
-                  ):(
-                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",paddingLeft:t.indent?20:12,cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
-                      <span>{t.label}</span>
-                      {t.beta&&<span style={{fontSize:8,color:acc,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",background:acc+"15",padding:"2px 5px",borderRadius:8,border:"1px solid "+acc+"33"}}>beta</span>}
-                    </div>
-                  )
-                ))}
+                {!isCollapsed&&<>
+                  {(section.items||[]).map(t=>renderItem(t,12))}
+                  {(section.sub||[]).map((sub,subi)=>{
+                    const subKey="sub"+si+"-"+subi;
+                    const subCollapsed=collapsed.has(subKey);
+                    return(
+                      <div key={subi} style={{marginTop:2}}>
+                        <div onClick={()=>setCollapsed(prev=>{const n=new Set(prev);n.has(subKey)?n.delete(subKey):n.add(subKey);return n;})}
+                          style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"6px 12px",cursor:"pointer",borderRadius:6,transition:"background 0.1s"}}
+                          onMouseEnter={e=>e.currentTarget.style.background=surf2}
+                          onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                          <span style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.08em",textTransform:"uppercase"}}>{sub.label}</span>
+                          <span style={{fontSize:12,color:mut,transform:subCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1}}>▾</span>
+                        </div>
+                        {!subCollapsed&&(sub.items||[]).map(t=>renderItem(t,20))}
+                      </div>
+                    );
+                  })}
+                </>}
               </div>
             );
           })}
         </div>
-        <div style={{padding:"20px 24px 28px",borderTop:`1px solid ${bdr}`}}>
-          <div style={{fontSize:10,color:mut,letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500}}>Secured · Supabase</div>
+
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>
+          Secured · Supabase
         </div>
-      </nav>
-      <div className="mob-hdr" style={{display:"none",position:"fixed",top:0,left:0,right:0,height:56,background:surf,borderBottom:`1px solid ${bdr}`,alignItems:"center",justifyContent:"space-between",padding:"0 16px",zIndex:100}}>
-        <div style={{fontSize:14,fontWeight:700,color:txt,letterSpacing:"-0.02em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
-        <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",color:txt,fontSize:22,padding:"0 4px"}}>menu</button>
-      </div>
-      {menuOpen&&(
-        <div style={{position:"fixed",top:56,left:0,right:0,background:surf,borderBottom:`1px solid ${bdr}`,zIndex:99,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
-          {NAV.map((section,si)=>(
-            <div key={si}>
-              {section.items.length>0&&<div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 20px 4px",background:surf3}}>{section.section}</div>}
-              {section.comingSoon&&section.items.length===0&&<div style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{section.section}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>coming soon</span></div>}
-              {section.items.map(t=>t.comingSoon?(
-                <div key={t.id} style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{t.label}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>coming soon</span></div>
-              ):(
-                <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"10px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>
+      </aside>
+
+      {/* ── Mobile Header ── */}
+      <div style={{display:"none"}} className="mobile-header">
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`}}>
+          <div style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>PointsVault</div>
+          <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:txt}}>☰</button>
+        </div>
+        {menuOpen&&(
+          <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(0,0,0,0.3)"}} onClick={()=>setMenuOpen(false)}>
+            <div style={{position:"absolute",left:0,top:0,bottom:0,width:280,background:surf,overflowY:"auto",boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}} onClick={e=>e.stopPropagation()}>
+              <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${bdr}`}}>
+                <div style={{fontSize:18,fontWeight:700,color:txt}}>PointsVault</div>
+              </div>
+              {NAV.map((section,si)=>(
+                <div key={si}>
+                  {(()=>{
+                    if(section.comingSoon&&!(section.items||[]).length&&!(section.sub||[]).length)
+                      return <div style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{section.section}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>soon</span></div>;
+                    return <div>
+                      <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 20px 4px",background:surf3}}>{section.section}</div>
+                      {(section.items||[]).map(t=>t.comingSoon?(
+                        <div key={t.id} style={{padding:"9px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{t.label}<span style={{fontSize:9,textTransform:"uppercase"}}>soon</span></div>
+                      ):(
+                        <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"9px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                          <span>{t.label}</span>{t.beta&&<span style={{fontSize:9,color:acc,fontWeight:600,textTransform:"uppercase"}}>beta</span>}
+                        </div>
+                      ))}
+                      {(section.sub||[]).map((sub,subi)=>(
+                        <div key={subi}>
+                          <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.08em",textTransform:"uppercase",padding:"8px 28px 3px",background:surf2}}>{sub.label}</div>
+                          {(sub.items||[]).map(t=>(
+                            <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"9px 28px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>;
+                  })()}
+                </div>
               ))}
             </div>
-          ))}
-        </div>
-      )}
-      <main className="main-wrap" style={{marginLeft:224,padding:"44px 48px 100px",minHeight:"100vh",background:bg}}>
-        {tab==="overview"         &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
-        {tab==="my-cards"         &&<MyCards db={db} owners={owners}/>}
-        {tab==="my-programs"      &&<MyPrograms db={db} owners={owners}/>}
-        {tab==="transfer"         &&<TransferPoints db={db} owners={owners}/>}
-        {tab==="transfer-history" &&<TransferHistory db={db} owners={owners}/>}
-        {tab==="vouchers"         &&<Vouchers db={db} owners={owners}/>}
-        {tab==="pm-setup-owners"      &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
-        {tab==="pm-setup-catalog"     &&<Catalog db={db}/>}
-        {tab==="spend-setup-people"   &&<SetupPeople db={db}/>}
+          </div>
+        )}
+      </div>
+
+      <style>{`
+        @media (max-width:700px){
+          aside{display:none!important;}
+          .mobile-header{display:block!important;}
+        }
+      `}</style>
+
+      {/* ── Main content ── */}
+      <main style={{flex:1,overflowY:"auto",padding:"28px 32px",background:bg}}>
+        <style>{`
+          @media(max-width:700px){main{padding:16px!important;}}
+          .ov-grid{display:grid;grid-template-columns:1fr 1fr;gap:16;margin-bottom:0}
+          .ov-col{display:flex;flex-direction:column}
+          @media(max-width:700px){
+            .ov-grid{display:flex!important;flex-direction:column!important;}
+            .ov-col{width:100%!important;}
+          }
+        `}</style>
+        {tab==="overview"          &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
+        {tab==="my-cards"          &&<MyCards db={db} owners={owners}/>}
+        {tab==="my-programs"       &&<MyPrograms db={db} owners={owners}/>}
+        {tab==="transfer"          &&<TransferPoints db={db} owners={owners}/>}
+        {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
+        {tab==="vouchers"          &&<Vouchers db={db} owners={owners}/>}
+        {tab==="pm-setup-owners"   &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
+        {tab==="pm-setup-catalog"  &&<Catalog db={db}/>}
+        {tab==="spend-setup-people"&&<SetupPeople db={db}/>}
         {tab==="spend-setup-categories"&&<SetupCategories db={db}/>}
-        {tab==="settings-general"     &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
-        {tab==="settings-danger"      &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
-        {tab==="spend-upload"         &&<SpendUpload db={db} owners={owners}/>}
+        {tab==="settings-general"  &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
+        {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
+        {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
       </main>
     </div>
   );
