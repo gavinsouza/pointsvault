@@ -3971,7 +3971,7 @@ function SpendUpload({db,owners}){
   if(step===2) return(
     <div>
       <Hdr title="Map Columns" sub={fileName}/>
-      <div style={{maxWidth:640}}>
+      <div style={{width:"100%"}}>
         {mappings.length>0&&<Card style={{marginBottom:16}}>
           <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Load a saved mapping</div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -3980,15 +3980,15 @@ function SpendUpload({db,owners}){
         </Card>}
 
         {/* Preview of raw CSV */}
-        <Card style={{marginBottom:16}}>
+        <Card style={{marginBottom:16,maxWidth:"100%"}}>
           <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 30 rows — find where transactions start)</div>
-          <div style={{overflowX:"auto",maxHeight:300,overflowY:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+          <div style={{overflowX:"auto",maxHeight:300,overflowY:"auto",width:"100%"}}>
+            <table style={{borderCollapse:"collapse",fontSize:11,minWidth:"100%"}}>
               <tbody>
                 {rawRows.slice(0,30).map((row,ri)=>(
                   <tr key={ri} style={{background:ri===skipRows?acc+"12":ri===0?surf2:surf,borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"4px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:600,width:24}}>{ri}</td>
-                    {row.map((cell,ci)=><td key={ci} style={{padding:"4px 8px",color:ri===skipRows?acc:ri===0?acc:txt,whiteSpace:"nowrap",maxWidth:160,overflow:"hidden",textOverflow:"ellipsis"}}>{cell}</td>)}
+                    <td style={{padding:"4px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:600,width:24,whiteSpace:"nowrap"}}>{ri}</td>
+                    {row.map((cell,ci)=><td key={ci} style={{padding:"4px 10px",color:ri===skipRows?acc:ri===0?acc:txt,whiteSpace:"nowrap"}}>{cell}</td>)}
                   </tr>
                 ))}
               </tbody>
