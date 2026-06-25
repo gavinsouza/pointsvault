@@ -3803,6 +3803,8 @@ function SpendUpload({db,owners}){
   const [importing,setImporting]=useState(false);
   const [importResult,setImportResult]=useState(null);
   const [rawText,setRawText]=useState("");
+  const [colWidths,setColWidths]=useState([]);
+  const [uploadError,setUploadError]=useState("");
 
   // Mapping form state
   const [mapName,setMapName]=useState("");
@@ -3936,8 +3938,6 @@ function SpendUpload({db,owners}){
   const reimb=parsed.filter(r=>!r.skip&&r.reimbursable).length;
 
   // ── Step 1: Upload ──────────────────────────────────────────────────────────
-  const [uploadError,setUploadError]=useState("");
-
   const processFile=file=>{
     if(!file) return;
     setUploadError("");
