@@ -5121,9 +5121,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
         </div>}
       </Card>
+      {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
+      {selStmt&&<StmtDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)} db={db} owners={owners} onBack={()=>setSelStmt(null)} onSave={load}/>}
     </div>
-    {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
-    {selStmt&&<StmtDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)} db={db} owners={owners} onBack={()=>setSelStmt(null)} onSave={load}/>}
   );
 }
 
