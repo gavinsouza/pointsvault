@@ -3918,9 +3918,7 @@ function applyRules(desc, rules){
 }
 
 function parseCSV(text){
-  const lines=text.split(/
-?
-/).filter(l=>l.trim());
+  const lines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
   return lines.map(line=>{
     const cols=[]; let cur=""; let inQ=false;
     for(let i=0;i<line.length;i++){
