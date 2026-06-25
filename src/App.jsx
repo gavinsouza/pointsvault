@@ -3854,20 +3854,7 @@ function SpendUpload({db,owners}){
     return str;
   };
 
-  const handleFile=e=>{
-    const file=e.target.files[0];
-    if(!file) return;
-    setFileName(file.name);
-    const reader=new FileReader();
-    reader.onload=ev=>{
-      const rows=parseCSV(ev.target.result, manualDelim);
-      setRawRows(rows);
-      setRawText(ev.target.result);
-      setColWidths([]);
-      setStep(2);
-    };
-    reader.readAsText(file);
-  };
+
 
   const applyMapping=m=>{
     setMapName(m.name); setSelCard(m.card_id||"");
@@ -3949,21 +3936,39 @@ function SpendUpload({db,owners}){
   const reimb=parsed.filter(r=>!r.skip&&r.reimbursable).length;
 
   // ── Step 1: Upload ──────────────────────────────────────────────────────────
+  const processFile=file=>{
+    if(!file) return;
+    if(!file.name.match(/\.(csv|txt)$/i)) return alert("Please upload a CSV or TXT file");
+    setFileName(file.name);
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const rows=parseCSV(ev.target.result, manualDelim==="auto"?undefined:manualDelim);
+      setRawRows(rows);
+      setRawText(ev.target.result);
+      setColWidths([]);
+      setStep(2);
+    };
+    reader.readAsText(file);
+  };
+
   if(step===1) return(
     <div>
       <Hdr title="CC Statement Upload" sub="Import credit card transactions from CSV"/>
       <div style={{maxWidth:600}}>
         <Card>
-          <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",border:`2px dashed ${bdr}`,borderRadius:14,padding:"40px 20px",cursor:"pointer",background:surf2,transition:"border-color 0.15s"}}
-            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=acc;}}
-            onDragLeave={e=>{e.currentTarget.style.borderColor=bdr;}}
-            onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=bdr;const f=e.dataTransfer.files[0];if(f){const inp=document.createElement("input");inp.type="file";const ev={target:{files:[f]}};handleFile(ev);}}}>
+          <div
+            onDragOver={e=>{e.preventDefault();e.currentTarget.style.background=acc+"08";e.currentTarget.style.borderColor=acc;}}
+            onDragLeave={e=>{e.currentTarget.style.background=surf2;e.currentTarget.style.borderColor=bdr;}}
+            onDrop={e=>{e.preventDefault();e.currentTarget.style.background=surf2;e.currentTarget.style.borderColor=bdr;processFile(e.dataTransfer.files[0]);}}
+            style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",border:`2px dashed ${bdr}`,borderRadius:14,padding:"40px 20px",background:surf2,transition:"all 0.15s"}}>
             <div style={{fontSize:32,marginBottom:12}}>📄</div>
             <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:6}}>Drop your CSV file here</div>
-            <div style={{fontSize:12,color:mut,marginBottom:16}}>or click to browse</div>
-            <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
-            <button style={{...gbtn,pointerEvents:"none"}}>Choose CSV file</button>
-          </label>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>or click the button below to browse</div>
+            <label style={{cursor:"pointer"}}>
+              <input type="file" accept=".csv,.txt" onChange={e=>processFile(e.target.files[0])} style={{display:"none"}}/>
+              <span style={{...gbtn,display:"inline-flex",alignItems:"center",padding:"8px 20px",cursor:"pointer"}}>Choose CSV file</span>
+            </label>
+          </div>
           {mappings.length>0&&<div style={{marginTop:20}}>
             <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Saved mappings</div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
