@@ -3758,14 +3758,22 @@ function applyRules(desc, rules){
   return "Other";
 }
 
-function parseCSV(text){
+function parseCSV(text, forcedDelim){
   const allLines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
-  // Auto-detect delimiter — check for ~I~ first (HDFC), then other delimiters
-  const sample=allLines.slice(0,5).join("\n");
+  // Use forced delimiter if specified, otherwise auto-detect
   let delim=",";
-  if(sample.includes("~I~")) delim="~I~";
-  else if(sample.includes("\t")) delim="\t";
-  else if(sample.includes(";")) delim=";";
+  if(forcedDelim&&forcedDelim!=="auto"){
+    delim=forcedDelim;
+  } else {
+    const sample=allLines.slice(0,5).join("\n");
+    if(/~[Ii]~/.test(sample)) delim=sample.match(/~([Ii])~/)[0];
+    else if(sample.includes("\t")) delim="\t";
+    else if(sample.includes(";")) delim=";";
+    else {
+      const firstLine=allLines.find(l=>l.length>10)||"";
+      if((firstLine.match(/,/g)||[]).length<2&&(firstLine.match(/\|/g)||[]).length>2) delim="|";
+    }
+  }
   return allLines.map(line=>{
     if(delim===","){
       const cols=[]; let cur=""; let inQ=false;
@@ -3794,7 +3802,7 @@ function SpendUpload({db,owners}){
   const [parsed,setParsed]=useState([]); // [{date,desc,amount,category,reimbursable,person_id,skip}]
   const [importing,setImporting]=useState(false);
   const [importResult,setImportResult]=useState(null);
-  const [colWidths,setColWidths]=useState([]);
+  const [rawText,setRawText]=useState("");
 
   // Mapping form state
   const [mapName,setMapName]=useState("");
@@ -3807,6 +3815,7 @@ function SpendUpload({db,owners}){
   const [creditCol,setCreditCol]=useState(3);
   const [dateFormat,setDateFormat]=useState("DD/MM/YYYY");
   const [skipRows,setSkipRows]=useState(1);
+  const [manualDelim,setManualDelim]=useState("auto");
   const [selMapping,setSelMapping]=useState("");
 
   useEffect(()=>{
@@ -3851,8 +3860,10 @@ function SpendUpload({db,owners}){
     setFileName(file.name);
     const reader=new FileReader();
     reader.onload=ev=>{
-      const rows=parseCSV(ev.target.result);
+      const rows=parseCSV(ev.target.result, manualDelim);
       setRawRows(rows);
+      setRawText(ev.target.result);
+      setColWidths([]);
       setStep(2);
     };
     reader.readAsText(file);
@@ -3986,10 +3997,13 @@ function SpendUpload({db,owners}){
         <Card style={{marginBottom:16,maxWidth:"100%"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
             <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview — drag ↔ to resize columns</div>
-            <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>{
-              const text=rawRows.slice(0,30).map((row,ri)=>ri+"\t"+row.join("\t")).join("\n");
-              navigator.clipboard.writeText(text).then(()=>alert("Copied 30 rows to clipboard!"));
-            }}>Copy preview</button>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:10,color:mut}}>Detected delimiter: <strong style={{color:txt}}>{(()=>{const s=rawRows.slice(0,5).map(r=>r.join("~I~")).join("\n");return s.includes("~I~")||s.includes("~i~")?"~I~":rawRows[0]?.length>1?"auto-detected":"comma";})()} </strong></span>
+              <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>{
+                const text=rawRows.slice(0,30).map((row,ri)=>ri+"\t"+row.join("\t")).join("\n");
+                navigator.clipboard.writeText(text).then(()=>alert("Copied!"));
+              }}>Copy preview</button>
+            </div>
           </div>
           {(()=>{
             const numCols=Math.max(...rawRows.slice(0,30).map(r=>r.length),1);
@@ -4080,6 +4094,22 @@ function SpendUpload({db,owners}){
                 <option value="">Select card…</option>
                 {cards.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
               </select>
+            </div>
+            <div>
+              {lbl("Delimiter")}
+              <div style={{display:"flex",gap:6}}>
+                <select style={{...ss,flex:1}} value={manualDelim} onChange={e=>setManualDelim(e.target.value)}>
+                  <option value="auto">Auto-detect</option>
+                  <option value="~I~">~I~ (HDFC)</option>
+                  <option value=",">Comma (,)</option>
+                  <option value="	">Tab</option>
+                  <option value=";">Semicolon (;)</option>
+                  <option value="|">Pipe (|)</option>
+                </select>
+                <button style={{...gbtn,fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{
+                  if(rawText){const rows=parseCSV(rawText,manualDelim==="auto"?undefined:manualDelim);setRawRows(rows);setColWidths([]);}
+                }}>Re-parse</button>
+              </div>
             </div>
             <div>
               {lbl("Skip header rows")}
