@@ -3709,6 +3709,7 @@ const NAV=[
   {section:"Double Dip", comingSoon:true, items:[]},
   {section:"Setup", items:[
     {id:"setup-owners",     label:"Owners"},
+    {id:"setup-people",     label:"People"},
     {id:"setup-catalog",    label:"Master"},
   ]},
   {section:"Settings", items:[
@@ -3827,6 +3828,617 @@ export default function App(){
         {tab==="transfer-history" &&<TransferHistory db={db} owners={owners}/>}
         {tab==="vouchers"         &&<Vouchers db={db} owners={owners}/>}
         {tab==="setup-owners"     &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
+        {tab==="setup-people"     &&<SetupPeople db={db}/>}
+        {tab==="setup-catalog"    &&<Catalog db={db}/>}
+        {tab==="settings-general" &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
+        {tab==="settings-danger"  &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
+        {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
+      </main>
+    </div>
+  );
+}// ── SetupPeople ───────────────────────────────────────────────────────────────
+function SetupPeople({db}){
+  const [people,setPeople]=useState([]);
+  const [showAdd,setShowAdd]=useState(false);
+  const [newName,setNewName]=useState("");
+
+  const load=useCallback(async()=>{
+    const {data}=await db.from("people").select();
+    setPeople(data||[]);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const add=async()=>{
+    if(!newName.trim()) return;
+    await db.from("people").insert({name:newName.trim()});
+    setNewName("");setShowAdd(false);load();
+  };
+  const del=async id=>{
+    if(!confirm("Delete this person?")) return;
+    await db.from("people").delete(id);
+    load();
+  };
+
+  return(
+    <div>
+      <Hdr title="People" sub="Friends and family for reimbursement tracking"/>
+      <div style={{maxWidth:520}}>
+        <Card>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>People</div>
+            <button style={{...gbtn,padding:"6px 14px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Person</button>
+          </div>
+          {people.length===0?<div style={{color:mut,fontSize:13}}>No people added yet</div>:people.map(p=>(
+            <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+              <div style={{fontSize:14,fontWeight:600,color:txt}}>{p.name}</div>
+              <button style={{...dbtn,padding:"4px 10px",fontSize:12}} onClick={()=>del(p.id)}>Delete</button>
+            </div>
+          ))}
+        </Card>
+      </div>
+      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add Person">
+        {lbl("Name")}<input style={inp} placeholder="Priya" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={add}>Add Person</button>
+      </Modal>
+    </div>
+  );
+}
+
+// ── SpendUpload ───────────────────────────────────────────────────────────────
+const CATEGORIES=["Dining","Travel","Fuel","Groceries","Shopping","Utilities","Entertainment","Healthcare","Education","Rent","Insurance","Vouchers / Wallet","Reimbursable","Other"];
+
+const DEFAULT_RULES=[
+  {keyword:"swiggy",category:"Dining"},{keyword:"zomato",category:"Dining"},{keyword:"eazydiner",category:"Dining"},
+  {keyword:"irctc",category:"Travel"},{keyword:"makemytrip",category:"Travel"},{keyword:"goibibo",category:"Travel"},
+  {keyword:"cleartrip",category:"Travel"},{keyword:"indigo",category:"Travel"},{keyword:"airindia",category:"Travel"},
+  {keyword:"uber",category:"Travel"},{keyword:"ola ",category:"Travel"},{keyword:"rapido",category:"Travel"},
+  {keyword:"bpcl",category:"Fuel"},{keyword:"hpcl",category:"Fuel"},{keyword:"iocl",category:"Fuel"},
+  {keyword:"petrol",category:"Fuel"},{keyword:"fuel",category:"Fuel"},
+  {keyword:"bigbasket",category:"Groceries"},{keyword:"grofer",category:"Groceries"},{keyword:"blinkit",category:"Groceries"},
+  {keyword:"zepto",category:"Groceries"},{keyword:"dmart",category:"Groceries"},{keyword:"reliance fresh",category:"Groceries"},
+  {keyword:"amazon",category:"Shopping"},{keyword:"flipkart",category:"Shopping"},{keyword:"myntra",category:"Shopping"},
+  {keyword:"ajio",category:"Shopping"},{keyword:"nykaa",category:"Shopping"},{keyword:"meesho",category:"Shopping"},
+  {keyword:"electricity",category:"Utilities"},{keyword:"bescom",category:"Utilities"},{keyword:"tata power",category:"Utilities"},
+  {keyword:"jio",category:"Utilities"},{keyword:"airtel",category:"Utilities"},{keyword:"vi ",category:"Utilities"},
+  {keyword:"bookmyshow",category:"Entertainment"},{keyword:"pvr",category:"Entertainment"},{keyword:"netflix",category:"Entertainment"},
+  {keyword:"spotify",category:"Entertainment"},{keyword:"hotstar",category:"Entertainment"},
+  {keyword:"apollo",category:"Healthcare"},{keyword:"medplus",category:"Healthcare"},{keyword:"practo",category:"Healthcare"},
+  {keyword:"1mg",category:"Healthcare"},{keyword:"pharmeasy",category:"Healthcare"},
+  {keyword:"lici",category:"Insurance"},{keyword:"hdfc life",category:"Insurance"},{keyword:"icici pru",category:"Insurance"},
+  {keyword:"voucher",category:"Vouchers / Wallet"},{keyword:"giftcard",category:"Vouchers / Wallet"},
+  {keyword:"paytm",category:"Vouchers / Wallet"},{keyword:"phonepe",category:"Vouchers / Wallet"},
+];
+
+function applyRules(desc, rules){
+  const d=(desc||"").toLowerCase();
+  for(const r of rules){
+    if(d.includes(r.keyword.toLowerCase())) return r.category;
+  }
+  return "Other";
+}
+
+function parseCSV(text){
+  const lines=text.split(/
+?
+/).filter(l=>l.trim());
+  return lines.map(line=>{
+    const cols=[]; let cur=""; let inQ=false;
+    for(let i=0;i<line.length;i++){
+      const ch=line[i];
+      if(ch==='"'){inQ=!inQ;}
+      else if(ch===","&&!inQ){cols.push(cur.trim());cur="";}
+      else cur+=ch;
+    }
+    cols.push(cur.trim());
+    return cols;
+  });
+}
+
+function SpendUpload({db,owners}){
+  const [step,setStep]=useState(1); // 1=upload 2=map 3=preview 4=done
+  const [rawRows,setRawRows]=useState([]);
+  const [fileName,setFileName]=useState("");
+  const [mappings,setMappings]=useState([]);
+  const [cards,setCards]=useState([]);
+  const [mCards,setMCards]=useState([]);
+  const [people,setPeople]=useState([]);
+  const [rules,setRules]=useState([]);
+  const [parsed,setParsed]=useState([]); // [{date,desc,amount,category,reimbursable,person_id,skip}]
+  const [importing,setImporting]=useState(false);
+  const [importResult,setImportResult]=useState(null);
+
+  // Mapping form state
+  const [mapName,setMapName]=useState("");
+  const [selCard,setSelCard]=useState("");
+  const [dateCol,setDateCol]=useState(0);
+  const [descCol,setDescCol]=useState(1);
+  const [amtType,setAmtType]=useState("single"); // single | split
+  const [amtCol,setAmtCol]=useState(2);
+  const [debitCol,setDebitCol]=useState(2);
+  const [creditCol,setCreditCol]=useState(3);
+  const [dateFormat,setDateFormat]=useState("DD/MM/YYYY");
+  const [skipRows,setSkipRows]=useState(1);
+  const [selMapping,setSelMapping]=useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      const [c,mc,p,r,dbRules]=await Promise.all([
+        db.from("my_cards").select(),
+        db.from("master_cards").select(),
+        db.from("people").select(),
+        db.from("csv_mappings").select(),
+        db.from("merchant_rules").select(),
+      ]);
+      setCards(c.data||[]);
+      setMCards(mc.data||[]);
+      setPeople(p.data||[]);
+      setMappings(r.data||[]);
+      setRules([...DEFAULT_RULES,...(dbRules.data||[])]);
+    })();
+  },[db]);
+
+  const parseDate=(str,fmt)=>{
+    str=(str||"").trim().replace(/['"]/g,"");
+    if(fmt==="DD/MM/YYYY"){
+      const [d,m,y]=str.split(/[\/\-\.]/);
+      return y&&m&&d?`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`:"";
+    }
+    if(fmt==="MM/DD/YYYY"){
+      const [m,d,y]=str.split(/[\/\-\.]/);
+      return y&&m&&d?`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`:"";
+    }
+    if(fmt==="YYYY-MM-DD") return str.substring(0,10);
+    // Try auto-detect
+    const parts=str.split(/[\/\-\.]/);
+    if(parts.length===3){
+      if(parts[0].length===4) return `${parts[0]}-${parts[1].padStart(2,"0")}-${parts[2].padStart(2,"0")}`;
+      return `${parts[2]}-${parts[1].padStart(2,"0")}-${parts[0].padStart(2,"0")}`;
+    }
+    return str;
+  };
+
+  const handleFile=e=>{
+    const file=e.target.files[0];
+    if(!file) return;
+    setFileName(file.name);
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      const rows=parseCSV(ev.target.result);
+      setRawRows(rows);
+      setStep(2);
+    };
+    reader.readAsText(file);
+  };
+
+  const applyMapping=m=>{
+    setMapName(m.name); setSelCard(m.card_id||"");
+    setDateCol(m.date_col||0); setDescCol(m.desc_col||1);
+    setAmtType(m.amount_type||"single"); setAmtCol(m.amount_col||2);
+    setDebitCol(m.debit_col||2); setCreditCol(m.credit_col||3);
+    setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(m.skip_rows||1);
+    setSelMapping(m.id);
+  };
+
+  const buildParsed=()=>{
+    const dataRows=rawRows.slice(skipRows);
+    return dataRows.filter(r=>r.length>1).map(row=>{
+      const desc=(row[descCol]||"").replace(/"/g,"").trim();
+      const dateStr=parseDate(row[dateCol]||"",dateFormat);
+      let amount=0;
+      if(amtType==="single"){
+        const raw=(row[amtCol]||"").replace(/[,'"₹Rs]/g,"").trim();
+        amount=Math.abs(parseFloat(raw)||0);
+      } else {
+        const dRaw=(row[debitCol]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const cRaw=(row[creditCol]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const d=parseFloat(dRaw)||0;
+        const c=parseFloat(cRaw)||0;
+        amount=d>0?d:-c;
+      }
+      const category=applyRules(desc,rules);
+      return{date:dateStr,desc,amount,category,reimbursable:false,person_id:"",skip:amount<=0};
+    }).filter(r=>r.date&&r.amount>0);
+  };
+
+  const saveMapping=async()=>{
+    const p={name:mapName||"My Mapping",card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows};
+    if(selMapping){await db.from("csv_mappings").update(selMapping,p);}
+    else{await db.from("csv_mappings").insert(p);}
+    const {data}=await db.from("csv_mappings").select();
+    setMappings(data||[]);
+    alert("Mapping saved!");
+  };
+
+  const goToPreview=()=>{
+    if(!selCard) return alert("Please select a card");
+    setParsed(buildParsed());
+    setStep(3);
+  };
+
+  const doImport=async()=>{
+    setImporting(true);
+    let added=0,skipped=0;
+    for(const row of parsed){
+      if(row.skip) continue;
+      await db.from("spend_transactions").insert({
+        card_id:selCard,txn_date:row.date,description:row.desc,
+        amount:row.amount,category:row.category,
+        is_reimbursable:row.reimbursable,
+        person_id:row.person_id||null,
+        raw_description:row.desc,
+        imported_from:fileName,
+      });
+      added++;
+    }
+    setImporting(false);
+    setImportResult({added,skipped});
+    setStep(4);
+  };
+
+  const upd=(i,field,val)=>setParsed(prev=>prev.map((r,ri)=>ri===i?{...r,[field]:val}:r));
+
+  const colLbl=i=>`Col ${i+1}${rawRows[skipRows]?` (${(rawRows[skipRows][i]||"").substring(0,12)})`:""}`
+  const colOpts=(rawRows[0]||[]).map((_,i)=>colLbl(i));
+
+  const ss={...{fontSize:12,border:`1px solid ${bdr}`,borderRadius:8,padding:"7px 10px",background:surf,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",width:"100%"}};
+  const total=parsed.filter(r=>!r.skip).length;
+  const totalAmt=parsed.filter(r=>!r.skip).reduce((a,r)=>a+r.amount,0);
+  const reimb=parsed.filter(r=>!r.skip&&r.reimbursable).length;
+
+  // ── Step 1: Upload ──────────────────────────────────────────────────────────
+  if(step===1) return(
+    <div>
+      <Hdr title="CC Statement Upload" sub="Import credit card transactions from CSV"/>
+      <div style={{maxWidth:600}}>
+        <Card>
+          <label style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",border:`2px dashed ${bdr}`,borderRadius:14,padding:"40px 20px",cursor:"pointer",background:surf2,transition:"border-color 0.15s"}}
+            onDragOver={e=>{e.preventDefault();e.currentTarget.style.borderColor=acc;}}
+            onDragLeave={e=>{e.currentTarget.style.borderColor=bdr;}}
+            onDrop={e=>{e.preventDefault();e.currentTarget.style.borderColor=bdr;const f=e.dataTransfer.files[0];if(f){const inp=document.createElement("input");inp.type="file";const ev={target:{files:[f]}};handleFile(ev);}}}>
+            <div style={{fontSize:32,marginBottom:12}}>📄</div>
+            <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:6}}>Drop your CSV file here</div>
+            <div style={{fontSize:12,color:mut,marginBottom:16}}>or click to browse</div>
+            <input type="file" accept=".csv,.txt" onChange={handleFile} style={{display:"none"}}/>
+            <button style={{...gbtn,pointerEvents:"none"}}>Choose CSV file</button>
+          </label>
+          {mappings.length>0&&<div style={{marginTop:20}}>
+            <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Saved mappings</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+              {mappings.map(m=>{
+                const card=cards.find(c=>c.id===m.card_id);
+                const mc=card&&mCards.find(x=>x.id===card.master_id);
+                return<div key={m.id} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${bdr}`,fontSize:12,color:mut,background:surf2}}>
+                  {m.name}{mc&&" · "+mc.name}
+                </div>;
+              })}
+            </div>
+          </div>}
+        </Card>
+      </div>
+    </div>
+  );
+
+  // ── Step 2: Map columns ─────────────────────────────────────────────────────
+  if(step===2) return(
+    <div>
+      <Hdr title="Map Columns" sub={fileName}/>
+      <div style={{maxWidth:640}}>
+        {mappings.length>0&&<Card style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Load a saved mapping</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {mappings.map(m=><button key={m.id} onClick={()=>applyMapping(m)} style={{...gbtn,fontSize:12,background:selMapping===m.id?surf3:surf}}>{m.name}</button>)}
+          </div>
+        </Card>}
+
+        {/* Preview of raw CSV */}
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview (first 5 rows)</div>
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+              <tbody>
+                {rawRows.slice(0,5).map((row,ri)=>(
+                  <tr key={ri} style={{background:ri===0?surf2:surf,borderBottom:`1px solid ${bdr}`}}>
+                    <td style={{padding:"4px 8px",color:mut,fontWeight:600,width:24}}>{ri}</td>
+                    {row.map((cell,ci)=><td key={ci} style={{padding:"4px 8px",color:ri===0?acc:txt,whiteSpace:"nowrap",maxWidth:120,overflow:"hidden",textOverflow:"ellipsis"}}>{cell}</td>)}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+
+        <Card>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div>
+              {lbl("Mapping Name")}
+              <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
+            </div>
+            <div>
+              {lbl("Card")}
+              <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
+                <option value="">Select card…</option>
+                {cards.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
+              </select>
+            </div>
+            <div>
+              {lbl("Skip header rows")}
+              <select style={ss} value={skipRows} onChange={e=>setSkipRows(Number(e.target.value))}>
+                {[0,1,2,3].map(n=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
+              </select>
+            </div>
+            <div>
+              {lbl("Date format")}
+              <select style={ss} value={dateFormat} onChange={e=>setDateFormat(e.target.value)}>
+                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                <option value="auto">Auto-detect</option>
+              </select>
+            </div>
+            <div>
+              {lbl("Date column")}
+              <select style={ss} value={dateCol} onChange={e=>setDateCol(Number(e.target.value))}>
+                {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
+              </select>
+            </div>
+            <div>
+              {lbl("Description column")}
+              <select style={ss} value={descCol} onChange={e=>setDescCol(Number(e.target.value))}>
+                {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{marginBottom:12}}>
+            {lbl("Amount type")}
+            <div style={{display:"flex",gap:16}}>
+              {["single","split"].map(t=>(
+                <label key={t} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",fontSize:13}}>
+                  <input type="radio" checked={amtType===t} onChange={()=>setAmtType(t)} style={{accentColor:acc}}/>
+                  {t==="single"?"Single amount column (positive = debit)":"Separate Debit & Credit columns"}
+                </label>
+              ))}
+            </div>
+          </div>
+          {amtType==="single"?(
+            <div style={{maxWidth:300}}>
+              {lbl("Amount column")}
+              <select style={ss} value={amtCol} onChange={e=>setAmtCol(Number(e.target.value))}>
+                {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
+              </select>
+            </div>
+          ):(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,maxWidth:500}}>
+              <div>{lbl("Debit column")}<select style={ss} value={debitCol} onChange={e=>setDebitCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              <div>{lbl("Credit column")}<select style={ss} value={creditCol} onChange={e=>setCreditCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+            </div>
+          )}
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:20,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
+            <div style={{display:"flex",gap:8}}>
+              <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+              <button style={{...gbtn,fontSize:12}} onClick={saveMapping}>Save mapping</button>
+            </div>
+            <button style={pbtn} onClick={goToPreview}>Preview →</button>
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+
+  // ── Step 3: Preview & categorise ───────────────────────────────────────────
+  if(step===3) return(
+    <div>
+      <Hdr title="Review Transactions" sub={`${total} transactions · ₹${totalAmt.toLocaleString("en-IN")}`}/>
+      <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:12,color:mut}}>{reimb>0&&<span style={{color:acc,fontWeight:500}}>{reimb} reimbursable · </span>}Review and adjust categories before importing.</div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={gbtn} onClick={()=>setStep(2)}>← Back</button>
+          <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
+        </div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>
+              <th style={{padding:"8px 10px",textAlign:"left",width:90}}>Date</th>
+              <th style={{padding:"8px 10px",textAlign:"left"}}>Description</th>
+              <th style={{padding:"8px 10px",textAlign:"right",width:100}}>Amount</th>
+              <th style={{padding:"8px 10px",textAlign:"left",width:150}}>Category</th>
+              <th style={{padding:"8px 10px",textAlign:"center",width:90}}>Reimb.</th>
+              <th style={{padding:"8px 10px",textAlign:"left",width:130}}>Person</th>
+              <th style={{padding:"8px 10px",textAlign:"center",width:60}}>Skip</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsed.map((row,i)=>(
+              <tr key={i} style={{borderBottom:`1px solid ${bdr}`,opacity:row.skip?0.35:1,background:row.reimbursable?acc+"06":surf}}>
+                <td style={{padding:"7px 10px",color:mut,whiteSpace:"nowrap"}}>{row.date}</td>
+                <td style={{padding:"7px 10px",color:txt,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.desc}</td>
+                <td style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:txt}}>₹{row.amount.toLocaleString("en-IN")}</td>
+                <td style={{padding:"7px 10px"}}>
+                  <select value={row.category} onChange={e=>upd(i,"category",e.target.value)}
+                    style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}}>
+                    {CATEGORIES.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </td>
+                <td style={{padding:"7px 10px",textAlign:"center"}}>
+                  <input type="checkbox" checked={row.reimbursable} onChange={e=>upd(i,"reimbursable",e.target.checked)} style={{accentColor:acc,width:15,height:15}}/>
+                </td>
+                <td style={{padding:"7px 10px"}}>
+                  {row.reimbursable&&<select value={row.person_id} onChange={e=>upd(i,"person_id",e.target.value)}
+                    style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}}>
+                    <option value="">Select…</option>
+                    {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>}
+                </td>
+                <td style={{padding:"7px 10px",textAlign:"center"}}>
+                  <input type="checkbox" checked={row.skip} onChange={e=>upd(i,"skip",e.target.checked)} style={{width:15,height:15}}/>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
+        <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
+      </div>
+    </div>
+  );
+
+  // ── Step 4: Done ─────────────────────────────────────────────────────────────
+  if(step===4) return(
+    <div>
+      <Hdr title="Import Complete" sub="Transactions added to your spend tracker"/>
+      <Card style={{maxWidth:500}}>
+        <div style={{textAlign:"center",padding:"24px 0"}}>
+          <div style={{fontSize:40,marginBottom:12}}>✓</div>
+          <div style={{fontSize:18,fontWeight:700,color:grn,marginBottom:8}}>{importResult?.added} transactions imported</div>
+          {importResult?.skipped>0&&<div style={{fontSize:13,color:mut,marginBottom:16}}>{importResult.skipped} skipped</div>}
+          <button style={{...pbtn,marginTop:8}} onClick={()=>{setStep(1);setRawRows([]);setFileName("");setParsed([]);setImportResult(null);}}>Upload another statement</button>
+        </div>
+      </Card>
+    </div>
+  );
+
+  return null;
+}
+
+
+const NAV=[
+  {section:"Spend Tracker", items:[
+    {id:"spend-upload", label:"CC Statement Upload", beta:true},
+  ]},
+  {section:"Points & Miles", items:[
+    {id:"overview",         label:"Overview"},
+    {id:"my-cards",         label:"My Cards"},
+    {id:"my-programs",      label:"My Programs"},
+    {id:"transfer",         label:"Transfer Points"},
+    {id:"transfer-history", label:"Transfer History"},
+    {id:"vouchers",         label:"Vouchers"},
+    {id:"transfer-routes",  label:"Transfer Routes", comingSoon:true},
+  ]},
+  {section:"Double Dip", comingSoon:true, items:[]},
+  {section:"Setup", items:[
+    {id:"setup-owners",     label:"Owners"},
+    {id:"setup-people",     label:"People"},
+    {id:"setup-catalog",    label:"Master"},
+  ]},
+  {section:"Settings", items:[
+    {id:"settings-general", label:"General"},
+    {id:"settings-danger",  label:"Danger Zone"},
+  ]},
+];
+
+export default function App(){
+  const [db,setDb]=useState(null);
+  const [tab,setTab]=useState("overview");
+  const [menuOpen,setMenuOpen]=useState(false);
+  const [owners,setOwners]=useState([]);
+  const [collapsed,setCollapsed]=useState(new Set()); // set of section indices that are collapsed
+  const toggleCollapse=si=>setCollapsed(prev=>{const n=new Set(prev);n.has(si)?n.delete(si):n.add(si);return n;});
+
+  useEffect(()=>{
+    const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
+    if(u&&k){const c=createClient(u,k);setDb(c);loadOwners(c);}
+  },[]);
+
+  const loadOwners=async client=>{
+    const {data}=await (client||db).from("owners").select();
+    setOwners(data||[]);
+  };
+
+  if(!db) return <Setup onDone={c=>{setDb(c);loadOwners(c);}}/>;
+
+  return(
+    <div style={{minHeight:"100vh",background:bg,color:txt,fontFamily:"'Manrope',system-ui,sans-serif",fontSize:14,fontWeight:400}}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700&display=swap');
+        *{box-sizing:border-box;margin:0;padding:0;}
+        html{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;}
+        body{background:${bg};font-family:'Manrope',system-ui,sans-serif;font-weight:400;color:${txt};}
+        @media(max-width:640px){.desk-nav{display:none!important}.mob-hdr{display:flex!important}.main-wrap{margin-left:0!important;padding:20px 16px 80px!important;padding-top:72px!important}}
+        @media(min-width:641px){.mob-hdr{display:none!important}}
+        input,select,textarea{font-family:'Manrope',sans-serif!important;}
+        button{font-family:'Manrope',sans-serif!important;}
+        input:focus,select:focus{border-color:${txt}!important;box-shadow:none!important;outline:none;}
+        input::placeholder{color:${mut};opacity:0.7;}
+        tr:hover td{background:${surf2};}
+        ::-webkit-scrollbar{width:3px;height:3px;}
+        ::-webkit-scrollbar-track{background:transparent;}
+        ::-webkit-scrollbar-thumb{background:${bdr2};border-radius:10px;}
+        .pv-num{font-variant-numeric:tabular-nums;letter-spacing:-0.02em;}
+      `}</style>
+      <nav className="desk-nav" style={{position:"fixed",top:0,left:0,bottom:0,width:224,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",zIndex:10}}>
+        <div style={{padding:"32px 24px 28px"}}>
+          <div style={{fontSize:15,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
+          <div style={{fontSize:10,color:mut,marginTop:4,letterSpacing:"0.1em",textTransform:"uppercase",fontWeight:500}}>Wealth Tracker</div>
+        </div>
+        <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
+          {NAV.map((section,si)=>{
+            const isCollapsed=collapsed.has(si);
+            const hasItems=section.items.length>0;
+            if(section.comingSoon&&!hasItems) return(
+              <div key={si} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 12px",borderRadius:8,marginBottom:1,opacity:0.45,cursor:"not-allowed"}}>
+                <span style={{fontSize:12,fontWeight:500,color:mut,letterSpacing:"-0.01em"}}>{section.section}</span>
+                <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+              </div>
+            );
+            return(
+              <div key={si} style={{marginBottom:2}}>
+                <div onClick={()=>toggleCollapse(si)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 12px 5px",cursor:"pointer",marginTop:si>0?4:0,borderRadius:6,transition:"background 0.1s"}}
+                  onMouseEnter={e=>e.currentTarget.style.background=surf2}
+                  onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+                  <span style={{fontSize:9,fontWeight:700,color:mut,letterSpacing:"0.1em",textTransform:"uppercase"}}>{section.section}</span>
+                  <span style={{fontSize:14,color:mut,transform:isCollapsed?"rotate(-90deg)":"rotate(0deg)",transition:"transform 0.2s",display:"inline-block",lineHeight:1,fontWeight:400}}>▾</span>
+                </div>
+                {!isCollapsed&&section.items.map(t=>(
+                  t.comingSoon?(
+                    <div key={t.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",borderRadius:8,marginBottom:1,opacity:0.4,cursor:"not-allowed"}}>
+                      <span style={{fontSize:12,fontWeight:400,color:mut}}>{t.label}</span>
+                      <span style={{fontSize:9,color:mut,fontWeight:500,letterSpacing:"0.07em",textTransform:"uppercase",background:surf2,padding:"2px 6px",borderRadius:10,border:`1px solid ${bdr}`}}>soon</span>
+                    </div>
+                  ):(
+                    <div key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"7px 12px",cursor:"pointer",fontSize:12,fontWeight:tab===t.id?600:500,color:tab===t.id?txt:mut,background:tab===t.id?surf3:"transparent",borderRadius:8,marginBottom:1,transition:"all 0.12s",letterSpacing:"-0.01em"}}>
+                      <span>{t.label}</span>
+                      {t.beta&&<span style={{fontSize:8,color:acc,fontWeight:600,letterSpacing:"0.07em",textTransform:"uppercase",background:acc+"15",padding:"2px 5px",borderRadius:8,border:"1px solid "+acc+"33"}}>beta</span>}
+                    </div>
+                  )
+                ))}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{padding:"20px 24px 28px",borderTop:`1px solid ${bdr}`}}>
+          <div style={{fontSize:10,color:mut,letterSpacing:"0.08em",textTransform:"uppercase",fontWeight:500}}>Secured · Supabase</div>
+        </div>
+      </nav>
+      <div className="mob-hdr" style={{display:"none",position:"fixed",top:0,left:0,right:0,height:56,background:surf,borderBottom:`1px solid ${bdr}`,alignItems:"center",justifyContent:"space-between",padding:"0 16px",zIndex:100}}>
+        <div style={{fontSize:14,fontWeight:700,color:txt,letterSpacing:"-0.02em",fontFamily:"'Manrope',sans-serif"}}>PointsVault</div>
+        <button onClick={()=>setMenuOpen(o=>!o)} style={{background:"none",border:"none",cursor:"pointer",color:txt,fontSize:22,padding:"0 4px"}}>menu</button>
+      </div>
+      {menuOpen&&(
+        <div style={{position:"fixed",top:56,left:0,right:0,background:surf,borderBottom:`1px solid ${bdr}`,zIndex:99,boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}}>
+          {NAV.map((section,si)=>(
+            <div key={si}>
+              {section.items.length>0&&<div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 20px 4px",background:surf3}}>{section.section}</div>}
+              {section.comingSoon&&section.items.length===0&&<div style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{section.section}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>coming soon</span></div>}
+              {section.items.map(t=>t.comingSoon?(
+                <div key={t.id} style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{t.label}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>coming soon</span></div>
+              ):(
+                <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"10px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+      <main className="main-wrap" style={{marginLeft:224,padding:"44px 48px 100px",minHeight:"100vh",background:bg}}>
+        {tab==="overview"         &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
+        {tab==="my-cards"         &&<MyCards db={db} owners={owners}/>}
+        {tab==="my-programs"      &&<MyPrograms db={db} owners={owners}/>}
+        {tab==="transfer"         &&<TransferPoints db={db} owners={owners}/>}
+        {tab==="transfer-history" &&<TransferHistory db={db} owners={owners}/>}
+        {tab==="vouchers"         &&<Vouchers db={db} owners={owners}/>}
+        {tab==="setup-owners"     &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
+        {tab==="setup-people"     &&<SetupPeople db={db}/>}
         {tab==="setup-catalog"    &&<Catalog db={db}/>}
         {tab==="settings-general" &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
         {tab==="settings-danger"  &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
