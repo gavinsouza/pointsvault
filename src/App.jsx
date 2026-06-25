@@ -3412,7 +3412,71 @@ function Secret({label,value}){
   );
 }
 
-function Vouchers({db,owners})
+function Vouchers({db,owners}){
+  const [rows,setRows]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [show,setShow]=useState(false);
+  const [edit,setEdit]=useState(null);
+  const eF={owner_id:"",title:"",code:"",expiry:"",value:"",notes:""};
+  const [f,setF]=useState(eF);
+  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const {data}=await db.from("vouchers").select();
+    setRows((data||[]).sort((a,b)=>new Date(a.expiry||"2099")-new Date(b.expiry||"2099")));
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const save=async()=>{
+    if(!f.title.trim()) return alert("Title required");
+    const p={owner_id:f.owner_id||null,title:f.title.trim(),code:f.code.trim(),expiry:f.expiry||null,value:parseFloat(f.value)||null,notes:f.notes.trim()};
+    if(edit){await db.from("vouchers").update(edit.id,p);}
+    else{await db.from("vouchers").insert(p);}
+    setShow(false);setEdit(null);setF(eF);load();
+  };
+  const del=async id=>{if(!confirm("Delete voucher?")) return;await db.from("vouchers").delete(id);load();};
+  const openEdit=v=>{setEdit(v);setF({owner_id:v.owner_id||"",title:v.title||"",code:v.code||"",expiry:v.expiry||"",value:String(v.value||""),notes:v.notes||""});setShow(true);};
+
+  const today=new Date().toISOString().split("T")[0];
+  const expired=v=>v.expiry&&v.expiry<today;
+
+  return(
+    <div>
+      <Hdr title="Vouchers" sub={`${rows.filter(v=>!expired(v)).length} active`}
+        action={<button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>}/>
+      {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:rows.length===0?<Empty icon="V" msg="No vouchers yet"/>:(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+          {rows.map(v=>(
+            <Card key={v.id} style={{opacity:expired(v)?0.5:1,position:"relative"}}>
+              {expired(v)&&<div style={{position:"absolute",top:12,right:12,fontSize:9,fontWeight:600,color:red,textTransform:"uppercase",letterSpacing:"0.07em",background:red+"15",padding:"2px 8px",borderRadius:10}}>Expired</div>}
+              <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:4,letterSpacing:"-0.01em"}}>{v.title}</div>
+              {v.code&&<div style={{fontSize:12,fontFamily:"monospace",background:surf2,padding:"4px 8px",borderRadius:6,color:txt,marginBottom:6,display:"inline-block"}}>{v.code}</div>}
+              <div style={{fontSize:12,color:mut,marginBottom:2}}>{owners.find(o=>o.id===v.owner_id)?.name||"—"}</div>
+              {v.value&&<div style={{fontSize:13,fontWeight:600,color:grn,marginBottom:2}}>{inrFmt(v.value)}</div>}
+              {v.expiry&&<div style={{fontSize:11,color:expired(v)?red:mut,marginBottom:2}}>Expires: {new Date(v.expiry).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>}
+              {v.notes&&<div style={{fontSize:11,color:mut,marginTop:4}}>{v.notes}</div>}
+              <div style={{display:"flex",gap:6,marginTop:12}}>
+                <button style={{...gbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>openEdit(v)}>Edit</button>
+                <button style={{...dbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>del(v.id)}>Delete</button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      <Modal show={show} onClose={()=>{setShow(false);setEdit(null);setF(eF);}} title={edit?"Edit Voucher":"Add Voucher"}>
+        {lbl("Title *")}<input style={inp} placeholder="Amazon Gift Card" value={f.title} onChange={up("title")}/>
+        {lbl("Owner")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}><option value="">—</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
+        {lbl("Code")}<input style={inp} placeholder="XXXX-XXXX-XXXX" value={f.code} onChange={up("code")}/>
+        {lbl("Value (Rs)")}<input style={inp} type="number" placeholder="500" value={f.value} onChange={up("value")}/>
+        {lbl("Expiry date")}<input style={inp} type="date" value={f.expiry} onChange={up("expiry")}/>
+        {lbl("Notes")}<input style={inp} placeholder="Any notes" value={f.notes} onChange={up("notes")}/>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>{edit?"Save Changes":"Add Voucher"}</button>
+      </Modal>
+    </div>
+  );
+}
 
 // ── SetupOwners ───────────────────────────────────────────────────────────────
 function SetupOwners({db,owners,reloadOwners}){
