@@ -3864,22 +3864,38 @@ function SpendUpload({db,owners}){
     setAmtType(m.amount_type||"single"); setAmtCol(Number(m.amount_col)||2);
     setDebitCol(Number(m.debit_col)||2); setCreditCol(Number(m.credit_col)||3);
     setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(Number(m.skip_rows)||1);
-    setManualDelim(m.delimiter||"auto");
+    const delim=m.delimiter||"auto";
+    setManualDelim(delim);
     setSelMapping(m.id);
+    // Re-parse with restored delimiter if we have raw text
+    if(rawText){
+      const rows=parseCSV(rawText, delim==="auto"?undefined:delim);
+      setRawRows(rows);
+      setColWidths([]);
+    }
   };
 
-  const buildParsed=()=>{
-    const dataRows=rawRows.slice(skipRows);
+  const buildParsed=(opts={})=>{
+    const sk=opts.skipRows!==undefined?opts.skipRows:skipRows;
+    const dc=opts.dateCol!==undefined?opts.dateCol:dateCol;
+    const dsc=opts.descCol!==undefined?opts.descCol:descCol;
+    const ac=opts.amtCol!==undefined?opts.amtCol:amtCol;
+    const at=opts.amtType||amtType;
+    const dbc=opts.debitCol!==undefined?opts.debitCol:debitCol;
+    const crc=opts.creditCol!==undefined?opts.creditCol:creditCol;
+    const df=opts.dateFormat||dateFormat;
+    const rows=opts.rawRows||rawRows;
+    const dataRows=rows.slice(sk);
     return dataRows.filter(r=>r.length>1).map(row=>{
-      const desc=(row[descCol]||"").replace(/"/g,"").trim();
-      const dateStr=parseDate(row[dateCol]||"",dateFormat);
+      const desc=(row[dsc]||"").replace(/"/g,"").trim();
+      const dateStr=parseDate(row[dc]||"",df);
       let amount=0;
-      if(amtType==="single"){
-        const raw=(row[amtCol]||"").replace(/[,'"₹Rs\s]/g,"").trim();
+      if(at==="single"){
+        const raw=(row[ac]||"").replace(/[,'"₹Rs\s]/g,"").trim();
         amount=Math.abs(parseFloat(raw)||0);
       } else {
-        const dRaw=(row[debitCol]||"").replace(/[,'"₹Rs]/g,"").trim();
-        const cRaw=(row[creditCol]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const dRaw=(row[dbc]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const cRaw=(row[crc]||"").replace(/[,'"₹Rs]/g,"").trim();
         const d=parseFloat(dRaw)||0;
         const c=parseFloat(cRaw)||0;
         amount=d>0?d:-c;
@@ -4117,11 +4133,11 @@ function SpendUpload({db,owners}){
               <div style={{display:"flex",gap:6}}>
                 <select style={{...ss,flex:1}} value={manualDelim} onChange={e=>setManualDelim(e.target.value)}>
                   <option value="auto">Auto-detect</option>
-                  <option value="~I~">~I~ (HDFC)</option>
-                  <option value=",">Comma (,)</option>
+                  <option value="|">Pipe | (HDFC, most Indian banks)</option>
+                  <option value=",">Comma , (standard CSV)</option>
                   <option value="	">Tab</option>
-                  <option value=";">Semicolon (;)</option>
-                  <option value="|">Pipe (|)</option>
+                  <option value=";">Semicolon ;</option>
+                  <option value="~I~">~I~ (legacy HDFC)</option>
                 </select>
                 <button style={{...gbtn,fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{
                   if(rawText){const rows=parseCSV(rawText,manualDelim==="auto"?undefined:manualDelim);setRawRows(rows);setColWidths([]);}
@@ -4198,7 +4214,7 @@ function SpendUpload({db,owners}){
       <Hdr title="Review Transactions" sub={`${total} transactions · ₹${totalAmt.toLocaleString("en-IN")}`}/>
       <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:12,color:mut}}>
-          {total===0&&<div style={{color:red,fontWeight:500,marginBottom:6}}>No transactions found. Check: Skip rows={skipRows}, Date col={dateCol+1}, Desc col={descCol+1}, Amt col={amtCol+1}</div>}
+          {total===0&&<div style={{color:red,fontWeight:500,marginBottom:6}}>No transactions found. Check settings — Skip rows: {skipRows}, Date col: Col {dateCol+1}, Desc col: Col {descCol+1}, Amount col: Col {amtCol+1}. Make sure these match your CSV preview.</div>}
           {reimb>0&&<span style={{color:acc,fontWeight:500}}>{reimb} reimbursable · </span>}Review and adjust categories before importing.
         </div>
         <div style={{display:"flex",gap:8}}>
