@@ -3898,7 +3898,6 @@ function SpendUpload({db,owners}){
   };
 
   const goToPreview=()=>{
-    if(!selCard) return alert("Please select a card");
     setParsed(buildParsed());
     setStep(3);
   };
@@ -4104,11 +4103,12 @@ function SpendUpload({db,owners}){
               <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
             </div>
             <div>
-              {lbl("Card")}
+              {lbl("Card (optional — link transactions to a My Card)")}
               <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
-                <option value="">Select card…</option>
+                <option value="">No card selected</option>
                 {cards.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
               </select>
+              {cards.length===0&&<div style={{fontSize:11,color:mut,marginTop:4}}>Add a My Card in Points & Miles → My Cards to link transactions to a card.</div>}
             </div>
             <div>
               {lbl("Delimiter")}
