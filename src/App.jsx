@@ -5487,10 +5487,12 @@ function SpendTransactions({db,owners}){
 
   const saveSplit=async()=>{
     if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+showSplit.amount.toLocaleString("en-IN"));
-    // Delete existing splits
-    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
-    for(const s of (existing||[])) await db.from("transaction_splits").delete(s.id);
-    // Insert new splits
+    // Delete existing splits AND ledger entries for this transaction
+    const {data:existingSplits}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
+    for(const s of (existingSplits||[])) await db.from("transaction_splits").delete(s.id);
+    const {data:existingLedger}=await db.from("ledger_entries").filter("transaction_id",showSplit.id);
+    for(const e of (existingLedger||[])) await db.from("ledger_entries").delete(e.id);
+    // Insert new splits + ledger entries
     for(const s of splits){
       if(Number(s.amount)<=0) continue;
       await db.from("transaction_splits").insert({
@@ -5499,12 +5501,9 @@ function SpendTransactions({db,owners}){
         amount:Number(s.amount),
         is_personal:s.is_personal,
       });
-      // Create ledger entry for non-personal splits
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({
           person_id:s.person_id,
-          you_paid:Number(s.amount),
-          they_paid:0,
           amount:Number(s.amount),
           direction:"owed_to_me",
           description:showSplit.description||"CC transaction",
@@ -5966,13 +5965,16 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
 
   const saveSplit=async()=>{
     if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+Number(showSplit.amount).toLocaleString("en-IN"));
-    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
-    for(const s of (existing||[])) await db.from("transaction_splits").delete(s.id);
+    // Delete old splits + ledger entries, then recreate fresh
+    const {data:oldSplits}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
+    for(const s of (oldSplits||[])) await db.from("transaction_splits").delete(s.id);
+    const {data:oldLedger}=await db.from("ledger_entries").filter("transaction_id",showSplit.id);
+    for(const e of (oldLedger||[])) await db.from("ledger_entries").delete(e.id);
     for(const s of splits){
       if(Number(s.amount)<=0) continue;
       await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
       if(!s.is_personal&&s.person_id){
-        await db.from("ledger_entries").insert({person_id:s.person_id,you_paid:Number(s.amount),amount:Number(s.amount),direction:"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
+        await db.from("ledger_entries").insert({person_id:s.person_id,amount:Number(s.amount),direction:"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
       }
     }
     const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
