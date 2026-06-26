@@ -5245,6 +5245,16 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                     <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:10,color:mut}}>{t.category}</span>
                   </td>
                   <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
+                  <td style={{padding:"7px 8px",minWidth:100}}>
+                    {t.is_reimbursable&&splitsMap[t.id]&&splitsMap[t.id].length>0?(
+                      <div style={{display:"flex",flexWrap:"wrap",gap:2}}>
+                        {splitsMap[t.id].map((sp,si)=>{
+                          const pName=sp.is_personal?"Me":people.find(p=>p.id===sp.person_id)?.name||"?";
+                          return<span key={si} style={{fontSize:10,background:acc+"12",borderRadius:6,padding:"1px 6px",color:acc,fontWeight:500,whiteSpace:"nowrap"}}>{pName} ₹{Number(sp.amount).toLocaleString("en-IN")}</span>;
+                        })}
+                      </div>
+                    ):<span style={{fontSize:10,color:mut}}>—</span>}
+                  </td>
                   <td style={{padding:"7px 8px",textAlign:"center",fontSize:10}}>
                     {t.statement_month?
                       <button onClick={()=>{const s=stmts.find(x=>x.statement_month===t.statement_month);if(s)setSelStmt(s);}} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:10,fontWeight:500,textDecoration:"underline",textDecorationStyle:"dotted",padding:0,fontFamily:"'Manrope',sans-serif"}}>
@@ -5666,15 +5676,12 @@ function SpendLedger({db,owners}){
   },[db]);
   useEffect(()=>{load();},[load]);
 
-  // Balance = sum(you_paid) - sum(they_paid)
+  // Balance: owed_to_me = you paid for them (+), i_owe = they paid for you (-)
   const balance=pid=>{
     const pe=entries.filter(e=>e.person_id===pid);
-    const yp=pe.reduce((a,e)=>a+Number(e.you_paid||e.amount||0),0);
-    const tp=pe.reduce((a,e)=>a+Number(e.they_paid||0),0);
-    // Legacy: direction="owed_to_me" = you_paid, direction="i_owe" = they_paid
-    const legYp=pe.filter(e=>e.direction==="owed_to_me"&&!e.you_paid&&!e.they_paid).reduce((a,e)=>a+Number(e.amount||0),0);
-    const legTp=pe.filter(e=>e.direction==="i_owe"&&!e.you_paid&&!e.they_paid).reduce((a,e)=>a+Number(e.amount||0),0);
-    return (yp+legYp)-(tp+legTp);
+    const yp=pe.filter(e=>e.direction==="owed_to_me").reduce((a,e)=>a+Number(e.amount||0),0);
+    const tp=pe.filter(e=>e.direction==="i_owe").reduce((a,e)=>a+Number(e.amount||0),0);
+    return yp-tp;
   };
 
   const balLabel=(bal,name)=>bal>0?`${name} owes you ₹${Math.abs(bal).toLocaleString("en-IN")}`:bal<0?`You owe ${name} ₹${Math.abs(bal).toLocaleString("en-IN")}`:"Settled";
@@ -5686,9 +5693,7 @@ function SpendLedger({db,owners}){
     if(!selPerson) return alert("No person selected");
     await db.from("ledger_entries").insert({
       person_id:selPerson.id,
-      you_paid:yp,
-      they_paid:tp,
-      amount:yp||tp, // legacy compat
+      amount:yp||tp,
       direction:yp>0?"owed_to_me":"i_owe",
       description:desc||"Manual entry",
       entry_date:entryDate,
@@ -5716,8 +5721,8 @@ function SpendLedger({db,owners}){
     // Running balance
     let running=0;
     const entriesWithBal=personEntries.map(e=>{
-      const yp=Number(e.you_paid||((e.direction==="owed_to_me"&&!e.they_paid)?e.amount:0)||0);
-      const tp=Number(e.they_paid||((e.direction==="i_owe"&&!e.you_paid)?e.amount:0)||0);
+      const yp=e.direction==="owed_to_me"?Number(e.amount||0):0;
+      const tp=e.direction==="i_owe"?Number(e.amount||0):0;
       running+=yp-tp;
       return{...e,_yp:yp,_tp:tp,_bal:running};
     });
@@ -5849,3 +5854,294 @@ function SpendLedger({db,owners}){
 }
 
 
+
+// ── StmtDetail ────────────────────────────────────────────────────────────────
+function StmtDetail({stmt,db,owners,onBack,onSave}){
+  const [txns,setTxns]=useState([]);
+  const [people,setPeople]=useState([]);
+  const [categories,setCategories]=useState([]);
+  const [txnSplitsMap,setTxnSplitsMap]=useState({});
+  const [colW,setColW]=useState([90,200,120,90,150,80]);
+  const [search,setSearch]=useState("");
+  const [sortBy,setSortBy]=useState("date");
+  const [sortDir,setSortDir]=useState("desc");
+  const [editId,setEditId]=useState(null);
+  const [editRow,setEditRow]=useState(null);
+  const [showSplit,setShowSplit]=useState(null);
+  const [splits,setSplits]=useState([]);
+  const [page,setPage]=useState(0);
+  const PAGE=15;
+
+  const loadData=useCallback(async()=>{
+    const [p,cats,t,sp]=await Promise.all([
+      db.from("people").select(),
+      db.from("spend_categories").select(),
+      db.from("spend_transactions").filter("statement_id",stmt.id),
+      db.from("transaction_splits").select(),
+    ]);
+    setPeople(p.data||[]);
+    setCategories((cats.data||[]).map(x=>x.name).sort());
+    setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    const map={};
+    (sp.data||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
+    setTxnSplitsMap(map);
+  },[db,stmt.id]);
+  useEffect(()=>{loadData();},[loadData]);
+
+  const filtered=txns.filter(t=>!search||t.description?.toLowerCase().includes(search.toLowerCase())||t.category?.toLowerCase().includes(search.toLowerCase()));
+  const sorted=[...filtered].sort((a,b)=>{
+    let v=0;
+    if(sortBy==="date") v=new Date(a.txn_date)-new Date(b.txn_date);
+    else if(sortBy==="amount") v=Number(a.amount||0)-Number(b.amount||0);
+    else if(sortBy==="category") v=(a.category||"").localeCompare(b.category||"");
+    else if(sortBy==="desc") v=(a.description||"").localeCompare(b.description||"");
+    return sortDir==="desc"?-v:v;
+  });
+  const totalPages=Math.ceil(sorted.length/PAGE);
+  const pageTxns2=sorted.slice(page*PAGE,(page+1)*PAGE);
+  const total=txns.reduce((a,t)=>a+Number(t.amount||0),0);
+
+  const toggleSort=col=>{if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortBy(col);setSortDir("desc");}};
+  const sortHdr=(col,label,align)=>(
+    <th onClick={()=>toggleSort(col)} style={{padding:"6px 8px",textAlign:align||"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,position:"relative",background:surf,whiteSpace:"nowrap"}}>
+      {label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
+    </th>
+  );
+
+  const resizeHandle=(ci)=>(
+    <span onMouseDown={e=>{e.preventDefault();const sx=e.clientX;const sw=colW[ci];const mv=mv=>{setColW(w=>{const n=[...w];n[ci]=Math.max(ci===1?80:40,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
+      style={{position:"absolute",right:0,top:"15%",bottom:"15%",width:3,cursor:"col-resize",background:acc+"66",borderRadius:2}}
+      onMouseEnter={e=>e.currentTarget.style.background=acc}
+      onMouseLeave={e=>e.currentTarget.style.background=acc+"66"}/>
+  );
+
+  const saveEdit=async()=>{
+    await db.from("spend_transactions").update(editId,{category:editRow.category,description:editRow.description});
+    setEditId(null);
+    await loadData();
+    onSave&&onSave();
+  };
+
+  const delTxn=async id=>{
+    const {data:le}=await db.from("ledger_entries").filter("transaction_id",id);
+    if((le||[]).length>0){
+      const ans=confirm(`This transaction has ${le.length} ledger entr${le.length>1?"ies":"y"}. Delete them too?`);
+      if(ans===null) return;
+      if(ans) for(const e of le) await db.from("ledger_entries").delete(e.id);
+    } else {
+      if(!confirm("Delete this transaction?")) return;
+    }
+    const {data:sp}=await db.from("transaction_splits").filter("transaction_id",id);
+    for(const s of (sp||[])) await db.from("transaction_splits").delete(s.id);
+    await db.from("spend_transactions").delete(id);
+    await loadData();
+    onSave&&onSave();
+  };
+
+  const openSplit=t=>{
+    setShowSplit(t);
+    const existing=txnSplitsMap[t.id];
+    if(existing&&existing.length>0) setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
+    else setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
+  };
+  const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
+  const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
+  const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
+  const splitRemaining=showSplit?(Number(showSplit.amount)-splitTotal):0;
+
+  const saveSplit=async()=>{
+    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+Number(showSplit.amount).toLocaleString("en-IN"));
+    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
+    for(const s of (existing||[])) await db.from("transaction_splits").delete(s.id);
+    for(const s of splits){
+      if(Number(s.amount)<=0) continue;
+      await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
+      if(!s.is_personal&&s.person_id){
+        await db.from("ledger_entries").insert({person_id:s.person_id,you_paid:Number(s.amount),amount:Number(s.amount),direction:"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
+      }
+    }
+    const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
+    await db.from("spend_transactions").update(showSplit.id,{is_reimbursable:hasReimb});
+    setShowSplit(null);
+    await loadData();
+    onSave&&onSave();
+  };
+
+  // Mini dashboard stats
+  const myShare=txns.reduce((a,t)=>{
+    const sp=txnSplitsMap[t.id];
+    if(!sp||!sp.length) return a+Number(t.amount||0);
+    const mine=sp.find(s=>s.is_personal);
+    return a+Number(mine?.amount||0);
+  },0);
+  const othersShare=total-myShare;
+  const catTotals={};
+  txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+  const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9"];
+  let angle=0;
+  const pieSlices=topCats.length>0?topCats.map(([cat,val],i)=>{
+    const pct=val/total; const a1=angle; const a2=angle+pct*2*Math.PI; angle=a2;
+    const cx=50,cy=50,r=42;
+    const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
+    const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
+    return{cat,val,pct,color:PIE_COLORS[i],d:`M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${pct>0.5?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`};
+  }):[];
+
+  return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+        <button onClick={onBack} style={{...gbtn,fontSize:12}}>← Back</button>
+        <div style={{flex:1}}>
+          <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{fmtMonth(stmt.statement_month)}</div>
+          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions · ₹{total.toLocaleString("en-IN")}</div>
+        </div>
+      </div>
+
+      {/* Mini dashboard */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
+        {[{label:"Total Spend",value:total},{label:"My Share",value:myShare,color:grn},{label:"Others' Share",value:othersShare,color:acc},{label:"Avg Transaction",value:txns.length>0?total/txns.length:0}].map((s,i)=>(
+          <Card key={i} style={{padding:"12px 14px"}}>
+            <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4,fontWeight:500}}>{s.label}</div>
+            <div style={{fontSize:17,fontWeight:700,color:s.color||txt}}>₹{(s.value||0).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+          </Card>
+        ))}
+        {pieSlices.length>0&&<Card style={{padding:"12px 14px",gridColumn:"span 2"}}>
+          <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8,fontWeight:500}}>By Category</div>
+          <div style={{display:"flex",gap:12,alignItems:"center"}}>
+            <svg width="80" height="80" viewBox="0 0 100 100" style={{flexShrink:0}}>
+              {pieSlices.map((s,i)=><path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1"/>)}
+            </svg>
+            <div style={{flex:1}}>
+              {topCats.map(([cat,val],i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:11}}>
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <div style={{width:7,height:7,borderRadius:1,background:PIE_COLORS[i],flexShrink:0}}/>
+                    <span style={{color:txt}}>{cat}</span>
+                  </div>
+                  <span style={{fontWeight:600,color:txt,marginLeft:8}}>₹{val.toLocaleString("en-IN")}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Card>}
+      </div>
+
+      {/* Search + sort */}
+      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search transactions…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
+        <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={sortBy+"-"+sortDir} onChange={e=>{const[s,d]=e.target.value.split("-");setSortBy(s);setSortDir(d);}}>
+          <option value="date-desc">Date (newest)</option>
+          <option value="date-asc">Date (oldest)</option>
+          <option value="amount-desc">Amount ↓</option>
+          <option value="amount-asc">Amount ↑</option>
+          <option value="category-asc">Category A-Z</option>
+        </select>
+      </div>
+
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+          <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:i===1?80:40}}/>)}</colgroup>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${bdr}`}}>
+              {[["date","Date"],["desc","Description"],["category","Category"],["amount","Amount"]].map(([col,label],ci)=>(
+                <th key={ci} onClick={()=>toggleSort(col)} style={{padding:"6px 8px",textAlign:ci===3?"right":"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,position:"relative",background:surf}}>
+                  {label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
+                  {resizeHandle(ci)}
+                </th>
+              ))}
+              <th style={{padding:"6px 8px",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,position:"relative",background:surf}}>Split{resizeHandle(4)}</th>
+              <th style={{padding:"6px 8px",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,position:"relative",background:surf}}>Edit{resizeHandle(5)}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pageTxns2.map(t=>(
+              <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
+                <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
+                <td style={{padding:"7px 8px",color:txt,wordBreak:"break-word"}}>
+                  {editId===t.id?<input style={{...inp,marginBottom:0,width:"100%",fontSize:11}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
+                </td>
+                <td style={{padding:"7px 8px",wordBreak:"break-word"}}>
+                  {editId===t.id?
+                    <select style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}} value={editRow.category} onChange={e=>setEditRow(r=>({...r,category:e.target.value}))}>
+                      {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                    </select>:
+                    <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:10,color:mut}}>{t.category}</span>
+                  }
+                </td>
+                <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
+                <td style={{padding:"7px 8px",minWidth:80}}>
+                  {t.is_reimbursable&&txnSplitsMap[t.id]&&txnSplitsMap[t.id].length>0?(
+                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                      {txnSplitsMap[t.id].map((sp,si)=>{
+                        const pName=sp.is_personal?"Me":people.find(p=>p.id===sp.person_id)?.name||"?";
+                        return<span key={si} style={{fontSize:10,background:acc+"12",borderRadius:6,padding:"1px 6px",color:acc,fontWeight:500,whiteSpace:"nowrap"}}>{pName} ₹{Number(sp.amount).toLocaleString("en-IN")}</span>;
+                      })}
+                      <button onClick={()=>openSplit(t)} style={{fontSize:10,color:mut,background:"none",border:"none",cursor:"pointer",padding:"1px 0",textAlign:"left",fontFamily:"'Manrope',sans-serif"}}>✏ edit</button>
+                    </div>
+                  ):(
+                    <button onClick={()=>openSplit(t)} style={{background:"none",border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",fontSize:11,padding:"2px 8px",color:mut,fontFamily:"'Manrope',sans-serif"}}>+ Split</button>
+                  )}
+                </td>
+                <td style={{padding:"7px 8px",textAlign:"center"}}>
+                  {editId===t.id?(
+                    <div style={{display:"flex",gap:3,justifyContent:"center"}}>
+                      <button style={{...gbtn,padding:"2px 7px",fontSize:10}} onClick={saveEdit}>Save</button>
+                      <button style={{...gbtn,padding:"2px 7px",fontSize:10}} onClick={()=>setEditId(null)}>×</button>
+                    </div>
+                  ):(
+                    <div style={{display:"flex",gap:3,justifyContent:"center"}}>
+                      <button style={{...gbtn,padding:"2px 7px",fontSize:10}} onClick={()=>{setEditId(t.id);setEditRow({...t});}}>Edit</button>
+                      <button style={{...dbtn,padding:"2px 7px",fontSize:10}} onClick={()=>delTxn(t.id)}>Del</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {totalPages>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,fontSize:12,color:mut}}>
+        <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"4px 12px",opacity:page===0?0.4:1}}>← Prev</button>
+        <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,sorted.length)} of {sorted.length}</span>
+        <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
+      </div>}
+
+      {/* Split Modal */}
+      <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
+        {showSplit&&<>
+          <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:2}}>{showSplit.description}</div>
+          <div style={{fontSize:12,color:mut,marginBottom:16}}>Total: <strong style={{color:txt}}>₹{Number(showSplit.amount).toLocaleString("en-IN")}</strong></div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+            {splits.map((s,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:10,alignItems:"center",padding:"12px 14px",background:s.is_personal?grn+"08":surf2,borderRadius:12,border:`1px solid ${s.is_personal?grn+"30":bdr}`}}>
+                <div>
+                  {s.is_personal?(
+                    <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:grn}}/><span style={{fontSize:13,fontWeight:600,color:txt}}>Mine</span></div>
+                  ):(
+                    <select style={{width:"100%",fontSize:13,border:"none",background:"transparent",color:txt,fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none",cursor:"pointer"}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
+                      <option value="">Select person…</option>
+                      {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4,background:surf,borderRadius:8,padding:"4px 10px",border:`1px solid ${bdr}`}}>
+                  <span style={{fontSize:12,color:mut,fontWeight:500}}>₹</span>
+                  <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value.replace(/[^0-9.]/g,""))}/>
+                </div>
+                {!s.is_personal?<button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>:<div style={{width:28}}/>}
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12,padding:"10px 14px",background:Math.abs(splitRemaining)<0.01?grn+"10":red+"08",borderRadius:10,border:`1px solid ${Math.abs(splitRemaining)<0.01?grn+"30":red+"30"}`}}>
+            <button style={{fontSize:12,fontWeight:600,color:acc,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"'Manrope',sans-serif"}} onClick={addSplit}>+ Add person</button>
+            <div style={{fontSize:12,fontWeight:700,color:Math.abs(splitRemaining)<0.01?grn:red}}>
+              {Math.abs(splitRemaining)<0.01?"✓ Balanced":splitRemaining>0?`-₹${splitRemaining.toLocaleString("en-IN")} unallocated`:`+₹${Math.abs(splitRemaining).toLocaleString("en-IN")} over`}
+            </div>
+          </div>
+          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.5}} onClick={saveSplit}>Save Split</button>
+        </>}
+      </Modal>
+    </div>
+  );
+}
