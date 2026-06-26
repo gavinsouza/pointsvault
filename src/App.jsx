@@ -5353,16 +5353,12 @@ function SpendCards({db,owners,onNavigate}){
 
 
 
-  // Reassign untagged statement
-;
-
   return(
     <div>
       <Hdr title="My Cards" sub="Spend tracker view"/>
 
 
-      {tab==="cards"&&<>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
           {visibleCards.map(card=>{
             const m=mCards.find(x=>x.id===card.master_id);
             const o=owners.find(x=>x.id===card.owner_id);
@@ -5395,7 +5391,6 @@ function SpendCards({db,owners,onNavigate}){
             })}
           </div>
         </div>}
-      </>}
 
     </div>
   );
