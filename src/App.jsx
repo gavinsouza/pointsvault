@@ -4121,6 +4121,8 @@ function SpendUpload({db,owners}){
   };
 
   const doImport=async()=>{
+    if(!selCard) return alert("Please select a card before importing. Every statement must be linked to a card.");
+    if(!stmtMonthSel) return alert("Please set a statement month before importing.");
     setImporting(true);
     let added=0,skipped=0;
     // Check for duplicate statement (same card + same month)
@@ -4350,7 +4352,8 @@ function SpendUpload({db,owners}){
               <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
             </div>
             <div>
-              {lbl("Card (optional — link transactions to a My Card)")}
+              {lbl("Card *")}
+              {!selCard&&<div style={{fontSize:11,color:red,marginBottom:4}}>Required — select a card before importing</div>}
               <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
                 <option value="">No card selected</option>
                 {(()=>{
@@ -4998,6 +5001,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   // Reassign statement
   const [reassignTarget,setReassignTarget]=useState(null);
   const [reassignCardId,setReassignCardId]=useState("");
+  const [editMonthStmt,setEditMonthStmt]=useState(null);
+  const [editMonthM,setEditMonthM]=useState("");
+  const [editMonthY,setEditMonthY]=useState("");
   const doReassign=async()=>{
     if(!reassignCardId||!reassignTarget) return;
     await db.from("statements").update(reassignTarget.id,{card_id:reassignCardId});
@@ -5045,6 +5051,41 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     </div>
   );
 
+  if(editMonthStmt) return(
+    <div>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
+        <button onClick={()=>setEditMonthStmt(null)} style={{...gbtn,fontSize:12}}>← Cancel</button>
+        <div style={{fontSize:18,fontWeight:700,color:txt}}>Rename Statement</div>
+      </div>
+      <Card style={{maxWidth:400}}>
+        <div style={{fontSize:13,color:mut,marginBottom:16}}>Current: <strong style={{color:txt}}>{fmtMonth(editMonthStmt.statement_month)}</strong></div>
+        {lbl("Month")}
+        <select style={inp} value={editMonthM} onChange={e=>setEditMonthM(e.target.value)}>
+          <option value="">Select month…</option>
+          {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
+            <option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>
+          ))}
+        </select>
+        {lbl("Year")}
+        <select style={inp} value={editMonthY} onChange={e=>setEditMonthY(e.target.value)}>
+          <option value="">Select year…</option>
+          {Array.from({length:5},(_,i)=>(new Date().getFullYear()-2+i).toString()).map(y=>(
+            <option key={y} value={y}>{y}</option>
+          ))}
+        </select>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={async()=>{
+          if(!editMonthM||!editMonthY) return alert("Select both month and year");
+          const newM=editMonthY+"-"+editMonthM;
+          await db.from("statements").update(editMonthStmt.id,{statement_month:newM});
+          // Update all transactions linked to this statement
+          const {data:ts}=await db.from("spend_transactions").filter("statement_id",editMonthStmt.id);
+          for(const t of (ts||[])) await db.from("spend_transactions").update(t.id,{statement_month:newM});
+          setEditMonthStmt(null); load();
+        }}>Save New Month</button>
+      </Card>
+    </div>
+  );
+
   if(showStmts) return(
     <div>
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
@@ -5058,7 +5099,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               <div style={{cursor:"pointer"}} onClick={()=>setSelStmt(s)}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{fontSize:14,fontWeight:700,color:acc,textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmtMonth(s.statement_month)}</div>
-                  <button onClick={e=>{e.stopPropagation();const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];const curM=s.statement_month||"";const curMi=curM?parseInt(curM.split("-")[1])-1:0;const curY=curM?parseInt(curM.split("-")[0]):new Date().getFullYear();const mSel=window.prompt("Month (1-12):",curMi+1);if(!mSel) return;const ySel=window.prompt("Year (e.g. 2026):",curY);if(!ySel) return;const newM=String(ySel).padStart(4,"0")+"-"+String(mSel).padStart(2,"0");db.from("statements").update(s.id,{statement_month:newM}).then(()=>{db.from("spend_transactions").filter("statement_id",s.id).then(({data:ts})=>{Promise.all((ts||[]).map(t=>db.from("spend_transactions").update(t.id,{statement_month:newM}))).then(()=>load());});});}}
+                  <button onClick={e=>{e.stopPropagation();const cur=s.statement_month||"";setEditMonthStmt(s);setEditMonthM(cur?cur.split("-")[1]:"");setEditMonthY(cur?cur.split("-")[0]:String(new Date().getFullYear()));}}
                     style={{fontSize:10,color:mut,background:"none",border:`1px solid ${bdr}`,borderRadius:6,padding:"1px 8px",cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>✏ rename</button>
                 </div>
                 <div style={{fontSize:11,color:mut,marginTop:2}}>
@@ -5922,7 +5963,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     ]);
     setPeople(p.data||[]);
     setCategories((cats.data||[]).map(x=>x.name).sort());
-    setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    setTxns(allTxns.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     const map={};
     (sp.data||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
     setTxnSplitsMap(map);
