@@ -4782,16 +4782,18 @@ function SpendOverview({db,owners}){
   },[db]);
   useEffect(()=>{load();},[load]);
 
+  if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
+
   const now=new Date();
   const ytdStart=now.getFullYear()+"-01-01";
   const thisMonth=now.toISOString().slice(0,7);
   const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart).reduce((a,t)=>a+Number(t.amount||0),0);
   const monthSpend=txns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth).reduce((a,t)=>a+Number(t.amount||0),0);
+  const totalSpend=txns.reduce((a,t)=>a+Number(t.amount||0),0);
 
   const catTotals={};
   txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
   const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,6);
-  const totalSpend=txns.reduce((a,t)=>a+Number(t.amount||0),0);
 
   const cardSpend=cards.map(c=>{
     const m=mCards.find(x=>x.id===c.master_id);
@@ -4817,52 +4819,29 @@ function SpendOverview({db,owners}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <Card>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by Category</div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut}}>
-                <input type="checkbox" checked={pieMyShareOnly} onChange={e=>setPieMyShareOnly(e.target.checked)} style={{accentColor:acc}}/>
-                My share only
-              </label>
-              <div style={{position:"relative"}}>
-                <button style={{...gbtn,fontSize:10,padding:"3px 10px"}} onClick={()=>setShowPieFilter(f=>!f)}>
-                  Filter {pieExcludeCats.size>0?`(${pieExcludeCats.size} hidden)`:""}
-                </button>
-                {showPieFilter&&<div style={{position:"absolute",right:0,top:"100%",zIndex:10,background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 12px",minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
-                  <div style={{fontSize:10,color:mut,marginBottom:6,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em"}}>Hide categories</div>
-                  {allCategories.map(cat=>(
-                    <label key={cat} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"3px 0",fontSize:12,color:txt}}>
-                      <input type="checkbox" checked={pieExcludeCats.has(cat)} onChange={e=>{setPieExcludeCats(prev=>{const n=new Set(prev);e.target.checked?n.add(cat):n.delete(cat);return n;});}} style={{accentColor:acc}}/>
-                      {cat}
-                    </label>
-                  ))}
-                  <button style={{...gbtn,fontSize:10,marginTop:8,width:"100%"}} onClick={()=>{setPieExcludeCats(new Set());setShowPieFilter(false);}}>Clear all</button>
-                </div>}
-              </div>
-            </div>
-          </div>
-          {topCats.map(([cat,val],i)=>(
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+          {topCats.length===0?<div style={{color:mut,fontSize:12}}>No data yet</div>:topCats.map(([cat,val],i)=>(
             <div key={i} style={{marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
                 <span style={{color:txt}}>{cat}</span>
                 <span style={{fontWeight:600,color:txt}}>₹{val.toLocaleString("en-IN")}</span>
               </div>
               <div style={{height:4,background:bdr,borderRadius:2}}>
-                <div style={{height:4,background:acc,borderRadius:2,width:(totalSpend>0?(val/totalSpend*100):0)+"%"}}/>
+                <div style={{height:4,background:acc,borderRadius:2,width:totalSpend>0?((val/totalSpend)*100)+"%":"0%"}}/>
               </div>
             </div>
           ))}
         </Card>
         <Card>
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Card</div>
-          {cardSpend.length===0?<div style={{color:mut,fontSize:12}}>No spend data yet</div>:cardSpend.map((c,i)=>(
+          {cardSpend.length===0?<div style={{color:mut,fontSize:12}}>No data yet</div>:cardSpend.map((c,i)=>(
             <div key={i} style={{marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
                 <span style={{color:txt}}>{c.name}</span>
                 <span style={{fontWeight:600,color:txt}}>₹{c.spend.toLocaleString("en-IN")}</span>
               </div>
               <div style={{height:4,background:bdr,borderRadius:2}}>
-                <div style={{height:4,background:grn,borderRadius:2,width:(totalSpend>0?(c.spend/totalSpend*100):0)+"%"}}/>
+                <div style={{height:4,background:grn,borderRadius:2,width:totalSpend>0?((c.spend/totalSpend)*100)+"%":"0%"}}/>
               </div>
             </div>
           ))}
@@ -4872,7 +4851,7 @@ function SpendOverview({db,owners}){
   );
 }
 
-// ── SpendCards ────────────────────────────────────────────────────────────────
+
 function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [txns,setTxns]=useState([]);
   const [stmts,setStmts]=useState([]);
@@ -5077,7 +5056,11 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           {stmts.map(s=>(
             <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
               <div style={{cursor:"pointer"}} onClick={()=>setSelStmt(s)}>
-                <div style={{fontSize:14,fontWeight:700,color:acc,textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmtMonth(s.statement_month)}</div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{fontSize:14,fontWeight:700,color:acc,textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmtMonth(s.statement_month)}</div>
+                  <button onClick={e=>{e.stopPropagation();const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];const curM=s.statement_month||"";const curMi=curM?parseInt(curM.split("-")[1])-1:0;const curY=curM?parseInt(curM.split("-")[0]):new Date().getFullYear();const mSel=window.prompt("Month (1-12):",curMi+1);if(!mSel) return;const ySel=window.prompt("Year (e.g. 2026):",curY);if(!ySel) return;const newM=String(ySel).padStart(4,"0")+"-"+String(mSel).padStart(2,"0");db.from("statements").update(s.id,{statement_month:newM}).then(()=>{db.from("spend_transactions").filter("statement_id",s.id).then(({data:ts})=>{Promise.all((ts||[]).map(t=>db.from("spend_transactions").update(t.id,{statement_month:newM}))).then(()=>load());});});}}
+                    style={{fontSize:10,color:mut,background:"none",border:`1px solid ${bdr}`,borderRadius:6,padding:"1px 8px",cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>✏ rename</button>
+                </div>
                 <div style={{fontSize:11,color:mut,marginTop:2}}>
                   {s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}
                   {s.file_name&&<span style={{marginLeft:8,opacity:0.6}}>· {s.file_name}</span>}
@@ -5396,12 +5379,60 @@ function SpendCards({db,owners,onNavigate}){
       </>}
 
       {tab==="untagged"&&<div>
+        {/* Fix untagged transactions tool */}
+        {(()=>{
+          const untaggedTxns=txns.filter(t=>!t.statement_month);
+          if(untaggedTxns.length>0) return(
+            <Card style={{marginBottom:16,background:acc+"08",border:`1px solid ${acc}33`}}>
+              <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:6}}>
+                {untaggedTxns.length} transactions have no statement month
+              </div>
+              <div style={{fontSize:12,color:mut,marginBottom:12}}>
+                These were imported before statement months were tracked. Assign them to May '26 and create a statement record.
+              </div>
+              <button style={pbtn} onClick={async()=>{
+                if(!confirm(`Assign ${untaggedTxns.length} untagged transactions to May '26 and create statement records?`)) return;
+                // Group by card
+                const byCard={};
+                untaggedTxns.forEach(t=>{
+                  const cid=t.card_id||"none";
+                  if(!byCard[cid]) byCard[cid]=[];
+                  byCard[cid].push(t);
+                });
+                for(const[cid,cardTxns] of Object.entries(byCard)){
+                  // Update transactions
+                  for(const t of cardTxns){
+                    await db.from("spend_transactions").update(t.id,{statement_month:"2026-05"});
+                  }
+                  // Check if stmt already exists
+                  if(cid!=="none"){
+                    const {data:existing}=await db.from("statements").filter("card_id",cid);
+                    const hasStmt=(existing||[]).find(s=>s.statement_month==="2026-05");
+                    if(!hasStmt){
+                      const total=cardTxns.reduce((a,t)=>a+Number(t.amount||0),0);
+                      await db.from("statements").insert({
+                        card_id:cid,
+                        statement_month:"2026-05",
+                        transaction_count:cardTxns.length,
+                        total_spend:total,
+                        file_name:"Imported (untagged)",
+                      });
+                    }
+                  }
+                }
+                load();
+                alert("Done! Transactions assigned to May '26.");
+              }}>Assign to May '26 + create statements</button>
+            </Card>
+          );
+          return null;
+        })()}
         {untaggedStmts.length===0?<Empty icon="S" msg="All statements are tagged to a card"/>:(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {untaggedStmts.map(s=>(
               <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                 <div>
-                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{s.statement_month||"Unknown month"}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{fmtMonth(s.statement_month)||"Unknown month"}</div>
                   <div style={{fontSize:11,color:mut,marginTop:2}}>{s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}{s.file_name&&" · "+s.file_name}</div>
                 </div>
                 <button style={{...pbtn,fontSize:12}} onClick={()=>tagStmt(s)}>Tag to card</button>
