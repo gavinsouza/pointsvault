@@ -5799,9 +5799,9 @@ function SpendLedger({db,owners}){
                   <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:surf}}>
                     <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
                     <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>{e.description}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:e._yp>0?600:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:e._tp>0?600:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:txt}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:400,color:txt}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
                     <td style={{padding:"8px 10px",fontSize:10,color:mut}}>{e.payment_method||"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"center",whiteSpace:"nowrap"}}>
                       {e.entry_type==="manual"||!e.entry_type?(
