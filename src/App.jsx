@@ -4039,6 +4039,8 @@ function SpendUpload({db,owners}){
   const [importResult,setImportResult]=useState(null);
   const [categories,setCategories]=useState(DEFAULT_CATEGORIES);
   const [stmtMonthSel,setStmtMonthSel]=useState(()=>new Date().toISOString().slice(0,7));
+  const [ruleSuggestions,setRuleSuggestions]=useState([]); // [{keyword,category,checked}]
+  const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
@@ -4223,6 +4225,30 @@ function SpendUpload({db,owners}){
       if(!error) added++;
     }
     setImporting(false);
+
+    // Compute rule suggestions: transactions where user changed category from default
+    const existingRules=rules.map(r=>r.keyword.toLowerCase());
+    const suggestions=[];
+    const seen=new Set();
+    for(const row of parsed){
+      if(row.skip) continue;
+      const autocat=applyRules(row.desc,rules);
+      if(row.category!==autocat&&row.category!=="Other"){
+        // User explicitly set a different category — suggest a rule
+        const words=row.desc.trim().split(/\s+/);
+        // Find first word that's long enough and not already a rule
+        const keyword=words.find(w=>w.length>=4&&!existingRules.includes(w.toLowerCase()));
+        if(keyword&&!seen.has(keyword.toLowerCase())){
+          seen.add(keyword.toLowerCase());
+          suggestions.push({keyword:keyword.toLowerCase(),category:row.category,checked:true,desc:row.desc});
+        }
+      }
+    }
+    if(suggestions.length>0){
+      setRuleSuggestions(suggestions);
+      setShowRuleSuggestions(true);
+    }
+
     setImportResult({added,skipped});
     setStep(4);
   };
@@ -4591,14 +4617,46 @@ function SpendUpload({db,owners}){
   if(step===4) return(
     <div>
       <Hdr title="Import Complete" sub="Transactions added to your spend tracker"/>
-      <Card style={{maxWidth:500}}>
+      <Card style={{maxWidth:520,marginBottom:showRuleSuggestions?16:0}}>
         <div style={{textAlign:"center",padding:"24px 0"}}>
           <div style={{fontSize:40,marginBottom:12}}>✓</div>
           <div style={{fontSize:18,fontWeight:700,color:grn,marginBottom:8}}>{importResult?.added} transactions imported</div>
-          {importResult?.skipped>0&&<div style={{fontSize:13,color:mut,marginBottom:16}}>{importResult.skipped} skipped</div>}
-          <button style={{...pbtn,marginTop:8}} onClick={()=>{setStep(1);setRawRows([]);setFileName("");setParsed([]);setImportResult(null);}}>Upload another statement</button>
+          {importResult?.skipped>0&&<div style={{fontSize:13,color:mut,marginBottom:8}}>{importResult.skipped} skipped</div>}
+          <button style={{...pbtn,marginTop:8}} onClick={()=>{setStep(1);setRawRows([]);setFileName("");setParsed([]);setImportResult(null);setRuleSuggestions([]);setShowRuleSuggestions(false);}}>Upload another statement</button>
         </div>
       </Card>
+      {showRuleSuggestions&&<Card style={{maxWidth:520}}>
+        <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:4}}>Save auto-rules?</div>
+        <div style={{fontSize:12,color:mut,marginBottom:16}}>
+          You changed {ruleSuggestions.length} categor{ruleSuggestions.length!==1?"ies":"y"} from the default. Save these as rules for future imports?
+        </div>
+        {ruleSuggestions.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:`1px solid ${bdr}`}}>
+            <input type="checkbox" checked={s.checked} onChange={()=>setRuleSuggestions(prev=>prev.map((r,ri)=>ri===i?{...r,checked:!r.checked}:r))} style={{accentColor:acc,flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,color:mut,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.desc}</div>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}>
+                <input style={{...inp,marginBottom:0,fontSize:11,padding:"2px 6px",width:140}} value={s.keyword} onChange={e=>setRuleSuggestions(prev=>prev.map((r,ri)=>ri===i?{...r,keyword:e.target.value}:r))}/>
+                <span style={{color:mut}}>→</span>
+                <select style={{...inp,marginBottom:0,fontSize:11,padding:"2px 6px"}} value={s.category} onChange={e=>setRuleSuggestions(prev=>prev.map((r,ri)=>ri===i?{...r,category:e.target.value}:r))}>
+                  {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:14}}>
+          <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>setShowRuleSuggestions(false)}>Skip</button>
+          <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
+            const toSave=ruleSuggestions.filter(s=>s.checked&&s.keyword.trim());
+            for(const s of toSave){
+              await db.from("merchant_rules").insert({keyword:s.keyword.trim().toLowerCase(),category:s.category});
+            }
+            setShowRuleSuggestions(false);
+            if(toSave.length>0) alert(`Saved ${toSave.length} rule${toSave.length!==1?"s":""}.`);
+          }}>Save {ruleSuggestions.filter(s=>s.checked).length} rule{ruleSuggestions.filter(s=>s.checked).length!==1?"s":""}</button>
+        </div>
+      </Card>}
     </div>
   );
 
