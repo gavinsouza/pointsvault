@@ -5535,8 +5535,8 @@ function SpendTransactions({db,owners}){
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({
           person_id:s.person_id,
-          amount:Number(s.amount),
-          direction:"owed_to_me",
+          amount:Math.abs(Number(s.amount)),
+          direction:Number(s.amount)<0?"i_owe":"owed_to_me",
           description:showSplit.description||"CC transaction",
           entry_date:showSplit.txn_date,
           entry_type:"transaction",
@@ -5999,7 +5999,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
       if(Number(s.amount)===0) continue;
       await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
       if(!s.is_personal&&s.person_id){
-        await db.from("ledger_entries").insert({person_id:s.person_id,amount:Number(s.amount),direction:"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
+        await db.from("ledger_entries").insert({person_id:s.person_id,amount:Math.abs(Number(s.amount)),direction:Number(s.amount)<0?"i_owe":"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
       }
     }
     const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
