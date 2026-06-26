@@ -5690,6 +5690,7 @@ function SpendLedger({db,owners}){
   const [filterMethod,setFilterMethod]=useState("all");
   const [sortKey,setSortKey]=useState("date");
   const [sortDir,setSortDir]=useState("desc");
+  const [ledgerPage,setLedgerPage]=useState(0);
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -5725,6 +5726,9 @@ function SpendLedger({db,owners}){
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
   if(selPerson){
+    const PAGE_SIZE=15;
+
+    // Always sort oldest-first for running balance calculation
     const personEntries=entries.filter(e=>e.person_id===selPerson.id)
       .sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
     let running=0;
@@ -5735,6 +5739,7 @@ function SpendLedger({db,owners}){
     });
     const finalBal=running;
 
+    // Apply search/filter/sort on top of running-balance-enriched entries
     const filtered=entriesWithBal.filter(e=>{
       if(search&&!e.description?.toLowerCase().includes(search.toLowerCase())&&!String(e.amount).includes(search)) return false;
       if(filterMethod!=="all"&&e.payment_method!==filterMethod) return false;
@@ -5746,6 +5751,8 @@ function SpendLedger({db,owners}){
       else if(sortKey==="desc") v=(a.description||"").localeCompare(b.description||"");
       return sortDir==="desc"?-v:v;
     });
+    const totalLedgerPages=Math.ceil(filtered.length/PAGE_SIZE);
+    const pageEntries=filtered.slice(ledgerPage*PAGE_SIZE,(ledgerPage+1)*PAGE_SIZE);
 
     return(
       <div>
@@ -5758,8 +5765,8 @@ function SpendLedger({db,owners}){
           <button style={pbtn} onClick={openAdd}>+ Add entry</button>
         </div>
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
-          <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search description or amount…" value={search} onChange={e=>setSearch(e.target.value)}/>
-          <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={filterMethod} onChange={e=>setFilterMethod(e.target.value)}>
+          <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search description or amount…" value={search} onChange={e=>{setSearch(e.target.value);setLedgerPage(0);}}/>
+          <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={filterMethod} onChange={e=>{setFilterMethod(e.target.value);setLedgerPage(0);}}>
             <option value="all">All methods</option>
             <option value="cash">Cash</option>
             <option value="upi">UPI</option>
@@ -5788,7 +5795,7 @@ function SpendLedger({db,owners}){
                 </tr>
               </thead>
               <tbody>
-                {filtered.map(e=>(
+                {pageEntries.map(e=>(
                   <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:e._yp>0?grn+"05":e._tp>0?red+"05":surf}}>
                     <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
                     <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>{e.description}</td>
@@ -5809,7 +5816,7 @@ function SpendLedger({db,owners}){
                   </tr>
                 ))}
                 <tr style={{borderTop:`2px solid ${bdr}`,background:surf2}}>
-                  <td colSpan={2} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Total</td>
+                  <td colSpan={2} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Total (all entries)</td>
                   <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:grn,fontSize:12}}>₹{entriesWithBal.reduce((a,e)=>a+e._yp,0).toLocaleString("en-IN")}</td>
                   <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:red,fontSize:12}}>₹{entriesWithBal.reduce((a,e)=>a+e._tp,0).toLocaleString("en-IN")}</td>
                   <td style={{padding:"10px",textAlign:"right",fontWeight:700,fontSize:14,color:finalBal>0?grn:finalBal<0?red:mut}}>{finalBal===0?"₹0":(finalBal>0?"+":"")+"₹"+finalBal.toLocaleString("en-IN")}</td>
@@ -5819,6 +5826,11 @@ function SpendLedger({db,owners}){
             </table>
           </div>
         )}
+        {totalLedgerPages>1&&<div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12,fontSize:12,color:mut}}>
+          <button onClick={()=>setLedgerPage(p=>Math.max(0,p-1))} disabled={ledgerPage===0} style={{...gbtn,padding:"4px 14px",opacity:ledgerPage===0?0.4:1}}>← Older</button>
+          <span>{ledgerPage*PAGE_SIZE+1}–{Math.min((ledgerPage+1)*PAGE_SIZE,filtered.length)} of {filtered.length}</span>
+          <button onClick={()=>setLedgerPage(p=>Math.min(totalLedgerPages-1,p+1))} disabled={ledgerPage===totalLedgerPages-1} style={{...gbtn,padding:"4px 14px",opacity:ledgerPage===totalLedgerPages-1?0.4:1}}>Newer →</button>
+        </div>}
         <Modal show={showAdd} onClose={()=>{setShowAdd(false);setEditEntry(null);}} title={editEntry?"Edit Entry":"Add entry — "+selPerson.name}>
           <div style={{background:surf2,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:12,color:mut,lineHeight:1.6}}>
             <strong style={{color:txt}}>You Paid</strong> = you spent on their behalf (they owe you)<br/>
