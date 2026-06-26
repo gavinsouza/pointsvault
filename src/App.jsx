@@ -3780,65 +3780,76 @@ async function seedCategories(db){
 
 function SetupCategories({db}){
   const [cats,setCats]=useState([]);
+  const [rules,setRules]=useState([]);
   const [busy,setBusy]=useState(true);
+  const [activeTab,setActiveTab]=useState("categories"); // "categories" | "rules"
+  // Category state
   const [newName,setNewName]=useState("");
   const [editId,setEditId]=useState(null);
   const [editName,setEditName]=useState("");
+  // Rule state
+  const [newKeyword,setNewKeyword]=useState("");
+  const [newRuleCat,setNewRuleCat]=useState("");
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const {data}=await db.from("spend_categories").select();
-    let rows=data||[];
-    if(rows.length===0){
-      await seedCategories(db);
-      const {data:d2}=await db.from("spend_categories").select();
-      rows=d2||[];
-    }
+    const [c,r]=await Promise.all([
+      db.from("spend_categories").select(),
+      db.from("merchant_rules").select(),
+    ]);
+    let rows=c.data||[];
+    if(rows.length===0){await seedCategories(db);const {data:d2}=await db.from("spend_categories").select();rows=d2||[];}
     setCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
+    setRules((r.data||[]).sort((a,b)=>a.keyword.localeCompare(b.keyword)));
     setBusy(false);
   },[db]);
-
   useEffect(()=>{load();},[load]);
 
-  const add=async()=>{
+  // Category CRUD
+  const addCat=async()=>{
     if(!newName.trim()) return;
     await db.from("spend_categories").insert({name:newName.trim(),is_default:false});
-    setNewName("");load();
+    setNewName(""); load();
   };
-  const del=async id=>{
-    if(!confirm("Delete this category?")) return;
-    await db.from("spend_categories").delete(id);load();
-  };
+  const delCat=async id=>{if(!confirm("Delete this category?")) return;await db.from("spend_categories").delete(id);load();};
   const startEdit=(c)=>{setEditId(c.id);setEditName(c.name);};
-  const saveEdit=async()=>{
-    if(!editName.trim()) return;
-    await db.from("spend_categories").update(editId,{name:editName.trim()});
-    setEditId(null);setEditName("");load();
+  const saveEdit=async()=>{if(!editName.trim()) return;await db.from("spend_categories").update(editId,{name:editName.trim()});setEditId(null);load();};
+
+  // Rule CRUD
+  const addRule=async()=>{
+    if(!newKeyword.trim()||!newRuleCat) return alert("Enter both keyword and category");
+    await db.from("merchant_rules").insert({keyword:newKeyword.trim().toLowerCase(),category:newRuleCat});
+    setNewKeyword(""); setNewRuleCat(""); load();
   };
+  const delRule=async id=>{if(!confirm("Delete this rule?")) return;await db.from("merchant_rules").delete(id);load();};
+
+  const tabBtn=active=>({padding:"7px 18px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut,fontFamily:"'Manrope',sans-serif"});
 
   return(
     <div>
-      <Hdr title="Categories" sub="Manage spend categories for transaction tagging"/>
-      <div style={{maxWidth:520}}>
+      <Hdr title="Categories & Rules" sub="Manage spend categories and auto-categorisation rules"/>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        <button style={tabBtn(activeTab==="categories")} onClick={()=>setActiveTab("categories")}>Categories ({cats.length})</button>
+        <button style={tabBtn(activeTab==="rules")} onClick={()=>setActiveTab("rules")}>Auto-rules ({rules.length})</button>
+      </div>
+
+      {activeTab==="categories"&&<div style={{maxWidth:520}}>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Add Category</div>
           <div style={{display:"flex",gap:8}}>
-            <input style={{...inp,marginBottom:0,flex:1}} placeholder="e.g. Investments" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
-            <button style={pbtn} onClick={add}>Add</button>
+            <input style={{...inp,marginBottom:0,flex:1}} placeholder="e.g. Investments" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCat()}/>
+            <button style={pbtn} onClick={addCat}>Add</button>
           </div>
         </Card>
         <Card>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Categories ({cats.length})</div>
-            <div style={{fontSize:10,color:mut}}>Reset to defaults available in Settings → Danger Zone</div>
-          </div>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Categories ({cats.length})</div>
           {busy?<div style={{color:mut,fontSize:12}}>Loading…</div>:cats.map(c=>(
             <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
               {editId===c.id?(
                 <div style={{display:"flex",gap:6,flex:1}}>
                   <input style={{...inp,marginBottom:0,flex:1,fontSize:12,padding:"4px 8px"}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
                   <button style={{...pbtn,padding:"4px 12px",fontSize:12}} onClick={saveEdit}>Save</button>
-                  <button style={{...gbtn,padding:"4px 10px",fontSize:12}} onClick={()=>setEditId(null)}>Cancel</button>
+                  <button style={{...gbtn,padding:"4px 10px",fontSize:12}} onClick={()=>setEditId(null)}>×</button>
                 </div>
               ):(
                 <>
@@ -3848,17 +3859,55 @@ function SetupCategories({db}){
                   </div>
                   <div style={{display:"flex",gap:6}}>
                     <button style={{...gbtn,padding:"3px 10px",fontSize:11}} onClick={()=>startEdit(c)}>Edit</button>
-                    <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>del(c.id)}>Delete</button>
+                    <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>delCat(c.id)}>Delete</button>
                   </div>
                 </>
               )}
             </div>
           ))}
+          <div style={{fontSize:11,color:mut,marginTop:12}}>Reset to defaults in Settings → Danger Zone</div>
         </Card>
-      </div>
+      </div>}
+
+      {activeTab==="rules"&&<div style={{maxWidth:600}}>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Add Rule</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,alignItems:"end"}}>
+            <div>
+              {lbl("Keyword (case insensitive)")}
+              <input style={{...inp,marginBottom:0}} placeholder="e.g. swiggy, zomato" value={newKeyword} onChange={e=>setNewKeyword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRule()}/>
+            </div>
+            <div>
+              {lbl("Category")}
+              <select style={{...inp,marginBottom:0}} value={newRuleCat} onChange={e=>setNewRuleCat(e.target.value)}>
+                <option value="">Select category…</option>
+                {cats.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <button style={{...pbtn,alignSelf:"flex-end"}} onClick={addRule}>Add</button>
+          </div>
+          <div style={{fontSize:11,color:mut,marginTop:8}}>
+            If the keyword appears anywhere in a transaction description, that category is applied. First matching rule wins.
+          </div>
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Rules ({rules.length})</div>
+          {rules.length===0?<div style={{color:mut,fontSize:12}}>No rules yet — add one above</div>:rules.map(r=>(
+            <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
+              <div style={{flex:1,display:"flex",alignItems:"center",gap:12}}>
+                <code style={{fontSize:12,background:surf2,padding:"2px 8px",borderRadius:6,color:txt,fontFamily:"monospace"}}>{r.keyword}</code>
+                <span style={{fontSize:11,color:mut}}>→</span>
+                <span style={{fontSize:12,color:txt,fontWeight:500}}>{r.category}</span>
+              </div>
+              <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>delRule(r.id)}>Delete</button>
+            </div>
+          ))}
+        </Card>
+      </div>}
     </div>
   );
 }
+
 
 // ── SetupPeople ───────────────────────────────────────────────────────────────
 function SetupPeople({db}){
@@ -4096,7 +4145,7 @@ function SpendUpload({db,owners}){
         amount=d>0?d:-c;
       }
       const category=applyRules(desc,rules);
-      return{date:dateStr,desc,amount,category,reimbursable:false,person_id:"",skip:!dateStr};
+      return{date:dateStr,desc,amount,category,skip:!dateStr};
     }).filter(r=>r.date);
   };
 
@@ -4161,8 +4210,7 @@ function SpendUpload({db,owners}){
         description:row.desc,
         amount:row.amount,
         category:row.category,
-        is_reimbursable:row.reimbursable,
-        person_id:row.person_id||null,
+        is_reimbursable:false,
         raw_description:row.desc,
         imported_from:fileName,
         statement_month:stmtMonth,
@@ -4188,7 +4236,7 @@ function SpendUpload({db,owners}){
   const ss={...{fontSize:12,border:`1px solid ${bdr}`,borderRadius:8,padding:"7px 10px",background:surf,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",width:"100%"}};
   const total=parsed.filter(r=>!r.skip).length;
   const totalAmt=parsed.filter(r=>!r.skip).reduce((a,r)=>a+r.amount,0);
-  const reimb=parsed.filter(r=>!r.skip&&r.reimbursable).length;
+
 
   // ── Step 1: Upload ──────────────────────────────────────────────────────────
   const processFile=file=>{
@@ -4488,7 +4536,7 @@ function SpendUpload({db,owners}){
       <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:12,color:mut}}>
           {total===0&&<div style={{color:red,fontWeight:500,marginBottom:6}}>No transactions found. Check settings — Skip rows: {skipRows}, Date col: Col {dateCol+1}, Desc col: Col {descCol+1}, Amount col: Col {amtCol+1}. Make sure these match your CSV preview.</div>}
-          {reimb>0&&<span style={{color:acc,fontWeight:500}}>{reimb} reimbursable · </span>}Review and adjust categories before importing.
+          Review and adjust categories before importing.
         </div>
         <div style={{display:"flex",gap:8}}>
           <button style={gbtn} onClick={()=>setStep(2)}>← Back</button>
@@ -4503,8 +4551,6 @@ function SpendUpload({db,owners}){
               <th style={{padding:"8px 10px",textAlign:"left"}}>Description</th>
               <th style={{padding:"8px 10px",textAlign:"right",width:100}}>Amount</th>
               <th style={{padding:"8px 10px",textAlign:"left",width:150}}>Category</th>
-              <th style={{padding:"8px 10px",textAlign:"center",width:90}}>Reimb.</th>
-              <th style={{padding:"8px 10px",textAlign:"left",width:130}}>Person</th>
               <th style={{padding:"8px 10px",textAlign:"center",width:60}}>Skip</th>
             </tr>
           </thead>
@@ -4523,16 +4569,7 @@ function SpendUpload({db,owners}){
                     {categories.map(c=><option key={c} value={c}>{c}</option>)}
                   </select>
                 </td>
-                <td style={{padding:"7px 10px",textAlign:"center"}}>
-                  <input type="checkbox" checked={row.reimbursable} onChange={e=>upd(i,"reimbursable",e.target.checked)} style={{accentColor:acc,width:15,height:15}}/>
-                </td>
-                <td style={{padding:"7px 10px"}}>
-                  {row.reimbursable&&<select value={row.person_id} onChange={e=>upd(i,"person_id",e.target.value)}
-                    style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}}>
-                    <option value="">Select…</option>
-                    {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>}
-                </td>
+
                 <td style={{padding:"7px 10px",textAlign:"center"}}>
                   <input type="checkbox" checked={row.skip} onChange={e=>upd(i,"skip",e.target.checked)} style={{width:15,height:15}}/>
                 </td>
@@ -5636,6 +5673,34 @@ function SpendTransactions({db,owners}){
         </div>
       )}
 
+      {/* Create Rule Modal */}
+      <Modal show={!!showCreateRule} onClose={()=>setShowCreateRule(null)} title="Save as Auto-Rule?">
+        {showCreateRule&&<>
+          <div style={{fontSize:13,color:mut,marginBottom:16,lineHeight:1.6}}>
+            Create a rule: if a transaction description contains <strong style={{color:txt}}>"{showCreateRule.keyword}"</strong>, automatically set category to <strong style={{color:txt}}>{showCreateRule.category}</strong>.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div>
+              {lbl("Keyword")}
+              <input style={inp} value={showCreateRule.keyword} onChange={e=>setShowCreateRule(r=>({...r,keyword:e.target.value}))}/>
+            </div>
+            <div>
+              {lbl("Category")}
+              <select style={inp} value={showCreateRule.category} onChange={e=>setShowCreateRule(r=>({...r,category:e.target.value}))}>
+                {categories.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>setShowCreateRule(null)}>Skip</button>
+            <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
+              await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category});
+              setShowCreateRule(null);
+            }}>Save Rule</button>
+          </div>
+        </>}
+      </Modal>
+
       {/* Split Modal */}
       <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
         {showSplit&&<>
@@ -5895,6 +5960,10 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   const [splits,setSplits]=useState([]);
   const [page,setPage]=useState(0);
   const PAGE=15;
+  const [selected,setSelected]=useState(new Set()); // selected txn ids
+  const [bulkCat,setBulkCat]=useState("");
+  const [reapplying,setReapplying]=useState(false);
+  const [showCreateRule,setShowCreateRule]=useState(null); // {keyword, category}
 
   const loadData=useCallback(async()=>{
     const [p,cats,tById,allSp,tAll]=await Promise.all([
@@ -5953,11 +6022,56 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   );
 
   const saveEdit=async()=>{
+    const oldCat=txns.find(t=>t.id===editId)?.category;
     await db.from("spend_transactions").update(editId,{category:editRow.category,description:editRow.description});
     setEditId(null);
+    // Offer to create rule if category changed
+    if(oldCat&&oldCat!==editRow.category){
+      const word=editRow.description?.split(" ")[0]?.toLowerCase();
+      if(word&&word.length>2) setShowCreateRule({keyword:word,category:editRow.category});
+    }
     await loadData();
     onSave&&onSave();
   };
+
+  const reapplyRules=async()=>{
+    setReapplying(true);
+    // Load all rules (DB + defaults)
+    const [{data:dbRules},{data:dbCats}]=await Promise.all([
+      db.from("merchant_rules").select(),
+      db.from("spend_categories").select(),
+    ]);
+    const allRules=[...(dbRules||[]),...DEFAULT_RULES];
+    let updated=0;
+    for(const t of txns){
+      const desc=(t.description||"").toLowerCase();
+      for(const r of allRules){
+        if(desc.includes(r.keyword.toLowerCase())){
+          if(r.category!==t.category){
+            await db.from("spend_transactions").update(t.id,{category:r.category});
+            updated++;
+          }
+          break;
+        }
+      }
+    }
+    setReapplying(false);
+    await loadData();
+    if(updated>0) alert(`Updated ${updated} transaction${updated!==1?"s":""} to matching categories.`);
+    else alert("All transactions already match their rules.");
+  };
+
+  const bulkAssign=async()=>{
+    if(!bulkCat||selected.size===0) return;
+    for(const id of selected){
+      await db.from("spend_transactions").update(id,{category:bulkCat});
+    }
+    setSelected(new Set()); setBulkCat("");
+    await loadData(); onSave&&onSave();
+  };
+
+  const toggleSelect=id=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  const toggleAll=()=>setSelected(prev=>prev.size===pageTxns2.length?new Set():new Set(pageTxns2.map(t=>t.id)));
 
   const delTxn=async id=>{
     const {data:le}=await db.from("ledger_entries").filter("transaction_id",id);
@@ -6081,6 +6195,20 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
         </Card>}
       </div>
 
+      {/* Toolbar */}
+      <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+        <button style={{...gbtn,fontSize:12,display:"flex",alignItems:"center",gap:6,opacity:reapplying?0.6:1}} onClick={reapplyRules} disabled={reapplying}>
+          {reapplying?"⟳ Applying…":"⟳ Re-apply rules"}
+        </button>
+        {selected.size>0&&<>
+          <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={bulkCat} onChange={e=>setBulkCat(e.target.value)}>
+            <option value="">Set category for {selected.size} selected…</option>
+            {categories.map(c=><option key={c} value={c}>{c}</option>)}
+          </select>
+          <button style={{...pbtn,fontSize:12}} onClick={bulkAssign}>Apply</button>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>setSelected(new Set())}>Clear</button>
+        </>}
+      </div>
       {/* Search + sort */}
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
         <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search transactions…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
@@ -6098,6 +6226,9 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
           <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:i===1?80:40}}/>)}</colgroup>
           <thead>
             <tr style={{borderBottom:`2px solid ${bdr}`}}>
+              <th style={{padding:"6px 8px",background:surf,width:32}}>
+                <input type="checkbox" checked={selected.size===pageTxns2.length&&pageTxns2.length>0} onChange={toggleAll} style={{accentColor:acc,cursor:"pointer"}}/>
+              </th>
               {[["date","Date"],["desc","Description"],["category","Category"],["amount","Amount"]].map(([col,label],ci)=>(
                 <th key={ci} onClick={()=>toggleSort(col)} style={{padding:"6px 8px",textAlign:ci===3?"right":"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,position:"relative",background:surf}}>
                   {label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
@@ -6110,7 +6241,10 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
           </thead>
           <tbody>
             {pageTxns2.map(t=>(
-              <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
+              <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:selected.has(t.id)?acc+"10":t.is_reimbursable?acc+"06":surf}}>
+                <td style={{padding:"7px 8px",textAlign:"center"}}>
+                  <input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)} style={{accentColor:acc,cursor:"pointer"}}/>
+                </td>
                 <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
                 <td style={{padding:"7px 8px",color:txt,wordBreak:"break-word"}}>
                   {editId===t.id?<input style={{...inp,marginBottom:0,width:"100%",fontSize:11}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
@@ -6160,6 +6294,34 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
         <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,sorted.length)} of {sorted.length}</span>
         <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
       </div>}
+
+      {/* Create Rule Modal */}
+      <Modal show={!!showCreateRule} onClose={()=>setShowCreateRule(null)} title="Save as Auto-Rule?">
+        {showCreateRule&&<>
+          <div style={{fontSize:13,color:mut,marginBottom:16,lineHeight:1.6}}>
+            Create a rule: if a transaction description contains <strong style={{color:txt}}>"{showCreateRule.keyword}"</strong>, automatically set category to <strong style={{color:txt}}>{showCreateRule.category}</strong>.
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+            <div>
+              {lbl("Keyword")}
+              <input style={inp} value={showCreateRule.keyword} onChange={e=>setShowCreateRule(r=>({...r,keyword:e.target.value}))}/>
+            </div>
+            <div>
+              {lbl("Category")}
+              <select style={inp} value={showCreateRule.category} onChange={e=>setShowCreateRule(r=>({...r,category:e.target.value}))}>
+                {categories.map(c=><option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>setShowCreateRule(null)}>Skip</button>
+            <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
+              await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category});
+              setShowCreateRule(null);
+            }}>Save Rule</button>
+          </div>
+        </>}
+      </Modal>
 
       {/* Split Modal */}
       <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
