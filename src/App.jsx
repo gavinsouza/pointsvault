@@ -344,6 +344,14 @@ const num={fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"};
 
 function lbl(t){return <div style={{fontSize:10,color:mut,fontWeight:500,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:6,fontFamily:"'Manrope',sans-serif"}}>{t}</div>;}
 function inrFmt(v){if(v>=100000)return"₹"+(v/100000).toFixed(1)+"L";if(v>=1000)return"₹"+(v/1000).toFixed(1)+"K";return"₹"+Math.round(v).toLocaleString("en-IN");}
+function fmtDate(d){
+  if(!d) return "—";
+  const s=d.substring(0,10);
+  const p=s.split("-");
+  if(p.length!==3) return s;
+  return p[2]+"/"+p[1]+"/"+p[0].slice(2); // DD/MM/YY
+}
+
 function fmtMonth(ym){
   if(!ym) return "—";
   const [y,m]=ym.split("-");
@@ -4717,6 +4725,9 @@ export default function App(){
           aside{display:none!important;}
           .mobile-header{display:block!important;}
         }
+        input[type=number]::-webkit-inner-spin-button,
+        input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
+        input[type=number]{-moz-appearance:textfield;}
       `}</style>
 
       {/* ── Main content ── */}
@@ -4846,6 +4857,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [page,setPage]=useState(0);
   const [txnSearch,setTxnSearch]=useState("");
   const [txnSort,setTxnSort]=useState("date-desc");
+  const [colW,setColW]=useState([90,200,120,90,140,90]); // date,desc,cat,amt,split,stmt
   const [showStmts,setShowStmts]=useState(false);
   const [selStmt,setSelStmt]=useState(null);
   const [showEditCard,setShowEditCard]=useState(false);
@@ -4985,7 +4997,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       stmt={selStmt}
       db={db} owners={owners}
       onBack={()=>setSelStmt(null)}
-      onSave={()=>{setSelStmt(null);load();}}
+      onSave={()=>load()}
     />
   );
 
@@ -5150,24 +5162,29 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </div>
         {busy?<div style={{color:mut,padding:16}}>Loading…</div>:txns.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:24}}>No transactions yet — upload a statement</div>:(
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <colgroup>
+              {colW.map((w,i)=><col key={i} style={{width:w,minWidth:i===1?100:60}}/>)}
+            </colgroup>
             <thead>
               <tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>
-                <th style={{padding:"6px 8px",textAlign:"left"}}>Date</th>
-                <th style={{padding:"6px 8px",textAlign:"left"}}>Description</th>
-                <th style={{padding:"6px 8px",textAlign:"left"}}>Category</th>
-                <th style={{padding:"6px 8px",textAlign:"right"}}>Amount</th>
-                <th style={{padding:"6px 8px",textAlign:"left",maxWidth:160}}>Split</th>
-                <th style={{padding:"6px 8px",textAlign:"center"}}>Stmt</th>
+                {["Date","Description","Category","Amount","Split","Stmt"].map((label,ci)=>(
+                  <th key={ci} style={{padding:"6px 8px",textAlign:ci===3?"right":"left",position:"relative",userSelect:"none",background:surf}}>
+                    {label}
+                    <span onMouseDown={e=>{e.preventDefault();const sx=e.clientX;const sw=colW[ci];const mv=mv=>{setColW(w=>{const n=[...w];n[ci]=Math.max(ci===1?100:60,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
+                      style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",background:"transparent"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {pageTxns.map(t=>(
                 <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
-                  <td style={{padding:"7px 8px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date}</td>
-                  <td style={{padding:"7px 8px",color:txt,maxWidth:240,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</td>
-                  <td style={{padding:"7px 8px"}}>
+                  <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
+                  <td style={{padding:"7px 8px",color:txt,wordBreak:"break-word"}}>{t.description}</td>
+                  <td style={{padding:"7px 8px",wordBreak:"break-word"}}>
                     <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:10,color:mut}}>{t.category}</span>
-                    {t.is_reimbursable&&<span style={{background:acc+"15",padding:"2px 7px",borderRadius:10,fontSize:10,color:acc,marginLeft:4}}>Split</span>}
                   </td>
                   <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
                   <td style={{padding:"7px 8px",textAlign:"center",fontSize:10}}>
@@ -5393,9 +5410,14 @@ function SpendTransactions({db,owners}){
   };
 
   // Split logic
-  const openSplit=t=>{
+  const openSplit=async t=>{
     setShowSplit(t);
-    setSplits([{person_id:"",amount:t.amount,is_personal:true}]);
+    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",t.id);
+    if(existing&&existing.length>0){
+      setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
+    } else {
+      setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
+    }
   };
   const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
   const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
@@ -5474,7 +5496,7 @@ function SpendTransactions({db,owners}){
             <tbody>
               {filtered.map(t=>(
                 <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
-                  <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date}</td>
+                  <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.txn_date)}</td>
                   <td style={{padding:"8px 10px",color:txt,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {editId===t.id?<input style={{...ss2,width:"100%"}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
                   </td>
@@ -5723,6 +5745,7 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
   const PAGE=15;
 
   const [txnSplitsMap,setTxnSplitsMap]=useState({});
+  const [colW,setColW]=useState([90,200,120,90,150,80]); // date,desc,cat,amt,split,edit
 
   useEffect(()=>{
     (async()=>{
@@ -5774,7 +5797,35 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
     onSave&&onSave();
   };
 
-  const openSplit=t=>{setShowSplit(t);setSplits([{person_id:"",amount:t.amount,is_personal:true}]);};
+  const delTxn=async id=>{
+    // Check for ledger entries
+    const {data:le}=await db.from("ledger_entries").filter("transaction_id",id);
+    if((le||[]).length>0){
+      const ans=confirm(`This transaction has ${le.length} ledger entr${le.length>1?"ies":"y"}. Delete them too?`);
+      if(ans===null) return;
+      if(ans) for(const e of le) await db.from("ledger_entries").delete(e.id);
+    } else {
+      if(!confirm("Delete this transaction?")) return;
+    }
+    // Delete splits
+    const {data:sp}=await db.from("transaction_splits").filter("transaction_id",id);
+    for(const s of (sp||[])) await db.from("transaction_splits").delete(s.id);
+    await db.from("spend_transactions").delete(id);
+    const {data}=await db.from("spend_transactions").filter("statement_id",stmt.id);
+    setTxns((data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    onSave&&onSave();
+  };
+
+  const openSplit=t=>{
+    setShowSplit(t);
+    // Load existing splits if any
+    const existing=txnSplitsMap[t.id];
+    if(existing&&existing.length>0){
+      setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
+    } else {
+      setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
+    }
+  };
   const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
   const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
   const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
@@ -5794,8 +5845,15 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
     const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
     await db.from("spend_transactions").update(showSplit.id,{is_reimbursable:hasReimb});
     setShowSplit(null);
-    const {data}=await db.from("spend_transactions").filter("statement_id",stmt.id);
-    setTxns((data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    // Reload txns and splits
+    const [{data:newTxns},{data:newSp}]=await Promise.all([
+      db.from("spend_transactions").filter("statement_id",stmt.id),
+      db.from("transaction_splits").select(),
+    ]);
+    setTxns((newTxns||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    const newMap={};
+    (newSp||[]).forEach(s=>{if(!newMap[s.transaction_id])newMap[s.transaction_id]=[];newMap[s.transaction_id].push(s);});
+    setTxnSplitsMap(newMap);
     onSave&&onSave();
   };
 
@@ -5886,20 +5944,39 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
       </div>
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <colgroup>
+            {colW.map((w,i)=><col key={i} style={{width:w,minWidth:i===1?100:60}}/>)}
+          </colgroup>
           <thead>
             <tr style={{borderBottom:`2px solid ${bdr}`}}>
-              {sortHdr("date","Date")}
-              {sortHdr("desc","Description")}
-              {sortHdr("category","Category")}
-              {sortHdr("amount","Amount")}
-              <th style={{padding:"6px 8px",textAlign:"center",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>Split</th>
-              <th style={{padding:"6px 8px",textAlign:"center",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>Edit</th>
+              {["date","desc","category","amount"].map((col,ci)=>{
+                const labels=["Date","Description","Category","Amount"];
+                return(
+                  <th key={ci} onClick={()=>{if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortBy(col);setSortDir("desc");}}}
+                    style={{padding:"6px 8px",textAlign:ci===3?"right":"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,position:"relative",background:surf}}>
+                    {labels[ci]}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
+                    <span onMouseDown={e=>{e.preventDefault();const sx=e.clientX;const sw=colW[ci];const mv=mv=>{setColW(w=>{const n=[...w];n[ci]=Math.max(ci===1?100:60,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
+                      style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
+                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
+                  </th>
+                );
+              })}
+              {["Split","Edit"].map((label,ci)=>(
+                <th key={ci+4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,position:"relative",background:surf}}>
+                  {label}
+                  <span onMouseDown={e=>{e.preventDefault();const ci2=ci+4;const sx=e.clientX;const sw=colW[ci2];const mv=mv=>{setColW(w=>{const n=[...w];n[ci2]=Math.max(60,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
+                    style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize"}}
+                    onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
+                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {pageTxns.map(t=>(
               <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
-                <td style={{padding:"7px 8px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date}</td>
+                <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
                 <td style={{padding:"7px 8px",color:txt,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {editId===t.id?<input style={{...ss2,width:"100%"}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
                 </td>
@@ -5932,7 +6009,10 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
                       <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>setEditId(null)}>×</button>
                     </div>
                   ):(
-                    <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>{setEditId(t.id);setEditRow({...t});}}>Edit</button>
+                    <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                      <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>{setEditId(t.id);setEditRow({...t});}}>Edit</button>
+                      <button style={{...dbtn,padding:"2px 8px",fontSize:11}} onClick={()=>delTxn(t.id)}>Del</button>
+                    </div>
                   )}
                 </td>
               </tr>
@@ -5968,7 +6048,7 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
                 </div>
                 <div style={{display:"flex",alignItems:"center",gap:4,background:surf,borderRadius:8,padding:"4px 10px",border:`1px solid ${bdr}`}}>
                   <span style={{fontSize:12,color:mut,fontWeight:500}}>₹</span>
-                  <input type="number" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+                  <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right",MozAppearance:"textfield"}} value={s.amount} onChange={e=>{const v=e.target.value.replace(/[^0-9.]/g,"");updSplit(i,"amount",v);}}/>
                 </div>
                 {!s.is_personal?(
                   <button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
