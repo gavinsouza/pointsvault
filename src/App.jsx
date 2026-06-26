@@ -4102,7 +4102,7 @@ function SpendUpload({db,owners}){
 
   const saveMapping=async()=>{
     if(!mapName.trim()) return alert("Please enter a mapping name");
-    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol};
+    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim};
     try{
       if(selMapping){
         const {error}=await db.from("csv_mappings").update(selMapping,p);
