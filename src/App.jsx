@@ -2581,8 +2581,8 @@ function MyCards({db,owners}){
         </label>
         {f.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={up("billing_year_start")}/></div>
-          <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={up("fee_charge_date")}/></div>
+          <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={e=>setF(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
+          <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={e=>setF(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
         </div>
         {(()=>{
           const master=mCards.find(m=>m.id===f.master_id);
@@ -2674,8 +2674,8 @@ function EditCardModal({card, db, mCards, owners, onSave, onClose}){
       </label>
       {ef.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" value={ef.fee_override_value} onChange={eup("fee_override_value")}/></>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>{lbl("Billing Year Start (MM-DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start} onChange={eup("billing_year_start")}/></div>
-        <div>{lbl("Fee Charge Date (MM-DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date} onChange={eup("fee_charge_date")}/></div>
+        <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start} onChange={e=>setEf(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
+        <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date} onChange={e=>setEf(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
       </div>
       {master?.auto_transfer_to&&(()=>{
         const masterProgName=mProgs.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
@@ -4844,6 +4844,8 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [stmts,setStmts]=useState([]);
   const [busy,setBusy]=useState(true);
   const [page,setPage]=useState(0);
+  const [txnSearch,setTxnSearch]=useState("");
+  const [txnSort,setTxnSort]=useState("date-desc");
   const [showStmts,setShowStmts]=useState(false);
   const [selStmt,setSelStmt]=useState(null);
   const [showEditCard,setShowEditCard]=useState(false);
@@ -4909,9 +4911,18 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   };
   const pieSlices=makePie();
 
-  // Pagination
-  const totalPages=Math.ceil(txns.length/PAGE);
-  const pageTxns=txns.slice(page*PAGE,(page+1)*PAGE);
+  // Search + sort + pagination
+  const filteredTxns=txns.filter(t=>!txnSearch||t.description?.toLowerCase().includes(txnSearch.toLowerCase())||t.category?.toLowerCase().includes(txnSearch.toLowerCase()));
+  const sortedTxns=[...filteredTxns].sort((a,b)=>{
+    const[sk,sd]=txnSort.split("-");
+    let v=0;
+    if(sk==="date") v=new Date(a.txn_date)-new Date(b.txn_date);
+    else if(sk==="amount") v=Number(a.amount||0)-Number(b.amount||0);
+    else if(sk==="category") v=(a.category||"").localeCompare(b.category||"");
+    return sd==="desc"?-v:v;
+  });
+  const totalPages=Math.ceil(sortedTxns.length/PAGE);
+  const pageTxns=sortedTxns.slice(page*PAGE,(page+1)*PAGE);
 
   // Delete statement
   const deleteStmt=async(stmt)=>{
@@ -4954,6 +4965,15 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:reassignCardId});
     setReassignTarget(null); setReassignCardId(""); load();
   };
+
+  if(selStmt) return(
+    <StmtDetail
+      stmt={selStmt}
+      db={db} owners={owners}
+      onBack={()=>setSelStmt(null)}
+      onSave={()=>{setSelStmt(null);load();}}
+    />
+  );
 
   if(reassignTarget) return(
     <div>
@@ -5078,14 +5098,19 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
 
       {/* Transactions */}
       <Card>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>
-            Transactions ({txns.length})
-          </div>
-          {totalPages>1&&<div style={{display:"flex",alignItems:"center",gap:8,fontSize:12,color:mut}}>
-            <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"3px 10px",opacity:page===0?0.4:1}}>←</button>
-            <span>Page {page+1} of {totalPages}</span>
-            <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"3px 10px",opacity:page===totalPages-1?0.4:1}}>→</button>
+        <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search transactions…" value={txnSearch} onChange={e=>{setTxnSearch(e.target.value);setPage(0);}}/>
+          <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={txnSort} onChange={e=>setTxnSort(e.target.value)}>
+            <option value="date-desc">Date (newest)</option>
+            <option value="date-asc">Date (oldest)</option>
+            <option value="amount-desc">Amount ↓</option>
+            <option value="amount-asc">Amount ↑</option>
+            <option value="category-asc">Category A-Z</option>
+          </select>
+          {totalPages>1&&<div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:mut}}>
+            <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"3px 8px",opacity:page===0?0.4:1}}>←</button>
+            <span>{page+1}/{totalPages}</span>
+            <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"3px 8px",opacity:page===totalPages-1?0.4:1}}>→</button>
           </div>}
         </div>
         {busy?<div style={{color:mut,padding:16}}>Loading…</div>:txns.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:24}}>No transactions yet — upload a statement</div>:(
@@ -5109,7 +5134,12 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                     {t.is_reimbursable&&<span style={{background:acc+"15",padding:"2px 7px",borderRadius:10,fontSize:10,color:acc,marginLeft:4}}>Split</span>}
                   </td>
                   <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
-                  <td style={{padding:"7px 8px",textAlign:"center",fontSize:10,color:mut}}>{fmtMonth(t.statement_month)||"—"}</td>
+                  <td style={{padding:"7px 8px",textAlign:"center",fontSize:10}}>
+                    {t.statement_month?
+                      <button onClick={()=>{const s=stmts.find(x=>x.statement_month===t.statement_month);if(s)setSelStmt(s);}} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:10,fontWeight:500,textDecoration:"underline",textDecorationStyle:"dotted",padding:0,fontFamily:"'Manrope',sans-serif"}}>
+                        {fmtMonth(t.statement_month)}
+                      </button>:"—"}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -5122,7 +5152,6 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </div>}
       </Card>
       {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
-      {selStmt&&<StmtDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)} db={db} owners={owners} onBack={()=>setSelStmt(null)} onSave={load}/>}
     </div>
   );
 }
