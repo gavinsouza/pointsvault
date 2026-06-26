@@ -5257,8 +5257,8 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
           <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search transactions…" value={txnSearch} onChange={e=>{setTxnSearch(e.target.value);setPage(0);}}/>
           <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={txnSort} onChange={e=>setTxnSort(e.target.value)}>
-            <option value="date-desc">Date (newest)</option>
-            <option value="date-asc">Date (oldest)</option>
+            <option value="date-asc">Date (oldest first)</option>
+            <option value="date-desc">Date (newest first)</option>
             <option value="amount-desc">Amount ↓</option>
             <option value="amount-asc">Amount ↑</option>
             <option value="category-asc">Category A-Z</option>
@@ -5689,7 +5689,7 @@ function SpendLedger({db,owners}){
   const [search,setSearch]=useState("");
   const [filterMethod,setFilterMethod]=useState("all");
   const [sortKey,setSortKey]=useState("date");
-  const [sortDir,setSortDir]=useState("desc");
+  const [sortDir,setSortDir]=useState("asc");
   const [ledgerPage,setLedgerPage]=useState(0);
 
   const load=useCallback(async()=>{
@@ -5775,8 +5775,8 @@ function SpendLedger({db,owners}){
             <option value="other">Other</option>
           </select>
           <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={sortKey+"-"+sortDir} onChange={e=>{const[k,d]=e.target.value.split("-");setSortKey(k);setSortDir(d);}}>
-            <option value="date-desc">Date (newest)</option>
-            <option value="date-asc">Date (oldest)</option>
+            <option value="date-asc">Date (oldest first)</option>
+            <option value="date-desc">Date (newest first)</option>
             <option value="amount-desc">Amount ↓</option>
             <option value="amount-asc">Amount ↑</option>
           </select>
@@ -5796,12 +5796,12 @@ function SpendLedger({db,owners}){
               </thead>
               <tbody>
                 {pageEntries.map(e=>(
-                  <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:e._yp>0?grn+"05":e._tp>0?red+"05":surf}}>
+                  <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:surf}}>
                     <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
                     <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>{e.description}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",color:grn,fontWeight:e._yp>0?600:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",color:red,fontWeight:e._tp>0?600:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:e._bal>0?grn:e._bal<0?red:mut}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:e._yp>0?600:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:e._tp>0?600:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:txt}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
                     <td style={{padding:"8px 10px",fontSize:10,color:mut}}>{e.payment_method||"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"center",whiteSpace:"nowrap"}}>
                       {e.entry_type==="manual"||!e.entry_type?(
