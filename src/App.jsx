@@ -4096,8 +4096,8 @@ function SpendUpload({db,owners}){
         amount=d>0?d:-c;
       }
       const category=applyRules(desc,rules);
-      return{date:dateStr,desc,amount,category,reimbursable:false,person_id:"",skip:amount<=0};
-    }).filter(r=>r.date&&r.amount!==0);
+      return{date:dateStr,desc,amount,category,reimbursable:false,person_id:"",skip:!dateStr};
+    }).filter(r=>r.date);
   };
 
   const saveMapping=async()=>{
