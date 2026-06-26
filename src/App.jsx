@@ -3984,8 +3984,11 @@ const DEFAULT_RULES=[
 
 function applyRules(desc, rules){
   const d=(desc||"").toLowerCase();
+  const dNoSpace=d.replace(/\s+/g,""); // also try matching without spaces
   for(const r of rules){
-    if(d.includes(r.keyword.toLowerCase())) return r.category;
+    const k=r.keyword.toLowerCase();
+    const kNoSpace=k.replace(/\s+/g,"");
+    if(d.includes(k)||dNoSpace.includes(kNoSpace)) return r.category;
   }
   return "Other";
 }
@@ -6045,8 +6048,11 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     let updated=0;
     for(const t of txns){
       const desc=(t.description||"").toLowerCase();
+      const descNoSpace=desc.replace(/\s+/g,"");
       for(const r of allRules){
-        if(desc.includes(r.keyword.toLowerCase())){
+        const k=r.keyword.toLowerCase();
+        const kNoSpace=k.replace(/\s+/g,"");
+        if(desc.includes(k)||descNoSpace.includes(kNoSpace)){
           if(r.category!==t.category){
             await db.from("spend_transactions").update(t.id,{category:r.category});
             updated++;
