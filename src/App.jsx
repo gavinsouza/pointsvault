@@ -5651,123 +5651,128 @@ function SpendLedger({db,owners}){
   const [busy,setBusy]=useState(true);
   const [selPerson,setSelPerson]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
+  const [editEntry,setEditEntry]=useState(null);
   const [youPaid,setYouPaid]=useState("");
   const [theyPaid,setTheyPaid]=useState("");
   const [desc,setDesc]=useState("");
   const [entryDate,setEntryDate]=useState(new Date().toISOString().split("T")[0]);
   const [method,setMethod]=useState("cash");
+  const [search,setSearch]=useState("");
+  const [filterMethod,setFilterMethod]=useState("all");
+  const [sortKey,setSortKey]=useState("date");
+  const [sortDir,setSortDir]=useState("desc");
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [p,e]=await Promise.all([
-      db.from("people").select(),
-      db.from("ledger_entries").select(),
-    ]);
-    setPeople(p.data||[]);
-    setEntries(e.data||[]);
+    const [p,e]=await Promise.all([db.from("people").select(),db.from("ledger_entries").select()]);
+    setPeople(p.data||[]); setEntries(e.data||[]);
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
 
-  // Balance: owed_to_me = you paid for them (+), i_owe = they paid for you (-)
   const balance=pid=>{
     const pe=entries.filter(e=>e.person_id===pid);
-    const yp=pe.filter(e=>e.direction==="owed_to_me").reduce((a,e)=>a+Number(e.amount||0),0);
-    const tp=pe.filter(e=>e.direction==="i_owe").reduce((a,e)=>a+Number(e.amount||0),0);
-    return yp-tp;
+    return pe.filter(e=>e.direction==="owed_to_me").reduce((a,e)=>a+Number(e.amount||0),0)
+          -pe.filter(e=>e.direction==="i_owe").reduce((a,e)=>a+Number(e.amount||0),0);
   };
-
   const balLabel=(bal,name)=>bal>0?`${name} owes you ₹${Math.abs(bal).toLocaleString("en-IN")}`:bal<0?`You owe ${name} ₹${Math.abs(bal).toLocaleString("en-IN")}`:"Settled";
 
-  const addEntry=async()=>{
-    const yp=parseFloat(youPaid)||0;
-    const tp=parseFloat(theyPaid)||0;
+  const openAdd=()=>{setEditEntry(null);setYouPaid("");setTheyPaid("");setDesc("");setEntryDate(new Date().toISOString().split("T")[0]);setMethod("cash");setShowAdd(true);};
+  const openEdit=e=>{setEditEntry(e);setYouPaid(e.direction==="owed_to_me"?String(e.amount||""):"");setTheyPaid(e.direction==="i_owe"?String(e.amount||""):"");setDesc(e.description||"");setEntryDate(e.entry_date||new Date().toISOString().split("T")[0]);setMethod(e.payment_method||"cash");setShowAdd(true);};
+
+  const saveEntry=async()=>{
+    const yp=parseFloat(youPaid)||0; const tp=parseFloat(theyPaid)||0;
     if(yp===0&&tp===0) return alert("Enter either You Paid or They Paid amount");
-    if(!selPerson) return alert("No person selected");
-    await db.from("ledger_entries").insert({
-      person_id:selPerson.id,
-      amount:yp||tp,
-      direction:yp>0?"owed_to_me":"i_owe",
-      description:desc||"Manual entry",
-      entry_date:entryDate,
-      entry_type:"manual",
-      payment_method:method,
-    });
-    setShowAdd(false);
-    setYouPaid(""); setTheyPaid(""); setDesc("");
-    setEntryDate(new Date().toISOString().split("T")[0]);
-    load();
+    if(!selPerson) return;
+    const data={person_id:selPerson.id,amount:yp||tp,direction:yp>0?"owed_to_me":"i_owe",description:desc||"Manual entry",entry_date:entryDate,entry_type:"manual",payment_method:method};
+    if(editEntry) await db.from("ledger_entries").update(editEntry.id,data);
+    else await db.from("ledger_entries").insert(data);
+    setShowAdd(false); setEditEntry(null);
+    setYouPaid(""); setTheyPaid(""); setDesc(""); load();
   };
 
-  const del=async id=>{
-    if(!confirm("Delete this entry?")) return;
-    await db.from("ledger_entries").delete(id);
-    load();
-  };
+  const del=async id=>{if(!confirm("Delete this entry?")) return;await db.from("ledger_entries").delete(id);load();};
 
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
   if(selPerson){
     const personEntries=entries.filter(e=>e.person_id===selPerson.id)
       .sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
-    
-    // Running balance
     let running=0;
     const entriesWithBal=personEntries.map(e=>{
       const yp=e.direction==="owed_to_me"?Number(e.amount||0):0;
       const tp=e.direction==="i_owe"?Number(e.amount||0):0;
-      running+=yp-tp;
-      return{...e,_yp:yp,_tp:tp,_bal:running};
+      running+=yp-tp; return{...e,_yp:yp,_tp:tp,_bal:running};
     });
     const finalBal=running;
 
+    const filtered=entriesWithBal.filter(e=>{
+      if(search&&!e.description?.toLowerCase().includes(search.toLowerCase())&&!String(e.amount).includes(search)) return false;
+      if(filterMethod!=="all"&&e.payment_method!==filterMethod) return false;
+      return true;
+    }).sort((a,b)=>{
+      let v=0;
+      if(sortKey==="date") v=new Date(a.entry_date)-new Date(b.entry_date);
+      else if(sortKey==="amount") v=Number(a.amount||0)-Number(b.amount||0);
+      else if(sortKey==="desc") v=(a.description||"").localeCompare(b.description||"");
+      return sortDir==="desc"?-v:v;
+    });
+
     return(
       <div>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24,flexWrap:"wrap"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
           <button onClick={()=>setSelPerson(null)} style={{...gbtn,fontSize:12}}>← Back</button>
           <div style={{flex:1}}>
             <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{selPerson.name}</div>
-            <div style={{fontSize:14,fontWeight:600,color:finalBal>0?grn:finalBal<0?red:mut,marginTop:2}}>
-              {balLabel(finalBal,selPerson.name)}
-            </div>
+            <div style={{fontSize:14,fontWeight:600,color:finalBal>0?grn:finalBal<0?red:mut,marginTop:2}}>{balLabel(finalBal,selPerson.name)}</div>
           </div>
-          <button style={pbtn} onClick={()=>setShowAdd(true)}>+ Add entry</button>
+          <button style={pbtn} onClick={openAdd}>+ Add entry</button>
         </div>
-        <div style={{fontSize:11,color:mut,marginBottom:12,padding:"8px 12px",background:surf2,borderRadius:8}}>
-          Auto entries (from CC splits) can only be removed by editing the split on the statement. Manual entries can be deleted here.
+        <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search description or amount…" value={search} onChange={e=>setSearch(e.target.value)}/>
+          <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={filterMethod} onChange={e=>setFilterMethod(e.target.value)}>
+            <option value="all">All methods</option>
+            <option value="cash">Cash</option>
+            <option value="upi">UPI</option>
+            <option value="bank_transfer">Bank Transfer</option>
+            <option value="cc">Credit Card</option>
+            <option value="other">Other</option>
+          </select>
+          <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={sortKey+"-"+sortDir} onChange={e=>{const[k,d]=e.target.value.split("-");setSortKey(k);setSortDir(d);}}>
+            <option value="date-desc">Date (newest)</option>
+            <option value="date-asc">Date (oldest)</option>
+            <option value="amount-desc">Amount ↓</option>
+            <option value="amount-asc">Amount ↑</option>
+          </select>
         </div>
-
-        {entriesWithBal.length===0?<Empty icon="L" msg="No entries yet — add one above"/>:(
+        <div style={{fontSize:11,color:mut,marginBottom:10,padding:"6px 10px",background:surf2,borderRadius:8}}>
+          Auto entries from CC splits — edit via the statement. Manual entries are editable here.
+        </div>
+        {filtered.length===0?<Empty icon="L" msg="No entries match your filters"/>:(
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
-              <colgroup>
-                <col style={{width:90}}/><col style={{width:"auto",minWidth:120}}/>
-                <col style={{width:110}}/><col style={{width:110}}/><col style={{width:110}}/>
-                <col style={{width:70}}/>
-              </colgroup>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
                 <tr style={{borderBottom:`2px solid ${bdr}`}}>
-                  {["Date","Description","You Paid","They Paid","Balance",""].map((h,i)=>(
-                    <th key={i} style={{padding:"8px 10px",textAlign:i>=2?"right":"left",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",color:mut}}>{h}</th>
+                  {["Date","Description","You Paid","They Paid","Balance","Method",""].map((h,i)=>(
+                    <th key={i} style={{padding:"8px 10px",textAlign:i>=2&&i<=4?"right":"left",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",color:mut,whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {entriesWithBal.map(e=>(
+                {filtered.map(e=>(
                   <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:e._yp>0?grn+"05":e._tp>0?red+"05":surf}}>
                     <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
-                    <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>
-                      {e.description}
-                      {e.payment_method&&<span style={{fontSize:10,color:mut,marginLeft:6,background:surf2,padding:"1px 6px",borderRadius:8}}>{e.payment_method}</span>}
-                    </td>
+                    <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>{e.description}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",color:grn,fontWeight:e._yp>0?600:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",color:red,fontWeight:e._tp>0?600:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
-                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:e._bal>0?grn:e._bal<0?red:mut}}>
-                      {e._bal>0?"+":""}₹{e._bal.toLocaleString("en-IN")}
-                    </td>
-                    <td style={{padding:"8px 10px",textAlign:"center"}}>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:e._bal>0?grn:e._bal<0?red:mut}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
+                    <td style={{padding:"8px 10px",fontSize:10,color:mut}}>{e.payment_method||"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"center",whiteSpace:"nowrap"}}>
                       {e.entry_type==="manual"||!e.entry_type?(
-                        <button onClick={()=>del(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>×</button>
+                        <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                          <button onClick={()=>openEdit(e)} style={{...gbtn,padding:"2px 8px",fontSize:10}}>Edit</button>
+                          <button onClick={()=>del(e.id)} style={{...dbtn,padding:"2px 8px",fontSize:10}}>Del</button>
+                        </div>
                       ):(
                         <span style={{fontSize:9,color:mut,opacity:0.5}}>auto</span>
                       )}
@@ -5775,55 +5780,35 @@ function SpendLedger({db,owners}){
                   </tr>
                 ))}
                 <tr style={{borderTop:`2px solid ${bdr}`,background:surf2}}>
-                  <td colSpan={2} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Final Balance</td>
-                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:grn,fontSize:12}}>
-                    ₹{entriesWithBal.reduce((a,e)=>a+e._yp,0).toLocaleString("en-IN")}
-                  </td>
-                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:red,fontSize:12}}>
-                    ₹{entriesWithBal.reduce((a,e)=>a+e._tp,0).toLocaleString("en-IN")}
-                  </td>
-                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,fontSize:14,color:finalBal>0?grn:finalBal<0?red:mut}}>
-                    {finalBal>0?"+":""}₹{finalBal.toLocaleString("en-IN")}
-                  </td>
-                  <td/>
+                  <td colSpan={2} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Total</td>
+                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:grn,fontSize:12}}>₹{entriesWithBal.reduce((a,e)=>a+e._yp,0).toLocaleString("en-IN")}</td>
+                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:red,fontSize:12}}>₹{entriesWithBal.reduce((a,e)=>a+e._tp,0).toLocaleString("en-IN")}</td>
+                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,fontSize:14,color:finalBal>0?grn:finalBal<0?red:mut}}>{finalBal===0?"₹0":(finalBal>0?"+":"")+"₹"+finalBal.toLocaleString("en-IN")}</td>
+                  <td colSpan={2}/>
                 </tr>
               </tbody>
             </table>
           </div>
         )}
-
-        <Modal show={showAdd} onClose={()=>setShowAdd(false)} title={"Add entry — "+selPerson.name}>
-          <div style={{background:surf2,borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:12,color:mut,lineHeight:1.6}}>
-            <strong style={{color:txt}}>You Paid</strong> = you spent money on their behalf (they owe you)<br/>
+        <Modal show={showAdd} onClose={()=>{setShowAdd(false);setEditEntry(null);}} title={editEntry?"Edit Entry":"Add entry — "+selPerson.name}>
+          <div style={{background:surf2,borderRadius:10,padding:"10px 12px",marginBottom:14,fontSize:12,color:mut,lineHeight:1.6}}>
+            <strong style={{color:txt}}>You Paid</strong> = you spent on their behalf (they owe you)<br/>
             <strong style={{color:txt}}>They Paid</strong> = they paid you back or paid for you
           </div>
-          {lbl("Description")}<input style={inp} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Dinner, groceries, repayment…"/>
+          {lbl("Description")}<input style={inp} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Dinner, repayment…"/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-            <div>
-              {lbl("You Paid (₹)")}
-              <input type="text" inputMode="decimal" style={inp} placeholder="0" value={youPaid}
-                onChange={e=>{setYouPaid(e.target.value.replace(/[^0-9.]/g,""));if(e.target.value) setTheyPaid("");}}/>
-            </div>
-            <div>
-              {lbl("They Paid (₹)")}
-              <input type="text" inputMode="decimal" style={inp} placeholder="0" value={theyPaid}
-                onChange={e=>{setTheyPaid(e.target.value.replace(/[^0-9.]/g,""));if(e.target.value) setYouPaid("");}}/>
-            </div>
+            <div>{lbl("You Paid (₹)")}<input type="text" inputMode="decimal" style={inp} placeholder="0" value={youPaid} onChange={e=>{setYouPaid(e.target.value.replace(/[^0-9.]/g,""));if(e.target.value) setTheyPaid("");}}/></div>
+            <div>{lbl("They Paid (₹)")}<input type="text" inputMode="decimal" style={inp} placeholder="0" value={theyPaid} onChange={e=>{setTheyPaid(e.target.value.replace(/[^0-9.]/g,""));if(e.target.value) setYouPaid("");}}/></div>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
             <div>{lbl("Date")}<input type="date" style={inp} value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></div>
-            <div>
-              {lbl("Method")}
-              <select style={inp} value={method} onChange={e=>setMethod(e.target.value)}>
-                <option value="cash">Cash</option>
-                <option value="upi">UPI</option>
-                <option value="bank_transfer">Bank Transfer</option>
-                <option value="cc">Credit Card</option>
-                <option value="other">Other</option>
-              </select>
-            </div>
+            <div>{lbl("Method")}<select style={inp} value={method} onChange={e=>setMethod(e.target.value)}>
+              <option value="cash">Cash</option><option value="upi">UPI</option>
+              <option value="bank_transfer">Bank Transfer</option><option value="cc">Credit Card</option>
+              <option value="other">Other</option>
+            </select></div>
           </div>
-          <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={addEntry}>Add Entry</button>
+          <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveEntry}>{editEntry?"Save Changes":"Add Entry"}</button>
         </Modal>
       </div>
     );
@@ -5841,7 +5826,7 @@ function SpendLedger({db,owners}){
               <Card key={p.id} style={{cursor:"pointer"}} onClick={()=>setSelPerson(p)}>
                 <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:6}}>{p.name}</div>
                 <div style={{fontSize:22,fontWeight:700,fontFamily:"'Manrope',sans-serif",marginBottom:4,color:bal>0?grn:bal<0?red:mut}}>
-                  {bal>0?"+"  :bal<0?"-":""} ₹{Math.abs(bal).toLocaleString("en-IN")}
+                  {bal>0?"+"}{bal<0?"-":""} ₹{Math.abs(bal).toLocaleString("en-IN")}
                 </div>
                 <div style={{fontSize:11,color:mut}}>{balLabel(bal,p.name)} · {pe.length} entries</div>
               </Card>
@@ -5852,8 +5837,6 @@ function SpendLedger({db,owners}){
     </div>
   );
 }
-
-
 
 // ── StmtDetail ────────────────────────────────────────────────────────────────
 function StmtDetail({stmt,db,owners,onBack,onSave}){
