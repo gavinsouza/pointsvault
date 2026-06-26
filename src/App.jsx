@@ -4000,6 +4000,7 @@ function SpendUpload({db,owners}){
   const [amtCol,setAmtCol]=useState(2);
   const [debitCol,setDebitCol]=useState(2);
   const [creditCol,setCreditCol]=useState(3);
+  const [creditIndCol,setCreditIndCol]=useState(-1); // col that indicates credit when non-empty (-1 = none)
   const [dateFormat,setDateFormat]=useState("DD/MM/YYYY");
   const [skipRows,setSkipRows]=useState(1);
   const [manualDelim,setManualDelim]=useState("auto");
@@ -4053,6 +4054,7 @@ function SpendUpload({db,owners}){
     setAmtType(m.amount_type||"single"); setAmtCol(Number(m.amount_col)||2);
     setDebitCol(Number(m.debit_col)||2); setCreditCol(Number(m.credit_col)||3);
     setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(Number(m.skip_rows)||1);
+    setCreditIndCol(m.credit_ind_col!==undefined&&m.credit_ind_col!==null?Number(m.credit_ind_col):-1);
     const delim=m.delimiter||"auto";
     setManualDelim(delim);
     setSelMapping(m.id);
@@ -4072,6 +4074,7 @@ function SpendUpload({db,owners}){
     const at=opts.amtType||amtType;
     const dbc=opts.debitCol!==undefined?opts.debitCol:debitCol;
     const crc=opts.creditCol!==undefined?opts.creditCol:creditCol;
+    const cic=opts.creditIndCol!==undefined?opts.creditIndCol:creditIndCol;
     const df=opts.dateFormat||dateFormat;
     const rows=opts.rawRows||rawRows;
     const dataRows=rows.slice(sk);
@@ -4081,7 +4084,10 @@ function SpendUpload({db,owners}){
       let amount=0;
       if(at==="single"){
         const raw=(row[ac]||"").replace(/[,'"₹Rs\s]/g,"").trim();
-        amount=Math.abs(parseFloat(raw)||0);
+        const absAmt=Math.abs(parseFloat(raw)||0);
+        // If a credit indicator column is set and non-empty, it's a credit/refund
+        const isCredit=cic>=0&&(row[cic]||"").trim().length>0;
+        amount=isCredit?-absAmt:absAmt;
       } else {
         const dRaw=(row[dbc]||"").replace(/[,'"₹Rs]/g,"").trim();
         const cRaw=(row[crc]||"").replace(/[,'"₹Rs]/g,"").trim();
@@ -4091,12 +4097,12 @@ function SpendUpload({db,owners}){
       }
       const category=applyRules(desc,rules);
       return{date:dateStr,desc,amount,category,reimbursable:false,person_id:"",skip:amount<=0};
-    }).filter(r=>r.date&&r.amount>0);
+    }).filter(r=>r.date&&r.amount!==0);
   };
 
   const saveMapping=async()=>{
     if(!mapName.trim()) return alert("Please enter a mapping name");
-    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows};
+    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol};
     try{
       if(selMapping){
         const {error}=await db.from("csv_mappings").update(selMapping,p);
@@ -4442,6 +4448,14 @@ function SpendUpload({db,owners}){
               ))}
             </div>
           </div>
+          {amtType==="single"&&<div style={{marginBottom:12,maxWidth:400}}>
+            {lbl("Credit indicator column (optional — e.g. HDFC Col 6)")}
+            <select style={ss} value={creditIndCol} onChange={e=>setCreditIndCol(Number(e.target.value))}>
+              <option value={-1}>None (all rows are debits)</option>
+              {colOpts.map((l,i)=><option key={i} value={i}>{l} — if non-empty = credit/refund</option>)}
+            </select>
+            <div style={{fontSize:11,color:mut,marginTop:4}}>For HDFC: select Col 6 (Debit/Credit). Credits will show as negative amounts and be excluded from spend totals.</div>
+          </div>}
           {amtType==="single"?(
             <div style={{maxWidth:300}}>
               {lbl("Amount column")}
@@ -4496,10 +4510,13 @@ function SpendUpload({db,owners}){
           </thead>
           <tbody>
             {parsed.map((row,i)=>(
-              <tr key={i} style={{borderBottom:`1px solid ${bdr}`,opacity:row.skip?0.35:1,background:row.reimbursable?acc+"06":surf}}>
+              <tr key={i} style={{borderBottom:`1px solid ${bdr}`,opacity:row.skip?0.35:1,background:row.amount<0?grn+"08":row.reimbursable?acc+"06":surf}}>
                 <td style={{padding:"7px 10px",color:mut,whiteSpace:"nowrap"}}>{row.date}</td>
                 <td style={{padding:"7px 10px",color:txt,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.desc}</td>
-                <td style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:txt}}>₹{row.amount.toLocaleString("en-IN")}</td>
+                <td style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:row.amount<0?grn:txt}}>
+                  {row.amount<0?<span style={{fontSize:10,color:grn,marginRight:4}}>CREDIT</span>:null}
+                  ₹{Math.abs(row.amount).toLocaleString("en-IN")}
+                </td>
                 <td style={{padding:"7px 10px"}}>
                   <select value={row.category} onChange={e=>upd(i,"category",e.target.value)}
                     style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}}>
