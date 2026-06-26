@@ -4817,7 +4817,30 @@ function SpendOverview({db,owners}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <Card>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by Category</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut}}>
+                <input type="checkbox" checked={pieMyShareOnly} onChange={e=>setPieMyShareOnly(e.target.checked)} style={{accentColor:acc}}/>
+                My share only
+              </label>
+              <div style={{position:"relative"}}>
+                <button style={{...gbtn,fontSize:10,padding:"3px 10px"}} onClick={()=>setShowPieFilter(f=>!f)}>
+                  Filter {pieExcludeCats.size>0?`(${pieExcludeCats.size} hidden)`:""}
+                </button>
+                {showPieFilter&&<div style={{position:"absolute",right:0,top:"100%",zIndex:10,background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 12px",minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
+                  <div style={{fontSize:10,color:mut,marginBottom:6,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em"}}>Hide categories</div>
+                  {allCategories.map(cat=>(
+                    <label key={cat} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"3px 0",fontSize:12,color:txt}}>
+                      <input type="checkbox" checked={pieExcludeCats.has(cat)} onChange={e=>{setPieExcludeCats(prev=>{const n=new Set(prev);e.target.checked?n.add(cat):n.delete(cat);return n;});}} style={{accentColor:acc}}/>
+                      {cat}
+                    </label>
+                  ))}
+                  <button style={{...gbtn,fontSize:10,marginTop:8,width:"100%"}} onClick={()=>{setPieExcludeCats(new Set());setShowPieFilter(false);}}>Clear all</button>
+                </div>}
+              </div>
+            </div>
+          </div>
           {topCats.map(([cat,val],i)=>(
             <div key={i} style={{marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
@@ -4858,6 +4881,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [txnSearch,setTxnSearch]=useState("");
   const [txnSort,setTxnSort]=useState("date-desc");
   const [colW,setColW]=useState([90,200,120,90,140,90]); // date,desc,cat,amt,split,stmt
+  const [pieMyShareOnly,setPieMyShareOnly]=useState(false);
+  const [pieExcludeCats,setPieExcludeCats]=useState(new Set());
+  const [showPieFilter,setShowPieFilter]=useState(false);
   const [showStmts,setShowStmts]=useState(false);
   const [selStmt,setSelStmt]=useState(null);
   const [showEditCard,setShowEditCard]=useState(false);
@@ -4911,11 +4937,20 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     billingYtdMsg="Set billing year start in card settings";
   }
 
-  // Category breakdown for pie chart
+  // Category breakdown for pie chart (with filters)
   const catTotals={};
-  txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+  txns.forEach(t=>{
+    if(pieExcludeCats.has(t.category||"Other")) return;
+    let amt=Number(t.amount||0);
+    if(pieMyShareOnly&&t.is_reimbursable&&splitsMap[t.id]){
+      const mine=splitsMap[t.id].find(s=>s.is_personal);
+      amt=Number(mine?.amount||0);
+    }
+    if(amt>0) catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+amt;
+  });
   const catData=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const total=catData.reduce((a,[,v])=>a+v,0);
+  const allCategories=[...new Set(txns.map(t=>t.category||"Other"))].sort();
   const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9","#e67e22","#16a085","#8a8883"];
 
   // Pie chart SVG
@@ -5099,7 +5134,30 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       {/* Charts row */}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
         {pieSlices&&pieSlices.length>0&&<Card>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by Category</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut}}>
+                <input type="checkbox" checked={pieMyShareOnly} onChange={e=>setPieMyShareOnly(e.target.checked)} style={{accentColor:acc}}/>
+                My share only
+              </label>
+              <div style={{position:"relative"}}>
+                <button style={{...gbtn,fontSize:10,padding:"3px 10px"}} onClick={()=>setShowPieFilter(f=>!f)}>
+                  Filter {pieExcludeCats.size>0?`(${pieExcludeCats.size} hidden)`:""}
+                </button>
+                {showPieFilter&&<div style={{position:"absolute",right:0,top:"100%",zIndex:10,background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 12px",minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
+                  <div style={{fontSize:10,color:mut,marginBottom:6,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em"}}>Hide categories</div>
+                  {allCategories.map(cat=>(
+                    <label key={cat} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"3px 0",fontSize:12,color:txt}}>
+                      <input type="checkbox" checked={pieExcludeCats.has(cat)} onChange={e=>{setPieExcludeCats(prev=>{const n=new Set(prev);e.target.checked?n.add(cat):n.delete(cat);return n;});}} style={{accentColor:acc}}/>
+                      {cat}
+                    </label>
+                  ))}
+                  <button style={{...gbtn,fontSize:10,marginTop:8,width:"100%"}} onClick={()=>{setPieExcludeCats(new Set());setShowPieFilter(false);}}>Clear all</button>
+                </div>}
+              </div>
+            </div>
+          </div>
           <div style={{display:"flex",gap:16,alignItems:"center"}}>
             <svg width="110" height="110" viewBox="0 0 160 160" style={{flexShrink:0}}>
               {pieSlices.map((s,i)=>(
@@ -5170,10 +5228,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                 {["Date","Description","Category","Amount","Split","Stmt"].map((label,ci)=>(
                   <th key={ci} style={{padding:"6px 8px",textAlign:ci===3?"right":"left",position:"relative",userSelect:"none",background:surf}}>
                     {label}
-                    <span onMouseDown={e=>{e.preventDefault();const sx=e.clientX;const sw=colW[ci];const mv=mv=>{setColW(w=>{const n=[...w];n[ci]=Math.max(ci===1?100:60,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
-                      style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize",background:"transparent"}}
-                      onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
+                    <span onMouseDown={e=>{e.preventDefault();const sx=e.clientX;const sw=colW[ci];const mv=mv=>{setColW(w=>{const n=[...w];n[ci]=Math.max(ci===1?80:40,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
+                      style={{position:"absolute",right:0,top:"15%",bottom:"15%",width:3,cursor:"col-resize",background:acc+"66",borderRadius:2,transition:"background 0.1s"}}
+                      onMouseEnter={e=>e.currentTarget.style.background=acc}
+                      onMouseLeave={e=>e.currentTarget.style.background=acc+"66"}/>
                   </th>
                 ))}
               </tr>
@@ -5443,8 +5501,10 @@ function SpendTransactions({db,owners}){
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({
           person_id:s.person_id,
-          direction:"owed_to_me",
+          you_paid:Number(s.amount),
+          they_paid:0,
           amount:Number(s.amount),
+          direction:"owed_to_me",
           description:showSplit.description||"CC transaction",
           entry_date:showSplit.txn_date,
           entry_type:"transaction",
@@ -5571,7 +5631,7 @@ function SpendTransactions({db,owners}){
           <div style={{display:"flex",gap:8,marginBottom:16}}>
             <button style={{...gbtn,fontSize:12}} onClick={addSplit}>+ Add person</button>
             <div style={{flex:1,textAlign:"right",fontSize:12,color:Math.abs(splitRemaining)<0.01?grn:red,fontWeight:600,padding:"8px 0"}}>
-              {Math.abs(splitRemaining)<0.01?"✓ Balanced":`Remaining: ₹${splitRemaining.toLocaleString("en-IN")}`}
+              {Math.abs(splitRemaining)<0.01?"✓ Balanced":splitRemaining>0?`-₹${splitRemaining.toLocaleString("en-IN")} unallocated`:`+₹${Math.abs(splitRemaining).toLocaleString("en-IN")} over`}
             </div>
           </div>
           <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.4}} onClick={saveSplit}>Save Split</button>
@@ -5588,7 +5648,11 @@ function SpendLedger({db,owners}){
   const [busy,setBusy]=useState(true);
   const [selPerson,setSelPerson]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
-  const [newEntry,setNewEntry]=useState({direction:"owed_to_me",amount:"",description:"",entry_date:new Date().toISOString().split("T")[0],payment_method:"cash"});
+  const [youPaid,setYouPaid]=useState("");
+  const [theyPaid,setTheyPaid]=useState("");
+  const [desc,setDesc]=useState("");
+  const [entryDate,setEntryDate]=useState(new Date().toISOString().split("T")[0]);
+  const [method,setMethod]=useState("cash");
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -5602,26 +5666,38 @@ function SpendLedger({db,owners}){
   },[db]);
   useEffect(()=>{load();},[load]);
 
+  // Balance = sum(you_paid) - sum(they_paid)
   const balance=pid=>{
-    const personEntries=entries.filter(e=>e.person_id===pid);
-    const owed=personEntries.filter(e=>e.direction==="owed_to_me").reduce((a,e)=>a+Number(e.amount||0),0);
-    const iOwe=personEntries.filter(e=>e.direction==="i_owe").reduce((a,e)=>a+Number(e.amount||0),0);
-    return owed-iOwe;
+    const pe=entries.filter(e=>e.person_id===pid);
+    const yp=pe.reduce((a,e)=>a+Number(e.you_paid||e.amount||0),0);
+    const tp=pe.reduce((a,e)=>a+Number(e.they_paid||0),0);
+    // Legacy: direction="owed_to_me" = you_paid, direction="i_owe" = they_paid
+    const legYp=pe.filter(e=>e.direction==="owed_to_me"&&!e.you_paid&&!e.they_paid).reduce((a,e)=>a+Number(e.amount||0),0);
+    const legTp=pe.filter(e=>e.direction==="i_owe"&&!e.you_paid&&!e.they_paid).reduce((a,e)=>a+Number(e.amount||0),0);
+    return (yp+legYp)-(tp+legTp);
   };
 
+  const balLabel=(bal,name)=>bal>0?`${name} owes you ₹${Math.abs(bal).toLocaleString("en-IN")}`:bal<0?`You owe ${name} ₹${Math.abs(bal).toLocaleString("en-IN")}`:"Settled";
+
   const addEntry=async()=>{
-    if(!newEntry.amount||!selPerson) return alert("Amount and person required");
+    const yp=parseFloat(youPaid)||0;
+    const tp=parseFloat(theyPaid)||0;
+    if(yp===0&&tp===0) return alert("Enter either You Paid or They Paid amount");
+    if(!selPerson) return alert("No person selected");
     await db.from("ledger_entries").insert({
       person_id:selPerson.id,
-      direction:newEntry.direction,
-      amount:parseFloat(newEntry.amount),
-      description:newEntry.description||"Manual entry",
-      entry_date:newEntry.entry_date,
-      entry_type:newEntry.direction==="owed_to_me"?"payment":"manual",
-      payment_method:newEntry.payment_method,
+      you_paid:yp,
+      they_paid:tp,
+      amount:yp||tp, // legacy compat
+      direction:yp>0?"owed_to_me":"i_owe",
+      description:desc||"Manual entry",
+      entry_date:entryDate,
+      entry_type:"manual",
+      payment_method:method,
     });
     setShowAdd(false);
-    setNewEntry({direction:"owed_to_me",amount:"",description:"",entry_date:new Date().toISOString().split("T")[0],payment_method:"cash"});
+    setYouPaid(""); setTheyPaid(""); setDesc("");
+    setEntryDate(new Date().toISOString().split("T")[0]);
     load();
   };
 
@@ -5634,71 +5710,114 @@ function SpendLedger({db,owners}){
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
   if(selPerson){
-    const personEntries=entries.filter(e=>e.person_id===selPerson.id).sort((a,b)=>new Date(b.entry_date)-new Date(a.entry_date));
-    const bal=balance(selPerson.id);
+    const personEntries=entries.filter(e=>e.person_id===selPerson.id)
+      .sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
+    
+    // Running balance
+    let running=0;
+    const entriesWithBal=personEntries.map(e=>{
+      const yp=Number(e.you_paid||((e.direction==="owed_to_me"&&!e.they_paid)?e.amount:0)||0);
+      const tp=Number(e.they_paid||((e.direction==="i_owe"&&!e.you_paid)?e.amount:0)||0);
+      running+=yp-tp;
+      return{...e,_yp:yp,_tp:tp,_bal:running};
+    });
+    const finalBal=running;
+
     return(
       <div>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:24,flexWrap:"wrap"}}>
           <button onClick={()=>setSelPerson(null)} style={{...gbtn,fontSize:12}}>← Back</button>
-          <div>
+          <div style={{flex:1}}>
             <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{selPerson.name}</div>
-            <div style={{fontSize:13,fontWeight:600,color:bal>0?grn:bal<0?red:mut,marginTop:2}}>
-              {bal>0?`Owes you ₹${bal.toLocaleString("en-IN")}`:bal<0?`You owe ₹${Math.abs(bal).toLocaleString("en-IN")}`:"Settled"}
+            <div style={{fontSize:14,fontWeight:600,color:finalBal>0?grn:finalBal<0?red:mut,marginTop:2}}>
+              {balLabel(finalBal,selPerson.name)}
             </div>
           </div>
-          <button style={{...pbtn,marginLeft:"auto"}} onClick={()=>setShowAdd(true)}>+ Add entry</button>
+          <button style={pbtn} onClick={()=>setShowAdd(true)}>+ Add entry</button>
         </div>
-        {personEntries.length===0?<Empty icon="L" msg="No entries yet"/>:(
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-            <thead>
-              <tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>
-                <th style={{padding:"8px 10px",textAlign:"left"}}>Date</th>
-                <th style={{padding:"8px 10px",textAlign:"left"}}>Description</th>
-                <th style={{padding:"8px 10px",textAlign:"left"}}>Type</th>
-                <th style={{padding:"8px 10px",textAlign:"right"}}>Amount</th>
-                <th style={{padding:"8px 10px",textAlign:"center"}}>Direction</th>
-                <th style={{padding:"8px 10px",textAlign:"center"}}></th>
-              </tr>
-            </thead>
-            <tbody>
-              {personEntries.map(e=>(
-                <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                  <td style={{padding:"8px 10px",color:mut}}>{e.entry_date}</td>
-                  <td style={{padding:"8px 10px",color:txt}}>{e.description}</td>
-                  <td style={{padding:"8px 10px",color:mut,fontSize:11}}>{e.entry_type}{e.payment_method?" · "+e.payment_method:""}</td>
-                  <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:e.direction==="owed_to_me"?grn:red}}>
-                    {e.direction==="owed_to_me"?"+":"-"}₹{Number(e.amount||0).toLocaleString("en-IN")}
-                  </td>
-                  <td style={{padding:"8px 10px",textAlign:"center"}}>
-                    <span style={{fontSize:10,padding:"2px 8px",borderRadius:10,background:e.direction==="owed_to_me"?grn+"15":red+"15",color:e.direction==="owed_to_me"?grn:red}}>
-                      {e.direction==="owed_to_me"?"Owes you":"You owe"}
-                    </span>
-                  </td>
-                  <td style={{padding:"8px 10px",textAlign:"center"}}>
-                    <button onClick={()=>del(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13}}>×</button>
-                  </td>
+
+        {entriesWithBal.length===0?<Empty icon="L" msg="No entries yet — add one above"/>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+              <colgroup>
+                <col style={{width:90}}/><col style={{width:"auto",minWidth:120}}/>
+                <col style={{width:110}}/><col style={{width:110}}/><col style={{width:110}}/>
+                <col style={{width:70}}/>
+              </colgroup>
+              <thead>
+                <tr style={{borderBottom:`2px solid ${bdr}`}}>
+                  {["Date","Description","You Paid","They Paid","Balance",""].map((h,i)=>(
+                    <th key={i} style={{padding:"8px 10px",textAlign:i>=2?"right":"left",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",color:mut}}>{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {entriesWithBal.map(e=>(
+                  <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:e._yp>0?grn+"05":e._tp>0?red+"05":surf}}>
+                    <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
+                    <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>
+                      {e.description}
+                      {e.payment_method&&<span style={{fontSize:10,color:mut,marginLeft:6,background:surf2,padding:"1px 6px",borderRadius:8}}>{e.payment_method}</span>}
+                    </td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:grn,fontWeight:e._yp>0?600:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",color:red,fontWeight:e._tp>0?600:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
+                    <td style={{padding:"8px 10px",textAlign:"right",fontWeight:700,color:e._bal>0?grn:e._bal<0?red:mut}}>
+                      {e._bal>0?"+":""}₹{e._bal.toLocaleString("en-IN")}
+                    </td>
+                    <td style={{padding:"8px 10px",textAlign:"center"}}>
+                      <button onClick={()=>del(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>×</button>
+                    </td>
+                  </tr>
+                ))}
+                <tr style={{borderTop:`2px solid ${bdr}`,background:surf2}}>
+                  <td colSpan={2} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Final Balance</td>
+                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:grn,fontSize:12}}>
+                    ₹{entriesWithBal.reduce((a,e)=>a+e._yp,0).toLocaleString("en-IN")}
+                  </td>
+                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:red,fontSize:12}}>
+                    ₹{entriesWithBal.reduce((a,e)=>a+e._tp,0).toLocaleString("en-IN")}
+                  </td>
+                  <td style={{padding:"10px",textAlign:"right",fontWeight:700,fontSize:14,color:finalBal>0?grn:finalBal<0?red:mut}}>
+                    {finalBal>0?"+":""}₹{finalBal.toLocaleString("en-IN")}
+                  </td>
+                  <td/>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         )}
-        <Modal show={showAdd} onClose={()=>setShowAdd(false)} title={"Add entry for "+selPerson.name}>
-          {lbl("Direction")}
-          <select style={inp} value={newEntry.direction} onChange={e=>setNewEntry(n=>({...n,direction:e.target.value}))}>
-            <option value="owed_to_me">{selPerson.name} owes me (payment received / expense paid)</option>
-            <option value="i_owe">I owe {selPerson.name}</option>
-          </select>
-          {lbl("Amount (₹)")}<input type="number" style={inp} value={newEntry.amount} onChange={e=>setNewEntry(n=>({...n,amount:e.target.value}))}/>
-          {lbl("Description")}<input style={inp} value={newEntry.description} onChange={e=>setNewEntry(n=>({...n,description:e.target.value}))} placeholder="Cash payment, dinner split…"/>
-          {lbl("Date")}<input type="date" style={inp} value={newEntry.entry_date} onChange={e=>setNewEntry(n=>({...n,entry_date:e.target.value}))}/>
-          {lbl("Method")}
-          <select style={inp} value={newEntry.payment_method} onChange={e=>setNewEntry(n=>({...n,payment_method:e.target.value}))}>
-            <option value="cash">Cash</option>
-            <option value="upi">UPI</option>
-            <option value="bank_transfer">Bank Transfer</option>
-            <option value="cc">Credit Card</option>
-            <option value="other">Other</option>
-          </select>
+
+        <Modal show={showAdd} onClose={()=>setShowAdd(false)} title={"Add entry — "+selPerson.name}>
+          <div style={{background:surf2,borderRadius:10,padding:"12px 14px",marginBottom:16,fontSize:12,color:mut,lineHeight:1.6}}>
+            <strong style={{color:txt}}>You Paid</strong> = you spent money on their behalf (they owe you)<br/>
+            <strong style={{color:txt}}>They Paid</strong> = they paid you back or paid for you
+          </div>
+          {lbl("Description")}<input style={inp} value={desc} onChange={e=>setDesc(e.target.value)} placeholder="Dinner, groceries, repayment…"/>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div>
+              {lbl("You Paid (₹)")}
+              <input type="text" inputMode="decimal" style={inp} placeholder="0" value={youPaid}
+                onChange={e=>{setYouPaid(e.target.value.replace(/[^0-9.]/g,""));if(e.target.value) setTheyPaid("");}}/>
+            </div>
+            <div>
+              {lbl("They Paid (₹)")}
+              <input type="text" inputMode="decimal" style={inp} placeholder="0" value={theyPaid}
+                onChange={e=>{setTheyPaid(e.target.value.replace(/[^0-9.]/g,""));if(e.target.value) setYouPaid("");}}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+            <div>{lbl("Date")}<input type="date" style={inp} value={entryDate} onChange={e=>setEntryDate(e.target.value)}/></div>
+            <div>
+              {lbl("Method")}
+              <select style={inp} value={method} onChange={e=>setMethod(e.target.value)}>
+                <option value="cash">Cash</option>
+                <option value="upi">UPI</option>
+                <option value="bank_transfer">Bank Transfer</option>
+                <option value="cc">Credit Card</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
           <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={addEntry}>Add Entry</button>
         </Modal>
       </div>
@@ -5709,17 +5828,17 @@ function SpendLedger({db,owners}){
     <div>
       <Hdr title="Ledger" sub="Track who owes you and who you owe"/>
       {people.length===0?<Empty icon="L" msg="Add people in Spend Tracker → Setup → People"/>:(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
           {people.map(p=>{
             const bal=balance(p.id);
-            const personEntries=entries.filter(e=>e.person_id===p.id);
+            const pe=entries.filter(e=>e.person_id===p.id);
             return(
               <Card key={p.id} style={{cursor:"pointer"}} onClick={()=>setSelPerson(p)}>
-                <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:4}}>{p.name}</div>
-                <div style={{fontSize:20,fontWeight:700,color:bal>0?grn:bal<0?red:mut,fontFamily:"'Manrope',sans-serif",marginBottom:4}}>
+                <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:6}}>{p.name}</div>
+                <div style={{fontSize:22,fontWeight:700,fontFamily:"'Manrope',sans-serif",marginBottom:4,color:bal>0?grn:bal<0?red:mut}}>
                   {bal>0?"+"  :bal<0?"-":""} ₹{Math.abs(bal).toLocaleString("en-IN")}
                 </div>
-                <div style={{fontSize:11,color:mut}}>{bal>0?"Owes you":bal<0?"You owe":"Settled"} · {personEntries.length} entries</div>
+                <div style={{fontSize:11,color:mut}}>{balLabel(bal,p.name)} · {pe.length} entries</div>
               </Card>
             );
           })}
@@ -5729,342 +5848,4 @@ function SpendLedger({db,owners}){
   );
 }
 
-// ── StmtDetail — statement detail with editable transactions ──────────────────
-function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
-  const [txns,setTxns]=useState(initTxns||[]);
-  const [people,setPeople]=useState([]);
-  const [categories,setCategories]=useState([]);
-  const [search,setSearch]=useState("");
-  const [sortBy,setSortBy]=useState("date"); // date|amount|category|desc
-  const [sortDir,setSortDir]=useState("desc");
-  const [editId,setEditId]=useState(null);
-  const [editRow,setEditRow]=useState(null);
-  const [showSplit,setShowSplit]=useState(null);
-  const [splits,setSplits]=useState([]);
-  const [page,setPage]=useState(0);
-  const PAGE=15;
 
-  const [txnSplitsMap,setTxnSplitsMap]=useState({});
-  const [colW,setColW]=useState([90,200,120,90,150,80]); // date,desc,cat,amt,split,edit
-
-  useEffect(()=>{
-    (async()=>{
-      const [p,cats,t,sp]=await Promise.all([
-        db.from("people").select(),
-        db.from("spend_categories").select(),
-        db.from("spend_transactions").filter("statement_id",stmt.id),
-        db.from("transaction_splits").select(),
-      ]);
-      setPeople(p.data||[]);
-      setCategories((cats.data||[]).map(x=>x.name).sort());
-      const txnList=(t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
-      setTxns(txnList);
-      // Build splits map
-      const map={};
-      (sp.data||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
-      setTxnSplitsMap(map);
-    })();
-  },[db,stmt.id]);
-
-  const filtered=txns.filter(t=>!search||t.description?.toLowerCase().includes(search.toLowerCase())||t.category?.toLowerCase().includes(search.toLowerCase()));
-  const sorted=[...filtered].sort((a,b)=>{
-    let v=0;
-    if(sortBy==="date") v=new Date(a.txn_date)-new Date(b.txn_date);
-    else if(sortBy==="amount") v=Number(a.amount||0)-Number(b.amount||0);
-    else if(sortBy==="category") v=(a.category||"").localeCompare(b.category||"");
-    else if(sortBy==="desc") v=(a.description||"").localeCompare(b.description||"");
-    return sortDir==="desc"?-v:v;
-  });
-  const totalPages=Math.ceil(sorted.length/PAGE);
-  const pageTxns=sorted.slice(page*PAGE,(page+1)*PAGE);
-  const total=txns.reduce((a,t)=>a+Number(t.amount||0),0);
-
-  const sortHdr=(col,label)=>(
-    <th onClick={()=>{if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortBy(col);setSortDir("desc");}}}
-      style={{padding:"6px 8px",textAlign:col==="amount"?"right":"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,whiteSpace:"nowrap"}}>
-      {label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
-    </th>
-  );
-
-  const saveEdit=async()=>{
-    await db.from("spend_transactions").update(editId,{
-      category:editRow.category,description:editRow.description,
-      is_reimbursable:editRow.is_reimbursable,person_id:editRow.person_id||null,
-    });
-    setEditId(null);
-    const {data}=await db.from("spend_transactions").filter("statement_id",stmt.id);
-    setTxns((data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
-    onSave&&onSave();
-  };
-
-  const delTxn=async id=>{
-    // Check for ledger entries
-    const {data:le}=await db.from("ledger_entries").filter("transaction_id",id);
-    if((le||[]).length>0){
-      const ans=confirm(`This transaction has ${le.length} ledger entr${le.length>1?"ies":"y"}. Delete them too?`);
-      if(ans===null) return;
-      if(ans) for(const e of le) await db.from("ledger_entries").delete(e.id);
-    } else {
-      if(!confirm("Delete this transaction?")) return;
-    }
-    // Delete splits
-    const {data:sp}=await db.from("transaction_splits").filter("transaction_id",id);
-    for(const s of (sp||[])) await db.from("transaction_splits").delete(s.id);
-    await db.from("spend_transactions").delete(id);
-    const {data}=await db.from("spend_transactions").filter("statement_id",stmt.id);
-    setTxns((data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
-    onSave&&onSave();
-  };
-
-  const openSplit=t=>{
-    setShowSplit(t);
-    // Load existing splits if any
-    const existing=txnSplitsMap[t.id];
-    if(existing&&existing.length>0){
-      setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
-    } else {
-      setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
-    }
-  };
-  const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
-  const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
-  const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
-  const splitRemaining=showSplit?(showSplit.amount-splitTotal):0;
-
-  const saveSplit=async()=>{
-    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+showSplit.amount.toLocaleString("en-IN"));
-    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
-    for(const s of (existing||[])) await db.from("transaction_splits").delete(s.id);
-    for(const s of splits){
-      if(Number(s.amount)<=0) continue;
-      await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
-      if(!s.is_personal&&s.person_id){
-        await db.from("ledger_entries").insert({person_id:s.person_id,direction:"owed_to_me",amount:Number(s.amount),description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
-      }
-    }
-    const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
-    await db.from("spend_transactions").update(showSplit.id,{is_reimbursable:hasReimb});
-    setShowSplit(null);
-    // Reload txns and splits
-    const [{data:newTxns},{data:newSp}]=await Promise.all([
-      db.from("spend_transactions").filter("statement_id",stmt.id),
-      db.from("transaction_splits").select(),
-    ]);
-    setTxns((newTxns||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
-    const newMap={};
-    (newSp||[]).forEach(s=>{if(!newMap[s.transaction_id])newMap[s.transaction_id]=[];newMap[s.transaction_id].push(s);});
-    setTxnSplitsMap(newMap);
-    onSave&&onSave();
-  };
-
-  const ss2={fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"4px 8px",background:surf,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none"};
-
-  return(
-    <div>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-        <button onClick={onBack} style={{...gbtn,fontSize:12}}>← Back</button>
-        <div>
-          <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{fmtMonth(stmt.statement_month)}</div>
-          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions</div>
-        </div>
-      </div>
-      {(()=>{
-        const myShare=txns.reduce((a,t)=>{
-          const sp=txnSplitsMap[t.id];
-          if(!sp||!sp.length) return a+Number(t.amount||0);
-          const mine=sp.find(s=>s.is_personal);
-          return a+Number(mine?.amount||0);
-        },0);
-        const othersShare=total-myShare;
-        const catTotals={};
-        txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
-        const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);
-        const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9"];
-        // Mini pie
-        let angle=0;
-        const slices=topCats.map(([cat,val],i)=>{
-          const pct=val/total;
-          const a1=angle; const a2=angle+pct*2*Math.PI; angle=a2;
-          const cx=50,cy=50,r=42;
-          const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
-          const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
-          return{cat,val,pct,color:PIE_COLORS[i],d:`M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${pct>0.5?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`};
-        });
-        return(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
-            <Card style={{padding:"14px 16px"}}>
-              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>Total Spend</div>
-              <div style={{fontSize:20,fontWeight:700,color:txt}}>₹{total.toLocaleString("en-IN")}</div>
-            </Card>
-            <Card style={{padding:"14px 16px"}}>
-              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>My Share</div>
-              <div style={{fontSize:20,fontWeight:700,color:grn}}>₹{myShare.toLocaleString("en-IN")}</div>
-              <div style={{fontSize:10,color:mut,marginTop:2}}>{total>0?((myShare/total)*100).toFixed(0):0}% of total</div>
-            </Card>
-            <Card style={{padding:"14px 16px"}}>
-              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>Others' Share</div>
-              <div style={{fontSize:20,fontWeight:700,color:acc}}>₹{othersShare.toLocaleString("en-IN")}</div>
-              <div style={{fontSize:10,color:mut,marginTop:2}}>{txns.filter(t=>t.is_reimbursable).length} reimbursable</div>
-            </Card>
-            <Card style={{padding:"14px 16px"}}>
-              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>Avg Transaction</div>
-              <div style={{fontSize:20,fontWeight:700,color:txt}}>₹{txns.length>0?(total/txns.length).toLocaleString("en-IN",{maximumFractionDigits:0}):"—"}</div>
-            </Card>
-            {topCats.length>0&&<Card style={{padding:"14px 16px",gridColumn:"span 2"}}>
-              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,fontWeight:500}}>By Category</div>
-              <div style={{display:"flex",gap:16,alignItems:"center"}}>
-                <svg width="100" height="100" viewBox="0 0 100 100" style={{flexShrink:0}}>
-                  {slices.map((s,i)=><path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1"/>)}
-                </svg>
-                <div style={{flex:1}}>
-                  {topCats.map(([cat,val],i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,fontSize:11}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5}}>
-                        <div style={{width:8,height:8,borderRadius:2,background:PIE_COLORS[i],flexShrink:0}}/>
-                        <span style={{color:txt}}>{cat}</span>
-                      </div>
-                      <span style={{fontWeight:600,color:txt,marginLeft:8}}>₹{val.toLocaleString("en-IN")}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </Card>}
-          </div>
-        );
-      })()}
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-        <input style={{...inp,marginBottom:0,flex:1,minWidth:180,fontSize:12}} placeholder="Search transactions…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
-        <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={sortBy+"-"+sortDir} onChange={e=>{const[s,d]=e.target.value.split("-");setSortBy(s);setSortDir(d);}}>
-          <option value="date-desc">Date (newest)</option>
-          <option value="date-asc">Date (oldest)</option>
-          <option value="amount-desc">Amount (high-low)</option>
-          <option value="amount-asc">Amount (low-high)</option>
-          <option value="category-asc">Category A-Z</option>
-        </select>
-      </div>
-      <div style={{overflowX:"auto"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <colgroup>
-            {colW.map((w,i)=><col key={i} style={{width:w,minWidth:i===1?100:60}}/>)}
-          </colgroup>
-          <thead>
-            <tr style={{borderBottom:`2px solid ${bdr}`}}>
-              {["date","desc","category","amount"].map((col,ci)=>{
-                const labels=["Date","Description","Category","Amount"];
-                return(
-                  <th key={ci} onClick={()=>{if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortBy(col);setSortDir("desc");}}}
-                    style={{padding:"6px 8px",textAlign:ci===3?"right":"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,position:"relative",background:surf}}>
-                    {labels[ci]}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
-                    <span onMouseDown={e=>{e.preventDefault();const sx=e.clientX;const sw=colW[ci];const mv=mv=>{setColW(w=>{const n=[...w];n[ci]=Math.max(ci===1?100:60,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
-                      style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize"}}
-                      onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
-                      onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
-                  </th>
-                );
-              })}
-              {["Split","Edit"].map((label,ci)=>(
-                <th key={ci+4} style={{padding:"6px 8px",textAlign:"center",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,position:"relative",background:surf}}>
-                  {label}
-                  <span onMouseDown={e=>{e.preventDefault();const ci2=ci+4;const sx=e.clientX;const sw=colW[ci2];const mv=mv=>{setColW(w=>{const n=[...w];n[ci2]=Math.max(60,sw+(mv.clientX-sx));return n;});};const up=()=>{document.removeEventListener("mousemove",mv);document.removeEventListener("mouseup",up);};document.addEventListener("mousemove",mv);document.addEventListener("mouseup",up);}}
-                    style={{position:"absolute",right:0,top:0,bottom:0,width:6,cursor:"col-resize"}}
-                    onMouseEnter={e=>e.currentTarget.style.background=acc+"55"}
-                    onMouseLeave={e=>e.currentTarget.style.background="transparent"}/>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {pageTxns.map(t=>(
-              <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
-                <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
-                <td style={{padding:"7px 8px",color:txt,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {editId===t.id?<input style={{...ss2,width:"100%"}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
-                </td>
-                <td style={{padding:"7px 8px"}}>
-                  {editId===t.id?
-                    <select style={ss2} value={editRow.category} onChange={e=>setEditRow(r=>({...r,category:e.target.value}))}>
-                      {categories.map(c=><option key={c} value={c}>{c}</option>)}
-                    </select>:
-                    <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:11}}>{t.category}</span>
-                  }
-                </td>
-                <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
-                <td style={{padding:"7px 8px",minWidth:120}}>
-                  {t.is_reimbursable?(
-                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                      {(txnSplitsMap[t.id]||[]).map((sp,si)=>{
-                        const pName=sp.is_personal?"Me":people.find(p=>p.id===sp.person_id)?.name||"?";
-                        return<span key={si} style={{fontSize:10,background:acc+"12",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap",color:acc,fontWeight:500}}>{pName} ₹{Number(sp.amount).toLocaleString("en-IN")}</span>;
-                      })}
-                      <button onClick={()=>openSplit(t)} style={{fontSize:10,color:mut,background:"none",border:"none",cursor:"pointer",padding:"1px 0",textAlign:"left",fontFamily:"'Manrope',sans-serif"}}>✏ Edit split</button>
-                    </div>
-                  ):(
-                    <button onClick={()=>openSplit(t)} style={{background:"none",border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",fontSize:11,padding:"2px 8px",color:mut,fontFamily:"'Manrope',sans-serif"}}>+ Split</button>
-                  )}
-                </td>
-                <td style={{padding:"7px 8px",textAlign:"center"}}>
-                  {editId===t.id?(
-                    <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                      <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={saveEdit}>Save</button>
-                      <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>setEditId(null)}>×</button>
-                    </div>
-                  ):(
-                    <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                      <button style={{...gbtn,padding:"2px 8px",fontSize:11}} onClick={()=>{setEditId(t.id);setEditRow({...t});}}>Edit</button>
-                      <button style={{...dbtn,padding:"2px 8px",fontSize:11}} onClick={()=>delTxn(t.id)}>Del</button>
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {totalPages>1&&<div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:8,marginTop:12,fontSize:12,color:mut}}>
-        <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={page===0} style={{...gbtn,padding:"4px 12px",opacity:page===0?0.4:1}}>← Prev</button>
-        <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,sorted.length)} of {sorted.length}</span>
-        <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
-      </div>}
-
-      <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
-        {showSplit&&<>
-          <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:2}}>{showSplit.description}</div>
-          <div style={{fontSize:12,color:mut,marginBottom:20}}>Total: <strong style={{color:txt}}>₹{Number(showSplit.amount).toLocaleString("en-IN")}</strong></div>
-          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-            {splits.map((s,i)=>(
-              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:10,alignItems:"center",padding:"12px 14px",background:s.is_personal?grn+"08":surf2,borderRadius:12,border:`1px solid ${s.is_personal?grn+"30":bdr}`}}>
-                <div>
-                  {s.is_personal?(
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <div style={{width:8,height:8,borderRadius:"50%",background:grn}}/>
-                      <span style={{fontSize:13,fontWeight:600,color:txt}}>Mine</span>
-                    </div>
-                  ):(
-                    <select style={{width:"100%",fontSize:13,border:"none",background:"transparent",color:txt,fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none",cursor:"pointer"}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
-                      <option value="">Select person…</option>
-                      {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  )}
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:4,background:surf,borderRadius:8,padding:"4px 10px",border:`1px solid ${bdr}`}}>
-                  <span style={{fontSize:12,color:mut,fontWeight:500}}>₹</span>
-                  <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right",MozAppearance:"textfield"}} value={s.amount} onChange={e=>{const v=e.target.value.replace(/[^0-9.]/g,"");updSplit(i,"amount",v);}}/>
-                </div>
-                {!s.is_personal?(
-                  <button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
-                ):<div style={{width:28}}/>}
-              </div>
-            ))}
-          </div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,padding:"10px 14px",background:Math.abs(splitRemaining)<0.01?grn+"10":red+"08",borderRadius:10,border:`1px solid ${Math.abs(splitRemaining)<0.01?grn+"30":red+"30"}`}}>
-            <button style={{fontSize:12,fontWeight:600,color:acc,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"'Manrope',sans-serif"}} onClick={addSplit}>+ Add person</button>
-            <div style={{fontSize:12,fontWeight:700,color:Math.abs(splitRemaining)<0.01?grn:red}}>
-              {Math.abs(splitRemaining)<0.01?"✓ Balanced":`₹${Math.abs(splitRemaining).toLocaleString("en-IN")} remaining`}
-            </div>
-          </div>
-          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.5,pointerEvents:Math.abs(splitRemaining)<0.01?"auto":"none"}} onClick={saveSplit}>Save Split</button>
-        </>}
-      </Modal>
-    </div>
-  );
-}
