@@ -5525,7 +5525,7 @@ function SpendTransactions({db,owners}){
     for(const e of (existingLedger||[])) await db.from("ledger_entries").delete(e.id);
     // Insert new splits + ledger entries
     for(const s of splits){
-      if(Number(s.amount)<=0) continue;
+      if(Number(s.amount)===0) continue;
       await db.from("transaction_splits").insert({
         transaction_id:showSplit.id,
         person_id:s.is_personal?null:(s.person_id||null),
@@ -5996,7 +5996,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     const {data:oldLedger}=await db.from("ledger_entries").filter("transaction_id",showSplit.id);
     for(const e of (oldLedger||[])) await db.from("ledger_entries").delete(e.id);
     for(const s of splits){
-      if(Number(s.amount)<=0) continue;
+      if(Number(s.amount)===0) continue;
       await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({person_id:s.person_id,amount:Number(s.amount),direction:"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
