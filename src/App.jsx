@@ -5487,6 +5487,8 @@ function SpendTransactions({db,owners}){
 
   const saveSplit=async()=>{
     if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+showSplit.amount.toLocaleString("en-IN"));
+    const unassigned=splits.filter(s=>!s.is_personal&&!s.person_id);
+    if(unassigned.length>0) return alert("Please select a person for each split row, or remove the empty rows.");
     // Delete existing splits AND ledger entries for this transaction
     const {data:existingSplits}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
     for(const s of (existingSplits||[])) await db.from("transaction_splits").delete(s.id);
@@ -5731,6 +5733,9 @@ function SpendLedger({db,owners}){
           </div>
           <button style={pbtn} onClick={()=>setShowAdd(true)}>+ Add entry</button>
         </div>
+        <div style={{fontSize:11,color:mut,marginBottom:12,padding:"8px 12px",background:surf2,borderRadius:8}}>
+          Auto entries (from CC splits) can only be removed by editing the split on the statement. Manual entries can be deleted here.
+        </div>
 
         {entriesWithBal.length===0?<Empty icon="L" msg="No entries yet — add one above"/>:(
           <div style={{overflowX:"auto"}}>
@@ -5761,7 +5766,11 @@ function SpendLedger({db,owners}){
                       {e._bal>0?"+":""}₹{e._bal.toLocaleString("en-IN")}
                     </td>
                     <td style={{padding:"8px 10px",textAlign:"center"}}>
-                      <button onClick={()=>del(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>×</button>
+                      {e.entry_type==="manual"||!e.entry_type?(
+                        <button onClick={()=>del(e.id)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>×</button>
+                      ):(
+                        <span style={{fontSize:9,color:mut,opacity:0.5}}>auto</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -5965,6 +5974,8 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
 
   const saveSplit=async()=>{
     if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+Number(showSplit.amount).toLocaleString("en-IN"));
+    const unassigned=splits.filter(s=>!s.is_personal&&!s.person_id);
+    if(unassigned.length>0) return alert("Please select a person for each split row, or remove the empty rows.");
     // Delete old splits + ledger entries, then recreate fresh
     const {data:oldSplits}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
     for(const s of (oldSplits||[])) await db.from("transaction_splits").delete(s.id);
