@@ -5826,7 +5826,7 @@ function SpendLedger({db,owners}){
               <Card key={p.id} style={{cursor:"pointer"}} onClick={()=>setSelPerson(p)}>
                 <div style={{fontSize:15,fontWeight:700,color:txt,marginBottom:6}}>{p.name}</div>
                 <div style={{fontSize:22,fontWeight:700,fontFamily:"'Manrope',sans-serif",marginBottom:4,color:bal>0?grn:bal<0?red:mut}}>
-                  {bal>0?"+"}{bal<0?"-":""} ₹{Math.abs(bal).toLocaleString("en-IN")}
+                  {bal>0?"+":bal<0?"-":""} ₹{Math.abs(bal).toLocaleString("en-IN")}
                 </div>
                 <div style={{fontSize:11,color:mut}}>{balLabel(bal,p.name)} · {pe.length} entries</div>
               </Card>
