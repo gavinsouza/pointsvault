@@ -4886,6 +4886,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [showStmts,setShowStmts]=useState(false);
   const [selStmt,setSelStmt]=useState(null);
   const [showEditCard,setShowEditCard]=useState(false);
+  const [deleting,setDeleting]=useState(false);
   const [people,setPeople]=useState([]);
   const PAGE=15;
 
@@ -4986,6 +4987,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
 
   // Delete statement
   const deleteStmt=async(stmt)=>{
+    setDeleting(true);
     // Check for ledger entries
     const stmtTxnIds=(txns.filter(t=>t.statement_id===stmt.id)).map(t=>t.id);
     let ledgerCount=0;
@@ -5012,6 +5014,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     for(const t of allTxns) await db.from("spend_transactions").delete(t.id);
     // Delete statement
     await db.from("statements").delete(stmt.id);
+    setDeleting(false);
     load();
   };
 
@@ -5105,6 +5108,13 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
 
   if(showStmts) return(
     <div>
+      {deleting&&<div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.3)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+        <div style={{background:surf,borderRadius:14,padding:"24px 32px",textAlign:"center",boxShadow:"0 8px 32px rgba(0,0,0,0.15)"}}>
+          <div style={{fontSize:24,marginBottom:8}}>🗑️</div>
+          <div style={{fontSize:14,fontWeight:600,color:txt}}>Deleting statement…</div>
+          <div style={{fontSize:12,color:mut,marginTop:4}}>Removing transactions and ledger entries</div>
+        </div>
+      </div>}
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20}}>
         <button onClick={()=>setShowStmts(false)} style={{...gbtn,fontSize:12}}>← Back to card</button>
         <div style={{fontSize:18,fontWeight:700,color:txt}}>Statements — {card.nickname||mCard?.name}</div>
@@ -5127,7 +5137,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               </div>
               <div style={{display:"flex",gap:8}}>
                 <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>{setReassignTarget(s);setReassignCardId(s.card_id||"");}}>Change card</button>
-                <button style={{...dbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>deleteStmt(s)}>Delete</button>
+                <button style={{...dbtn,fontSize:11,padding:"4px 12px",opacity:deleting?0.5:1,pointerEvents:deleting?"none":"auto"}} onClick={()=>deleteStmt(s)}>Delete</button>
               </div>
             </Card>
           ))}
@@ -5495,7 +5505,9 @@ function SpendTransactions({db,owners}){
     const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
     // Auto-recalculate "Mine" = total - sum of others
     const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
-    const myAmt=Math.max(0,Number(showSplit?.amount||0)-othersTotal);
+    const total=Number(showSplit?.amount||0);
+    // For credits (negative total), mine = total - others (can be negative)
+    const myAmt=total<0?Math.min(0,total-othersTotal):Math.max(0,total-othersTotal);
     return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
   });
   const removeSplit=i=>setSplits(prev=>prev.filter((_,si)=>si!==i));
@@ -5503,7 +5515,7 @@ function SpendTransactions({db,owners}){
   const splitRemaining=showSplit?(showSplit.amount-splitTotal):0;
 
   const saveSplit=async()=>{
-    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+showSplit.amount.toLocaleString("en-IN"));
+    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to "+inrFmt(Math.abs(Number(showSplit.amount))));
     const unassigned=splits.filter(s=>!s.is_personal&&!s.person_id);
     if(unassigned.length>0) return alert("Please select a person for each split row, or remove the empty rows.");
     // Delete existing splits AND ledger entries for this transaction
@@ -5966,14 +5978,16 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
     // Auto-recalculate "Mine" = total - sum of others
     const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
-    const myAmt=Math.max(0,Number(showSplit?.amount||0)-othersTotal);
+    const total=Number(showSplit?.amount||0);
+    // For credits (negative total), mine = total - others (can be negative)
+    const myAmt=total<0?Math.min(0,total-othersTotal):Math.max(0,total-othersTotal);
     return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
   });
   const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
   const splitRemaining=showSplit?(Number(showSplit.amount)-splitTotal):0;
 
   const saveSplit=async()=>{
-    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to ₹"+Number(showSplit.amount).toLocaleString("en-IN"));
+    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to "+inrFmt(Math.abs(Number(showSplit.amount))));
     const unassigned=splits.filter(s=>!s.is_personal&&!s.person_id);
     if(unassigned.length>0) return alert("Please select a person for each split row, or remove the empty rows.");
     // Delete old splits + ledger entries, then recreate fresh
@@ -6158,13 +6172,14 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
                   {s.is_personal?(
                     <span style={{width:80,fontSize:13,fontWeight:700,color:grn,textAlign:"right",display:"inline-block"}}>{Number(s.amount||0).toLocaleString("en-IN")}</span>
                   ):(
-                    <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value.replace(/[^0-9.]/g,""))}/>
+                    <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
                   )}
                 </div>
                 {!s.is_personal?<button onClick={()=>setSplits(prev=>{
                         const filtered=prev.filter((_,si)=>si!==i);
                         const othersTotal=filtered.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
-                        const myAmt=Math.max(0,Number(showSplit?.amount||0)-othersTotal);
+                        const tot=Number(showSplit?.amount||0);
+                        const myAmt=tot<0?Math.min(0,tot-othersTotal):Math.max(0,tot-othersTotal);
                         return filtered.map(s=>s.is_personal?{...s,amount:myAmt}:s);
                       })} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>:<div style={{width:28}}/>}
               </div>
