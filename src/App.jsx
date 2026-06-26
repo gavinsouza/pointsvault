@@ -4849,7 +4849,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [showStmts,setShowStmts]=useState(false);
   const [selStmt,setSelStmt]=useState(null);
   const [showEditCard,setShowEditCard]=useState(false);
+  const [people,setPeople]=useState([]);
   const PAGE=15;
+
+  const [splitsMap,setSplitsMap]=useState({});
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -4857,8 +4860,19 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       db.from("spend_transactions").filter("card_id",card.id),
       db.from("statements").filter("card_id",card.id),
     ]);
-    setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    const txnList=(t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
+    setTxns(txnList);
     setStmts((s.data||[]).sort((a,b)=>b.statement_month?.localeCompare(a.statement_month||"")||0));
+    // Load splits for reimbursable transactions
+    const reimbIds=txnList.filter(x=>x.is_reimbursable).map(x=>x.id);
+    if(reimbIds.length>0){
+      const {data:sp}=await db.from("transaction_splits").select();
+      const map={};
+      (sp||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
+      setSplitsMap(map);
+    }
+    const {data:ppl}=await db.from("people").select();
+    setPeople(ppl||[]);
     setBusy(false);
   },[db,card.id]);
   useEffect(()=>{load();},[load]);
@@ -5070,31 +5084,52 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </Card>
       </div>
 
-      {/* Category Pie Chart */}
-      {pieSlices&&pieSlices.length>0&&<Card style={{marginBottom:20}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
-        <div style={{display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
-          <svg width="160" height="160" viewBox="0 0 160 160">
-            {pieSlices.map((s,i)=>(
-              <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1.5" opacity="0.9"/>
-            ))}
-          </svg>
-          <div style={{flex:1,minWidth:180}}>
-            {pieSlices.map((s,i)=>(
-              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <div style={{width:10,height:10,borderRadius:2,background:s.color,flexShrink:0}}/>
-                  <span style={{fontSize:12,color:txt}}>{s.cat}</span>
+      {/* Charts row */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:20}}>
+        {pieSlices&&pieSlices.length>0&&<Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+          <div style={{display:"flex",gap:16,alignItems:"center"}}>
+            <svg width="110" height="110" viewBox="0 0 160 160" style={{flexShrink:0}}>
+              {pieSlices.map((s,i)=>(
+                <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1.5" opacity="0.9"/>
+              ))}
+            </svg>
+            <div style={{flex:1}}>
+              {pieSlices.map((s,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
+                    <span style={{fontSize:11,color:txt}}>{s.cat}</span>
+                  </div>
+                  <span style={{fontSize:11,fontWeight:600,color:txt,marginLeft:8}}>{(s.pct*100).toFixed(0)}%</span>
                 </div>
-                <div style={{textAlign:"right",marginLeft:12}}>
-                  <span style={{fontSize:12,fontWeight:600,color:txt}}>₹{s.val.toLocaleString("en-IN")}</span>
-                  <span style={{fontSize:10,color:mut,marginLeft:6}}>{(s.pct*100).toFixed(0)}%</span>
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      </Card>}
+        </Card>}
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Statement</div>
+          {stmts.length===0?<div style={{color:mut,fontSize:12}}>No statements yet</div>:(
+            <div>
+              {stmts.slice(0,6).map((s,i)=>{
+                const stmtTotal=txns.filter(t=>t.statement_month===s.statement_month).reduce((a,t)=>a+Number(t.amount||0),0);
+                const maxStmt=Math.max(...stmts.slice(0,6).map(st=>txns.filter(t=>t.statement_month===st.statement_month).reduce((a,t)=>a+Number(t.amount||0),0)));
+                return(
+                  <div key={s.id} style={{marginBottom:8}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:11}}>
+                      <span style={{color:txt}}>{fmtMonth(s.statement_month)}</span>
+                      <span style={{fontWeight:600,color:txt}}>₹{stmtTotal.toLocaleString("en-IN")}</span>
+                    </div>
+                    <div style={{height:5,background:surf3,borderRadius:3}}>
+                      <div style={{height:5,background:acc,borderRadius:3,width:maxStmt>0?((stmtTotal/maxStmt)*100)+"%":"0%",transition:"width 0.3s"}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      </div>
 
       {/* Transactions */}
       <Card>
@@ -5121,6 +5156,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                 <th style={{padding:"6px 8px",textAlign:"left"}}>Description</th>
                 <th style={{padding:"6px 8px",textAlign:"left"}}>Category</th>
                 <th style={{padding:"6px 8px",textAlign:"right"}}>Amount</th>
+                <th style={{padding:"6px 8px",textAlign:"left",maxWidth:160}}>Split</th>
                 <th style={{padding:"6px 8px",textAlign:"center"}}>Stmt</th>
               </tr>
             </thead>
@@ -5452,10 +5488,19 @@ function SpendTransactions({db,owners}){
                     }
                   </td>
                   <td style={{padding:"8px 10px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
-                  <td style={{padding:"8px 10px",textAlign:"center"}}>
-                    <button onClick={()=>openSplit(t)} style={{background:"none",border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",fontSize:11,padding:"2px 8px",color:t.is_reimbursable?acc:mut}}>
-                      {t.is_reimbursable?"Split ✓":"Split"}
-                    </button>
+                  <td style={{padding:"8px 10px",maxWidth:160}}>
+                    {t.is_reimbursable&&splitsMap[t.id]?(
+                      <div style={{fontSize:10,color:acc,lineHeight:1.6}}>
+                        {splitsMap[t.id].map((sp,si)=>{
+                          const pName=sp.is_personal?"Me":people.find(p=>p.id===sp.person_id)?.name||"?";
+                          return<span key={si} style={{display:"inline-block",background:acc+"12",borderRadius:6,padding:"1px 6px",marginRight:3,marginBottom:2,whiteSpace:"nowrap"}}>{pName} ₹{Number(sp.amount).toLocaleString("en-IN")}</span>;
+                        })}
+                      </div>
+                    ):t.is_reimbursable?(
+                      <span style={{fontSize:10,color:acc}}>Split</span>
+                    ):(
+                      <span style={{fontSize:10,color:mut}}>—</span>
+                    )}
                   </td>
                   <td style={{padding:"8px 10px",textAlign:"center"}}>
                     {editId===t.id?(
@@ -5677,16 +5722,24 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
   const [page,setPage]=useState(0);
   const PAGE=15;
 
+  const [txnSplitsMap,setTxnSplitsMap]=useState({});
+
   useEffect(()=>{
     (async()=>{
-      const [p,cats,t]=await Promise.all([
+      const [p,cats,t,sp]=await Promise.all([
         db.from("people").select(),
         db.from("spend_categories").select(),
         db.from("spend_transactions").filter("statement_id",stmt.id),
+        db.from("transaction_splits").select(),
       ]);
       setPeople(p.data||[]);
       setCategories((cats.data||[]).map(x=>x.name).sort());
-      setTxns((t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+      const txnList=(t.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
+      setTxns(txnList);
+      // Build splits map
+      const map={};
+      (sp.data||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
+      setTxnSplitsMap(map);
     })();
   },[db,stmt.id]);
 
@@ -5753,10 +5806,74 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
       <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{...gbtn,fontSize:12}}>← Back</button>
         <div>
-          <div style={{fontSize:18,fontWeight:700,color:txt}}>{fmtMonth(stmt.statement_month)}</div>
-          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions · ₹{total.toLocaleString("en-IN")}</div>
+          <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{fmtMonth(stmt.statement_month)}</div>
+          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions</div>
         </div>
       </div>
+      {(()=>{
+        const myShare=txns.reduce((a,t)=>{
+          const sp=txnSplitsMap[t.id];
+          if(!sp||!sp.length) return a+Number(t.amount||0);
+          const mine=sp.find(s=>s.is_personal);
+          return a+Number(mine?.amount||0);
+        },0);
+        const othersShare=total-myShare;
+        const catTotals={};
+        txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+        const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);
+        const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9"];
+        // Mini pie
+        let angle=0;
+        const slices=topCats.map(([cat,val],i)=>{
+          const pct=val/total;
+          const a1=angle; const a2=angle+pct*2*Math.PI; angle=a2;
+          const cx=50,cy=50,r=42;
+          const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
+          const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
+          return{cat,val,pct,color:PIE_COLORS[i],d:`M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${pct>0.5?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`};
+        });
+        return(
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
+            <Card style={{padding:"14px 16px"}}>
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>Total Spend</div>
+              <div style={{fontSize:20,fontWeight:700,color:txt}}>₹{total.toLocaleString("en-IN")}</div>
+            </Card>
+            <Card style={{padding:"14px 16px"}}>
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>My Share</div>
+              <div style={{fontSize:20,fontWeight:700,color:grn}}>₹{myShare.toLocaleString("en-IN")}</div>
+              <div style={{fontSize:10,color:mut,marginTop:2}}>{total>0?((myShare/total)*100).toFixed(0):0}% of total</div>
+            </Card>
+            <Card style={{padding:"14px 16px"}}>
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>Others' Share</div>
+              <div style={{fontSize:20,fontWeight:700,color:acc}}>₹{othersShare.toLocaleString("en-IN")}</div>
+              <div style={{fontSize:10,color:mut,marginTop:2}}>{txns.filter(t=>t.is_reimbursable).length} reimbursable</div>
+            </Card>
+            <Card style={{padding:"14px 16px"}}>
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>Avg Transaction</div>
+              <div style={{fontSize:20,fontWeight:700,color:txt}}>₹{txns.length>0?(total/txns.length).toLocaleString("en-IN",{maximumFractionDigits:0}):"—"}</div>
+            </Card>
+            {topCats.length>0&&<Card style={{padding:"14px 16px",gridColumn:"span 2"}}>
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,fontWeight:500}}>By Category</div>
+              <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                <svg width="100" height="100" viewBox="0 0 100 100" style={{flexShrink:0}}>
+                  {slices.map((s,i)=><path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1"/>)}
+                </svg>
+                <div style={{flex:1}}>
+                  {topCats.map(([cat,val],i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:4,fontSize:11}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                        <div style={{width:8,height:8,borderRadius:2,background:PIE_COLORS[i],flexShrink:0}}/>
+                        <span style={{color:txt}}>{cat}</span>
+                      </div>
+                      <span style={{fontWeight:600,color:txt,marginLeft:8}}>₹{val.toLocaleString("en-IN")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </Card>}
+          </div>
+        );
+      })()}
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
         <input style={{...inp,marginBottom:0,flex:1,minWidth:180,fontSize:12}} placeholder="Search transactions…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
         <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={sortBy+"-"+sortDir} onChange={e=>{const[s,d]=e.target.value.split("-");setSortBy(s);setSortDir(d);}}>
@@ -5795,10 +5912,18 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
                   }
                 </td>
                 <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
-                <td style={{padding:"7px 8px",textAlign:"center"}}>
-                  <button onClick={()=>openSplit(t)} style={{background:"none",border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",fontSize:11,padding:"2px 8px",color:t.is_reimbursable?acc:mut}}>
-                    {t.is_reimbursable?"Split ✓":"Split"}
-                  </button>
+                <td style={{padding:"7px 8px",minWidth:120}}>
+                  {t.is_reimbursable?(
+                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                      {(txnSplitsMap[t.id]||[]).map((sp,si)=>{
+                        const pName=sp.is_personal?"Me":people.find(p=>p.id===sp.person_id)?.name||"?";
+                        return<span key={si} style={{fontSize:10,background:acc+"12",borderRadius:6,padding:"1px 6px",whiteSpace:"nowrap",color:acc,fontWeight:500}}>{pName} ₹{Number(sp.amount).toLocaleString("en-IN")}</span>;
+                      })}
+                      <button onClick={()=>openSplit(t)} style={{fontSize:10,color:mut,background:"none",border:"none",cursor:"pointer",padding:"1px 0",textAlign:"left",fontFamily:"'Manrope',sans-serif"}}>✏ Edit split</button>
+                    </div>
+                  ):(
+                    <button onClick={()=>openSplit(t)} style={{background:"none",border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",fontSize:11,padding:"2px 8px",color:mut,fontFamily:"'Manrope',sans-serif"}}>+ Split</button>
+                  )}
                 </td>
                 <td style={{padding:"7px 8px",textAlign:"center"}}>
                   {editId===t.id?(
@@ -5823,32 +5948,41 @@ function StmtDetail({stmt,txns:initTxns,db,owners,onBack,onSave}){
 
       <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
         {showSplit&&<>
-          <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{showSplit.description}</div>
-          <div style={{fontSize:12,color:mut,marginBottom:16}}>Total: ₹{Number(showSplit.amount).toLocaleString("en-IN")}</div>
-          {splits.map((s,i)=>(
-            <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,padding:"10px 12px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
-              <div style={{flex:1}}>
-                {s.is_personal?<span style={{fontSize:12,fontWeight:600,color:txt}}>Mine (personal)</span>:
-                  <select style={{...inp,marginBottom:0,fontSize:12}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
-                    <option value="">Select person…</option>
-                    {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                  </select>
-                }
+          <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:2}}>{showSplit.description}</div>
+          <div style={{fontSize:12,color:mut,marginBottom:20}}>Total: <strong style={{color:txt}}>₹{Number(showSplit.amount).toLocaleString("en-IN")}</strong></div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+            {splits.map((s,i)=>(
+              <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:10,alignItems:"center",padding:"12px 14px",background:s.is_personal?grn+"08":surf2,borderRadius:12,border:`1px solid ${s.is_personal?grn+"30":bdr}`}}>
+                <div>
+                  {s.is_personal?(
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <div style={{width:8,height:8,borderRadius:"50%",background:grn}}/>
+                      <span style={{fontSize:13,fontWeight:600,color:txt}}>Mine</span>
+                    </div>
+                  ):(
+                    <select style={{width:"100%",fontSize:13,border:"none",background:"transparent",color:txt,fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none",cursor:"pointer"}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
+                      <option value="">Select person…</option>
+                      {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  )}
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:4,background:surf,borderRadius:8,padding:"4px 10px",border:`1px solid ${bdr}`}}>
+                  <span style={{fontSize:12,color:mut,fontWeight:500}}>₹</span>
+                  <input type="number" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+                </div>
+                {!s.is_personal?(
+                  <button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
+                ):<div style={{width:28}}/>}
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:12,color:mut}}>₹</span>
-                <input type="number" style={{...inp,marginBottom:0,width:100,fontSize:12,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
-              </div>
-              {!s.is_personal&&<button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:16,lineHeight:1}}>×</button>}
-            </div>
-          ))}
-          <div style={{display:"flex",gap:8,marginBottom:16}}>
-            <button style={{...gbtn,fontSize:12}} onClick={addSplit}>+ Add person</button>
-            <div style={{flex:1,textAlign:"right",fontSize:12,color:Math.abs(splitRemaining)<0.01?grn:red,fontWeight:600,padding:"8px 0"}}>
-              {Math.abs(splitRemaining)<0.01?"✓ Balanced":`Remaining: ₹${splitRemaining.toLocaleString("en-IN")}`}
+            ))}
+          </div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,padding:"10px 14px",background:Math.abs(splitRemaining)<0.01?grn+"10":red+"08",borderRadius:10,border:`1px solid ${Math.abs(splitRemaining)<0.01?grn+"30":red+"30"}`}}>
+            <button style={{fontSize:12,fontWeight:600,color:acc,background:"none",border:"none",cursor:"pointer",padding:0,fontFamily:"'Manrope',sans-serif"}} onClick={addSplit}>+ Add person</button>
+            <div style={{fontSize:12,fontWeight:700,color:Math.abs(splitRemaining)<0.01?grn:red}}>
+              {Math.abs(splitRemaining)<0.01?"✓ Balanced":`₹${Math.abs(splitRemaining).toLocaleString("en-IN")} remaining`}
             </div>
           </div>
-          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.4}} onClick={saveSplit}>Save Split</button>
+          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.5,pointerEvents:Math.abs(splitRemaining)<0.01?"auto":"none"}} onClick={saveSplit}>Save Split</button>
         </>}
       </Modal>
     </div>
