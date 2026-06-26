@@ -4382,7 +4382,7 @@ function SpendUpload({db,owners}){
                 </select>
                 <select style={{...ss,flex:1}} value={stmtMonthSel?stmtMonthSel.split("-")[0]||"":""} onChange={e=>{const m=stmtMonthSel?stmtMonthSel.split("-")[1]||"01":"01";setStmtMonthSel(e.target.value?e.target.value+"-"+m:"");}}>
                   <option value="">Year…</option>
-                  {Array.from({length:5},(_,i)=>(new Date().getFullYear()-2+i).toString()).map(y=><option key={y} value={y}>'{y.slice(2)}</option>)}
+                  {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=><option key={y} value={y}>'{y.slice(2)}</option>)}
                 </select>
               </div>
               {!stmtMonthSel&&<div style={{fontSize:11,color:red,marginTop:4}}>Required — select month and year</div>}
@@ -5069,7 +5069,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         {lbl("Year")}
         <select style={inp} value={editMonthY} onChange={e=>setEditMonthY(e.target.value)}>
           <option value="">Select year…</option>
-          {Array.from({length:5},(_,i)=>(new Date().getFullYear()-2+i).toString()).map(y=>(
+          {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=>(
             <option key={y} value={y}>{y}</option>
           ))}
         </select>
@@ -5308,7 +5308,7 @@ function SpendCards({db,owners,onNavigate}){
   const [txns,setTxns]=useState([]);
   const [busy,setBusy]=useState(true);
   const [selCard,setSelCard]=useState(null);
-  const [tab,setTab]=useState("cards"); // "cards" | "untagged"
+
 
 
   const load=useCallback(async()=>{
@@ -5348,40 +5348,18 @@ function SpendCards({db,owners,onNavigate}){
 
   const visibleCards=cards.filter(c=>!c.hidden_in_spend);
   const hiddenCards=cards.filter(c=>c.hidden_in_spend);
-  const untaggedStmts=stmts.filter(s=>!s.card_id);
-
   const cardSpend=id=>txns.filter(t=>t.card_id===id).reduce((a,t)=>a+Number(t.amount||0),0);
   const cardStmtCount=id=>stmts.filter(s=>s.card_id===id).length;
 
-  const tabBtn=active=>({padding:"7px 16px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut,fontFamily:"'Manrope',sans-serif"});
+
 
   // Reassign untagged statement
-  const tagStmt=async(stmt)=>{
-    const cardOptions=cards.map(c=>{
-      const m=mCards.find(x=>x.id===c.master_id);
-      const o=owners.find(o=>o.id===c.owner_id);
-      return`${c.id}|${c.nickname||m?.name||c.id}${o?" ("+o.name+")":""}`;
-    });
-    const sel=window.prompt("Tag to which card? Enter number:\n"+cardOptions.map((o,i)=>`${i+1}. ${o.split("|")[1]}`).join("\n"));
-    if(!sel) return;
-    const idx=parseInt(sel)-1;
-    if(isNaN(idx)||idx<0||idx>=cardOptions.length) return alert("Invalid selection");
-    const newCardId=cardOptions[idx].split("|")[0];
-    await db.from("statements").update(stmt.id,{card_id:newCardId});
-    const stmtTxns=txns.filter(t=>t.statement_id===stmt.id);
-    for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:newCardId});
-    load();
-  };
+;
 
   return(
     <div>
       <Hdr title="My Cards" sub="Spend tracker view"/>
-      <div style={{display:"flex",gap:8,marginBottom:20}}>
-        <button style={tabBtn(tab==="cards")} onClick={()=>setTab("cards")}>Cards ({visibleCards.length})</button>
-        <button style={tabBtn(tab==="untagged")} onClick={()=>setTab("untagged")}>
-          Untagged Statements {untaggedStmts.length>0&&<span style={{background:red,color:"#fff",borderRadius:10,padding:"1px 6px",fontSize:10,marginLeft:6}}>{untaggedStmts.length}</span>}
-        </button>
-      </div>
+
 
       {tab==="cards"&&<>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
@@ -5419,69 +5397,6 @@ function SpendCards({db,owners,onNavigate}){
         </div>}
       </>}
 
-      {tab==="untagged"&&<div>
-        {/* Fix untagged transactions tool */}
-        {(()=>{
-          const untaggedTxns=txns.filter(t=>!t.statement_month);
-          if(untaggedTxns.length>0) return(
-            <Card style={{marginBottom:16,background:acc+"08",border:`1px solid ${acc}33`}}>
-              <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:6}}>
-                {untaggedTxns.length} transactions have no statement month
-              </div>
-              <div style={{fontSize:12,color:mut,marginBottom:12}}>
-                These were imported before statement months were tracked. Assign them to May '26 and create a statement record.
-              </div>
-              <button style={pbtn} onClick={async()=>{
-                if(!confirm(`Assign ${untaggedTxns.length} untagged transactions to May '26 and create statement records?`)) return;
-                // Group by card
-                const byCard={};
-                untaggedTxns.forEach(t=>{
-                  const cid=t.card_id||"none";
-                  if(!byCard[cid]) byCard[cid]=[];
-                  byCard[cid].push(t);
-                });
-                for(const[cid,cardTxns] of Object.entries(byCard)){
-                  // Update transactions
-                  for(const t of cardTxns){
-                    await db.from("spend_transactions").update(t.id,{statement_month:"2026-05"});
-                  }
-                  // Check if stmt already exists
-                  if(cid!=="none"){
-                    const {data:existing}=await db.from("statements").filter("card_id",cid);
-                    const hasStmt=(existing||[]).find(s=>s.statement_month==="2026-05");
-                    if(!hasStmt){
-                      const total=cardTxns.reduce((a,t)=>a+Number(t.amount||0),0);
-                      await db.from("statements").insert({
-                        card_id:cid,
-                        statement_month:"2026-05",
-                        transaction_count:cardTxns.length,
-                        total_spend:total,
-                        file_name:"Imported (untagged)",
-                      });
-                    }
-                  }
-                }
-                load();
-                alert("Done! Transactions assigned to May '26.");
-              }}>Assign to May '26 + create statements</button>
-            </Card>
-          );
-          return null;
-        })()}
-        {untaggedStmts.length===0?<Empty icon="S" msg="All statements are tagged to a card"/>:(
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {untaggedStmts.map(s=>(
-              <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
-                <div>
-                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{fmtMonth(s.statement_month)||"Unknown month"}</div>
-                  <div style={{fontSize:11,color:mut,marginTop:2}}>{s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}{s.file_name&&" · "+s.file_name}</div>
-                </div>
-                <button style={{...pbtn,fontSize:12}} onClick={()=>tagStmt(s)}>Tag to card</button>
-              </Card>
-            ))}
-          </div>
-        )}
-      </div>}
     </div>
   );
 }
@@ -5955,17 +5870,30 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   const PAGE=15;
 
   const loadData=useCallback(async()=>{
-    const [p,cats,t,sp]=await Promise.all([
+    const [p,cats,tById,allSp,tAll]=await Promise.all([
       db.from("people").select(),
       db.from("spend_categories").select(),
       db.from("spend_transactions").filter("statement_id",stmt.id),
       db.from("transaction_splits").select(),
+      db.from("spend_transactions").select(),
     ]);
+    // Merge: by statement_id + by card+month (for untagged/legacy imports)
+    const byId=new Set((tById.data||[]).map(t=>t.id));
+    const byMonth=stmt.card_id&&stmt.statement_month
+      ?(allSp.data||[]).filter(()=>false) // placeholder
+      :[];
+    // Actually filter allTxns for this card+month
+    const byMonthTxns=(tAll.data||[]).filter(t=>
+      t.statement_month===stmt.statement_month &&
+      t.card_id===stmt.card_id &&
+      !byId.has(t.id)
+    );
+    const merged=[...(tById.data||[]),...byMonthTxns];
     setPeople(p.data||[]);
     setCategories((cats.data||[]).map(x=>x.name).sort());
-    setTxns(allTxns.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+    setTxns(merged.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     const map={};
-    (sp.data||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
+    (allSp.data||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
     setTxnSplitsMap(map);
   },[db,stmt.id]);
   useEffect(()=>{loadData();},[loadData]);
