@@ -5487,8 +5487,18 @@ function SpendTransactions({db,owners}){
       setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
     }
   };
-  const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
-  const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
+  const addSplit=()=>setSplits(prev=>{
+    const newSplits=[...prev,{person_id:"",amount:0,is_personal:false}];
+    // Mine stays the same when adding a new 0-amount person
+    return newSplits;
+  });
+  const updSplit=(i,k,v)=>setSplits(prev=>{
+    const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
+    // Auto-recalculate "Mine" = total - sum of others
+    const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
+    const myAmt=Math.max(0,Number(showSplit?.amount||0)-othersTotal);
+    return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+  });
   const removeSplit=i=>setSplits(prev=>prev.filter((_,si)=>si!==i));
   const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
   const splitRemaining=showSplit?(showSplit.amount-splitTotal):0;
@@ -5944,8 +5954,18 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     if(existing&&existing.length>0) setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
     else setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
   };
-  const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
-  const updSplit=(i,k,v)=>setSplits(prev=>prev.map((s,si)=>si===i?{...s,[k]:v}:s));
+  const addSplit=()=>setSplits(prev=>{
+    const newSplits=[...prev,{person_id:"",amount:0,is_personal:false}];
+    // Mine stays the same when adding a new 0-amount person
+    return newSplits;
+  });
+  const updSplit=(i,k,v)=>setSplits(prev=>{
+    const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
+    // Auto-recalculate "Mine" = total - sum of others
+    const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
+    const myAmt=Math.max(0,Number(showSplit?.amount||0)-othersTotal);
+    return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+  });
   const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
   const splitRemaining=showSplit?(Number(showSplit.amount)-splitTotal):0;
 
@@ -6117,7 +6137,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
               <div key={i} style={{display:"grid",gridTemplateColumns:"1fr auto auto",gap:10,alignItems:"center",padding:"12px 14px",background:s.is_personal?grn+"08":surf2,borderRadius:12,border:`1px solid ${s.is_personal?grn+"30":bdr}`}}>
                 <div>
                   {s.is_personal?(
-                    <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:grn}}/><span style={{fontSize:13,fontWeight:600,color:txt}}>Mine</span></div>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:grn}}/><span style={{fontSize:13,fontWeight:600,color:txt}}>Mine (auto)</span></div>
                   ):(
                     <select style={{width:"100%",fontSize:13,border:"none",background:"transparent",color:txt,fontFamily:"'Manrope',sans-serif",fontWeight:500,outline:"none",cursor:"pointer"}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
                       <option value="">Select person…</option>
@@ -6125,11 +6145,20 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
                     </select>
                   )}
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:4,background:surf,borderRadius:8,padding:"4px 10px",border:`1px solid ${bdr}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:4,background:s.is_personal?grn+"10":surf,borderRadius:8,padding:"4px 10px",border:`1px solid ${s.is_personal?grn+"40":bdr}`}}>
                   <span style={{fontSize:12,color:mut,fontWeight:500}}>₹</span>
-                  <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value.replace(/[^0-9.]/g,""))}/>
+                  {s.is_personal?(
+                    <span style={{width:80,fontSize:13,fontWeight:700,color:grn,textAlign:"right",display:"inline-block"}}>{Number(s.amount||0).toLocaleString("en-IN")}</span>
+                  ):(
+                    <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value.replace(/[^0-9.]/g,""))}/>
+                  )}
                 </div>
-                {!s.is_personal?<button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>:<div style={{width:28}}/>}
+                {!s.is_personal?<button onClick={()=>setSplits(prev=>{
+                        const filtered=prev.filter((_,si)=>si!==i);
+                        const othersTotal=filtered.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
+                        const myAmt=Math.max(0,Number(showSplit?.amount||0)-othersTotal);
+                        return filtered.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+                      })} style={{background:red+"12",border:"none",cursor:"pointer",color:red,width:28,height:28,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>:<div style={{width:28}}/>}
               </div>
             ))}
           </div>
