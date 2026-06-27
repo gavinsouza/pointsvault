@@ -1048,17 +1048,21 @@ function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
     setImporting(false);setImportDone(true);onRefresh();
     setTimeout(()=>setImportDone(false),3000);
   };
+  const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners</div>
-        {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing...":"Import from Library"}</button>}
-        {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
+      <div onClick={()=>setShow(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={e=>{e.stopPropagation();doImport();}}>{importing?"Importing...":"Import from Library"}</button>}
+          {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
+          <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
+        </div>
       </div>
-      {partners.length===0
-        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0"}}>No transfer partners{hasMore?" — use Import above":""}</div>
-        :<div style={{display:"flex",flexDirection:"column",gap:6}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
-      }
+      {show&&(partners.length===0
+        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0",marginTop:8}}>No transfer partners{hasMore?" — use Import above":""}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
+      )}
     </Card>
   );
 }
@@ -1092,17 +1096,21 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
     setImporting(false);setImportDone(true);onRefresh();
     setTimeout(()=>setImportDone(false),3000);
   };
+  const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners</div>
-        {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing...":"Import from Library"}</button>}
-        {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
+      <div onClick={()=>setShow(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={e=>{e.stopPropagation();doImport();}}>{importing?"Importing...":"Import from Library"}</button>}
+          {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
+          <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
+        </div>
       </div>
-      {partners.length===0
-        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0"}}>No transfer partners{hasMore?" — use Import above":""}</div>
-        :<div style={{display:"flex",flexDirection:"column",gap:6}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
-      }
+      {show&&(partners.length===0
+        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0",marginTop:8}}>No transfer partners{hasMore?" — use Import above":""}</div>
+        :<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
+      )}
     </Card>
   );
 }
@@ -1800,6 +1808,7 @@ function LibraryImport({db, onClose, onDone}){
 
 function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
   const [partners,setPartners]=useState([]);
+  const [showPartners,setShowPartners]=useState(false);
   const [inboundPartners,setInboundPartners]=useState([]);
   const [milestones,setMilestones]=useState([]);
   const [allMasters,setAllMasters]=useState({cards:[],programs:[]});
@@ -1895,9 +1904,12 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
 
       {/* Transfer Out */}
       <Card style={{marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer Out Partners ({partners.length})</div>
-        {busy?<div style={{color:mut,fontSize:12,textAlign:"center",padding:16}}>Loading…</div>:partners.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"12px 0"}}>No outgoing transfer partners</div>:(
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+        <div onClick={()=>setShowPartners(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Out Partners ({partners.length})</div>
+          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPartners?"▲":"▼"}</span>
+        </div>
+        {showPartners&&(busy?<div style={{color:mut,fontSize:12,textAlign:"center",padding:16,marginTop:10}}>Loading…</div>:partners.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"12px 0",marginTop:8}}>No outgoing transfer partners</div>:(
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
             {partners.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1916,14 +1928,17 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
               </div>
             ))}
           </div>
-        )}
+        ))}
       </Card>
 
       {/* Transfer In */}
       {inboundPartners.length>0&&(
         <Card>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Transfer In (From these programs)</div>
-          <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          <div onClick={()=>setShowPartners(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer In ({inboundPartners.length})</div>
+            <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPartners?"▲":"▼"}</span>
+          </div>
+          {showPartners&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
             {inboundPartners.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -1939,7 +1954,7 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
                 </div>
               </div>
             ))}
-          </div>
+          </div>}
         </Card>
       )}
     </div>
@@ -1949,6 +1964,7 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
 // ── MasterProgDetail ──────────────────────────────────────────────────────────
 function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
   const [partners,setPartners]=useState([]);
+  const [showPartners,setShowPartners]=useState(false);
   const [inboundPartners,setInboundPartners]=useState([]);
   const [allMasters,setAllMasters]=useState({cards:[],programs:[]});
   const [busy,setBusy]=useState(true);
@@ -2566,101 +2582,53 @@ function MyCards({db,owners}){
           })}
         </div>
       )}
-      {show&&<AddCardModal db={db} mCards={mCards} owners={owners} onSave={()=>{load();}} onClose={()=>setShow(false)}/>}
+      <Modal show={show} onClose={()=>setShow(false)} title="Add Card">
+        {lbl("Master Card *")}<select style={inp} value={f.master_id} onChange={up("master_id")}>
+          <option value="">-- select master card --</option>
+          {mCards.map(m=><option key={m.id} value={m.id}>{m.name} ({m.bank||m.network})</option>)}
+        </select>
+        {lbl("Owner *")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}>
+          <option value="">-- select owner --</option>
+          {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        {lbl("Nickname (optional)")}<input style={inp} placeholder="Dad's Infinia..." value={f.nickname} onChange={up("nickname")}/>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Last 4 Digits")}<input style={inp} placeholder="4242" maxLength={4} value={f.last4} onChange={up("last4")}/></div>
+          <div>{lbl("Statement Date")}<input style={inp} type="number" placeholder="15" value={f.stmt_date} onChange={up("stmt_date")}/></div>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Opening Balance")}<input style={inp} type="number" placeholder="0" value={f.opening_balance} onChange={up("opening_balance")}/></div>
+          <div>{lbl("Card Expiry")}<input style={inp} placeholder="MM/YY" value={f.card_expiry} onChange={up("card_expiry")}/></div>
+        </div>
+        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12,fontSize:13,color:txt}}>
+          <input type="checkbox" checked={f.fee_override} onChange={e=>setF(p=>({...p,fee_override:e.target.checked}))} style={{accentColor:acc,cursor:"pointer"}}/>
+          Override annual fee (e.g. LTF waiver)
+        </label>
+        {f.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={e=>setF(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
+          <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={e=>setF(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
+        </div>
+        {(()=>{
+          const master=mCards.find(m=>m.id===f.master_id);
+          if(!master?.auto_transfer_to) return null;
+          const eligibleProgs=myProgs.filter(p=>p.master_id===master.auto_transfer_to&&(!f.owner_id||p.owner_id===f.owner_id));
+          const masterProgName=mProgNames[master.auto_transfer_to]||"linked program";
+          return(<div>
+            {lbl("Link to "+masterProgName+" account")}
+            <select style={inp} value={f.linked_program_id} onChange={up("linked_program_id")}>
+              <option value="">Select your {masterProgName} account…</option>
+              {eligibleProgs.map(p=><option key={p.id} value={p.id}>{p.nickname||masterProgName}{owners?.find(o=>o.id===p.owner_id)?" ("+owners.find(o=>o.id===p.owner_id).name+")":""}</option>)}
+            </select>
+          </div>);
+        })()}
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>Add Card</button>
+      </Modal>
     </div>
   );
 }
 
 // CardDetail
-
-
-// ── AddCardModal — shared add card modal (used by P&M and Spend Tracker) ──────
-function AddCardModal({db, mCards, owners, onSave, onClose}){
-  const eF={master_id:"",owner_id:"",nickname:"",last4:"",opening_balance:"",stmt_date:"",card_expiry:"",fee_override:false,fee_override_value:"",billing_year_start:"",fee_charge_date:"",linked_program_id:""};
-  const [f,setF]=useState(eF);
-  const [mProgs,setMProgs]=useState([]);
-  const [mProgNames,setMProgNames]=useState({});
-  const [saving,setSaving]=useState(false);
-  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
-
-  useEffect(()=>{
-    (async()=>{
-      const [mp,myp]=await Promise.all([db.from("master_programs").select(),db.from("my_programs").select()]);
-      setMProgs(myp.data||[]);
-      const names={};
-      (mp.data||[]).forEach(p=>{names[p.id]=p.name;});
-      setMProgNames(names);
-    })();
-  },[db]);
-
-  const save=async()=>{
-    if(!f.master_id) return alert("Select a master card");
-    if(!f.owner_id) return alert("Select an owner");
-    const master=mCards.find(m=>m.id===f.master_id);
-    if(master?.auto_transfer_to&&!f.linked_program_id){
-      const lpName=mProgNames[master.auto_transfer_to]||"linked program";
-      if(!window.confirm("No "+lpName+" account linked. Continue anyway?")) return;
-    }
-    setSaving(true);
-    const ob=parseInt(f.opening_balance)||0;
-    const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:ob,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null,billing_year_start:f.billing_year_start||null,fee_charge_date:f.fee_charge_date||null,linked_program_id:f.linked_program_id||null};
-    const {data:inserted,error}=await db.from("my_cards").insert(p);
-    if(error){setSaving(false);return alert("Error: "+error.message);}
-    const newId=inserted?.[0]?.id;
-    if(ob>0&&newId){
-      const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
-    }
-    setSaving(false);
-    onSave&&onSave();
-    onClose&&onClose();
-  };
-
-  return(
-    <Modal show={true} onClose={onClose} title="Add Card">
-      {lbl("Master Card *")}<select style={inp} value={f.master_id} onChange={up("master_id")}>
-        <option value="">-- select master card --</option>
-        {mCards.map(m=><option key={m.id} value={m.id}>{m.name} ({m.bank||m.network})</option>)}
-      </select>
-      {lbl("Owner *")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}>
-        <option value="">-- select owner --</option>
-        {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
-      </select>
-      {lbl("Nickname (optional)")}<input style={inp} placeholder="Dad's Infinia..." value={f.nickname} onChange={up("nickname")}/>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>{lbl("Last 4 Digits")}<input style={inp} placeholder="4242" maxLength={4} value={f.last4} onChange={up("last4")}/></div>
-        <div>{lbl("Statement Date")}<input style={inp} type="number" placeholder="15" value={f.stmt_date} onChange={up("stmt_date")}/></div>
-      </div>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>{lbl("Opening Balance")}<input style={inp} type="number" placeholder="0" value={f.opening_balance} onChange={up("opening_balance")}/></div>
-        <div>{lbl("Card Expiry")}<input style={inp} placeholder="MM/YY" value={f.card_expiry} onChange={up("card_expiry")}/></div>
-      </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12,fontSize:13,color:txt}}>
-        <input type="checkbox" checked={f.fee_override} onChange={e=>setF(p=>({...p,fee_override:e.target.checked}))} style={{accentColor:acc,cursor:"pointer"}}/>
-        Override annual fee (e.g. LTF waiver)
-      </label>
-      {f.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={e=>setF(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
-        <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={e=>setF(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
-      </div>
-      {(()=>{
-        const master=mCards.find(m=>m.id===f.master_id);
-        if(!master?.auto_transfer_to) return null;
-        const eligible=mProgs.filter(p=>p.master_id===master.auto_transfer_to&&(!f.owner_id||p.owner_id===f.owner_id));
-        const lpName=mProgNames[master.auto_transfer_to]||"linked program";
-        return(<div>
-          {lbl("Link to "+lpName+" account")}
-          <select style={inp} value={f.linked_program_id} onChange={up("linked_program_id")}>
-            <option value="">Select your {lpName} account…</option>
-            {eligible.map(p=><option key={p.id} value={p.id}>{p.nickname||lpName}{owners?.find(o=>o.id===p.owner_id)?" ("+owners.find(o=>o.id===p.owner_id).name+")":""}</option>)}
-          </select>
-        </div>);
-      })()}
-      <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.6:1}} onClick={save}>{saving?"Saving…":"Add Card"}</button>
-    </Modal>
-  );
-}
 
 // ── EditCardModal — shared edit modal used by both P&M and Spend Tracker ──────
 function EditCardModal({card, db, mCards, owners, onSave, onClose}){
@@ -5767,7 +5735,6 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </div>}
       </Card>
       {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
-      {showAddCard&&<AddCardModal db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowAddCard(false)}/>}
     </div>
   );
 }
@@ -5779,7 +5746,6 @@ function SpendCards({db,owners,onNavigate}){
   const [txns,setTxns]=useState([]);
   const [busy,setBusy]=useState(true);
   const [selCard,setSelCard]=useState(null);
-  const [showAddCard,setShowAddCard]=useState(false);
 
 
 
@@ -5827,8 +5793,7 @@ function SpendCards({db,owners,onNavigate}){
 
   return(
     <div>
-      <Hdr title="My Cards" sub="Spend tracker view"
-        action={<button style={pbtn} onClick={()=>setShowAddCard(true)}>+ Add Card</button>}/>
+      <Hdr title="My Cards" sub="Spend tracker view"/>
 
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
