@@ -5126,7 +5126,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const deleteStmt=async(stmt)=>{
     setDeleting(true);
     // Check for ledger entries
-    const stmtTxnIds=(txns.filter(t=>t.statement_id===stmt.id)).map(t=>t.id);
+    const stmtTxnIds=(txns.filter(t=>
+      t.statement_id===stmt.id ||
+      (!t.statement_id && t.statement_month===stmt.statement_month && t.card_id===stmt.card_id)
+    )).map(t=>t.id);
     let ledgerCount=0;
     for(const tid of stmtTxnIds){
       const {data:le}=await db.from("ledger_entries").filter("transaction_id",tid);
@@ -5146,8 +5149,11 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         for(const e of (le||[])) await db.from("ledger_entries").delete(e.id);
       }
     }
-    // Delete transactions
-    const allTxns=txns.filter(t=>t.statement_id===stmt.id);
+    // Delete transactions — by statement_id OR by card+month (for legacy imports)
+    const allTxns=txns.filter(t=>
+      t.statement_id===stmt.id ||
+      (!t.statement_id && t.statement_month===stmt.statement_month && t.card_id===stmt.card_id)
+    );
     for(const t of allTxns) await db.from("spend_transactions").delete(t.id);
     // Delete statement
     await db.from("statements").delete(stmt.id);
