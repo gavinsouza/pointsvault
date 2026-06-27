@@ -4236,8 +4236,16 @@ function SpendUpload({db,owners}){
     const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
     try{
       if(selMapping){
-        const {error}=await db.from("csv_mappings").update(selMapping,p);
-        if(error) throw error;
+        // Ask user: update existing or save as new?
+        const choice=confirm(`"${p.name}" is a saved mapping. Click OK to update it, or Cancel to save as a new mapping.`);
+        if(choice){
+          const {error}=await db.from("csv_mappings").update(selMapping,p);
+          if(error) throw error;
+        } else {
+          // Save as new — clear selMapping so it inserts
+          const {error}=await db.from("csv_mappings").insert(p);
+          if(error) throw error;
+        }
       } else {
         const {error}=await db.from("csv_mappings").insert(p);
         if(error) throw error;
