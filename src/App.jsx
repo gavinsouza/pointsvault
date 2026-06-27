@@ -4175,7 +4175,8 @@ function SpendUpload({db,owners}){
 
   const parseDate=(str,fmt)=>{
     str=(str||"").trim().replace(/^["']+|["']+$/g,"");
-    str=str.split("T")[0]; // strip time
+    str=str.split("T")[0]; // strip ISO time
+    str=str.split(" ")[0]; // strip space-separated time e.g. "04/05/2026 16:25:36"
     // Axis Bank format: "19 Jun '26" or "19 Jun 2026"
     const MONTHS={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
     const axisMatch=str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2,4})$/);
@@ -4283,7 +4284,9 @@ function SpendUpload({db,owners}){
         amount=d>0?d:-c;
       }
       const category=applyRules(desc,rules);
-      return{date:dateStr,desc,amount,category,skip:!dateStr};
+      // Validate dateStr is a proper YYYY-MM-DD format
+      const validDate=dateStr&&/^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+      return{date:validDate?dateStr:null,desc,amount,category,skip:!validDate};
     }).filter(r=>r.date);
   };
 
