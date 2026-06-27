@@ -3766,6 +3766,68 @@ function SettingsDanger({db,owners,onReset}){
 
 
 
+// ── SetupMappings ─────────────────────────────────────────────────────────────
+function SetupMappings({db}){
+  const [mappings,setMappings]=useState([]);
+  const [cards,setCards]=useState([]);
+  const [mCards,setMCards]=useState([]);
+  const [owners,setOwners]=useState([]);
+  const [busy,setBusy]=useState(true);
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const [m,c,mc,o]=await Promise.all([
+      db.from("csv_mappings").select(),
+      db.from("my_cards").select(),
+      db.from("master_cards").select(),
+      db.from("owners").select(),
+    ]);
+    setMappings(m.data||[]);
+    setCards(c.data||[]);
+    setMCards(mc.data||[]);
+    setOwners(o.data||[]);
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const del=async id=>{
+    if(!confirm("Delete this mapping? This cannot be undone.")) return;
+    await db.from("csv_mappings").delete(id);
+    load();
+  };
+
+  if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
+
+  return(
+    <div>
+      <Hdr title="CC Mappings" sub="Saved import configurations for your credit cards"/>
+      {mappings.length===0?(
+        <Empty icon="M" msg="No saved mappings yet — create one during CC Statement Upload"/>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:600}}>
+          {mappings.map(m=>{
+            const card=cards.find(c=>c.id===m.card_id);
+            const mc=card&&mCards.find(x=>x.id===card.master_id);
+            const owner=card&&owners.find(o=>o.id===card.owner_id);
+            return(
+              <Card key={m.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:3}}>{m.name}</div>
+                  <div style={{fontSize:11,color:mut}}>
+                    {mc?.name&&<span>{mc.name}{owner?" · "+owner.name:""} · </span>}
+                    {m.delimiter==="auto"?"Auto":m.delimiter==="	"?"Tab":m.delimiter||"Auto"} delimiter · Skip {m.skip_rows||0} rows · Date col {(m.date_col||0)+1} · Desc col {(m.desc_col||0)+1}
+                  </div>
+                </div>
+                <button onClick={()=>del(m.id)} style={{...dbtn,fontSize:12,padding:"4px 12px",flexShrink:0}}>Delete</button>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SetupCategories ───────────────────────────────────────────────────────────
 const DEFAULT_CATEGORIES=[
   "Dining","Travel","Fuel","Groceries","Shopping","Utilities",
@@ -4168,6 +4230,9 @@ function SpendUpload({db,owners}){
 
   const saveMapping=async()=>{
     if(!mapName.trim()) return alert("Please enter a mapping name");
+    // Check for duplicate name (excluding current mapping if editing)
+    const dup=mappings.find(m=>m.name.trim().toLowerCase()===mapName.trim().toLowerCase()&&m.id!==selMapping);
+    if(dup) return alert(`A mapping named "${dup.name}" already exists. Please choose a different name.`);
     const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
     try{
       if(selMapping){
@@ -4370,19 +4435,7 @@ function SpendUpload({db,owners}){
           {fileName&&!uploadError&&<div style={{fontSize:12,color:grn,marginTop:8,fontWeight:500}}>✓ {fileName} — processing…</div>}
           {uploadError&&<div style={{fontSize:12,color:red,marginTop:8,fontWeight:500}}>✗ {uploadError}</div>}
           <div style={{fontSize:11,color:mut,marginTop:10}}>Supported: CSV files from HDFC, Axis, Amex etc.</div>
-          {mappings.length>0&&<div style={{marginTop:20}}>
-            <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Saved mappings</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {mappings.map(m=>{
-                const card=cards.find(c=>c.id===m.card_id);
-                const mc=card&&mCards.find(x=>x.id===card.master_id);
-                return<div key={m.id} style={{padding:"6px 12px",borderRadius:8,border:`1px solid ${bdr}`,fontSize:12,color:mut,background:surf2,display:"flex",alignItems:"center",gap:8}}>
-                  <span>{m.name}{mc&&" · "+mc.name}</span>
-                  <button onClick={async()=>{if(!confirm("Delete mapping "+m.name+"?")) return;await db.from("csv_mappings").delete(m.id);const {data}=await db.from("csv_mappings").select();setMappings(data||[]);}} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:13,padding:0,lineHeight:1}}>×</button>
-                </div>;
-              })}
-            </div>
-          </div>}
+
         </Card>
       </div>
     </div>
@@ -4791,6 +4844,7 @@ const NAV=[
     {label:"Setup", items:[
       {id:"spend-setup-people",      label:"People"},
       {id:"spend-setup-categories",  label:"Categories"},
+      {id:"spend-setup-mappings",    label:"CC Mappings"},
     ]},
   ]},
   {section:"Points & Miles", items:[
@@ -4987,6 +5041,7 @@ export default function App(){
         {tab==="pm-setup-catalog"  &&<Catalog db={db}/>}
         {tab==="spend-setup-people"&&<SetupPeople db={db}/>}
         {tab==="spend-setup-categories"&&<SetupCategories db={db}/>}
+        {tab==="spend-setup-mappings"&&<SetupMappings db={db}/>}
         {tab==="settings-general"  &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
         {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
