@@ -6064,7 +6064,7 @@ function SpendLedger({db,owners}){
                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:400,color:txt}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
                     <td style={{padding:"8px 10px",fontSize:10,color:mut}}>{e.payment_method||"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"center",whiteSpace:"nowrap"}}>
-                      {e.entry_type==="manual"||!e.entry_type?(
+                      {e.entry_type==="manual"||e.entry_type==="payment"||!e.entry_type?(
                         <div style={{display:"flex",gap:4,justifyContent:"center"}}>
                           <button onClick={()=>openEdit(e)} style={{...gbtn,padding:"2px 8px",fontSize:10}}>Edit</button>
                           <button onClick={()=>del(e.id)} style={{...dbtn,padding:"2px 8px",fontSize:10}}>Del</button>
