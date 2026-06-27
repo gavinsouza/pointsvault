@@ -4648,16 +4648,16 @@ function SpendUpload({db,owners}){
         };
         const rawDue=getCell(tdr,tdc);
         const rawOb=getCell(obr,obc);
-        const rowDueCells=getRow(tdr).map((v,i)=>`[${i}]: ${v||"(empty)"}`).join(" | ");
-        const rowObCells=getRow(obr).map((v,i)=>`[${i}]: ${v||"(empty)"}`).join(" | ");
+        const rowDueCells=getRow(tdr).map((v,i)=>`col${i+1}[${i}]: ${v||"(empty)"}`).join(" | ");
+        const rowObCells=getRow(obr).map((v,i)=>`col${i+1}[${i}]: ${v||"(empty)"}`).join(" | ");
         return(
           <details style={{marginBottom:12}}>
             <summary style={{fontSize:11,color:mut,cursor:"pointer",padding:"6px 10px",background:surf2,borderRadius:8}}>🔍 Debug: raw CSV values (click to expand)</summary>
             <div style={{fontSize:11,fontFamily:"monospace",padding:"10px 12px",background:surf2,borderRadius:"0 0 8px 8px",borderTop:`1px solid ${bdr}`}}>
               <div style={{marginBottom:6}}><strong>Row {tdr} (Total Due):</strong> {rowDueCells||"(row empty)"}</div>
-              <div style={{marginBottom:6}}><strong>Reading Col {tdc===-1?"last":tdc}:</strong> "{rawDue}"</div>
+              <div style={{marginBottom:6}}><strong>Reading Col {tdc===-1?"last (highest non-empty)":tdc+" (0-based = visual col "+(tdc+1)+")"}:</strong> "{rawDue}"</div>
               <div style={{marginBottom:6}}><strong>Row {obr} (Opening Bal):</strong> {rowObCells||"(row empty)"}</div>
-              <div><strong>Reading Col {obc===-1?"last":obc}:</strong> "{rawOb}"</div>
+              <div><strong>Reading Col {obc===-1?"last (highest non-empty)":obc+" (0-based = visual col "+(obc+1)+")"}:</strong> "{rawOb}"</div>
             </div>
           </details>
         );
