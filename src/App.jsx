@@ -4044,10 +4044,10 @@ function SpendUpload({db,owners}){
   const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
   const [totalDue,setTotalDue]=useState("");
   const [openingBal,setOpeningBal]=useState("");
-  const [totalDueRow,setTotalDueRow]=useState(6);
-  const [totalDueCol,setTotalDueCol]=useState(-1); // -1 = last non-empty col
-  const [openingBalRow,setOpeningBalRow]=useState(13);
-  const [openingBalCol,setOpeningBalCol]=useState(0);
+  const [totalDueRow,setTotalDueRow]=useState("6");
+  const [totalDueCol,setTotalDueCol]=useState("-1"); // -1 = last non-empty col
+  const [openingBalRow,setOpeningBalRow]=useState("13");
+  const [openingBalCol,setOpeningBalCol]=useState("0");
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
@@ -4116,10 +4116,10 @@ function SpendUpload({db,owners}){
     setDebitCol(Number(m.debit_col)||2); setCreditCol(Number(m.credit_col)||3);
     setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(Number(m.skip_rows)||1);
     setCreditIndCol(m.credit_ind_col!==undefined&&m.credit_ind_col!==null?Number(m.credit_ind_col):-1);
-    if(m.total_due_row!=null) setTotalDueRow(Number(m.total_due_row));
-    if(m.total_due_col!=null) setTotalDueCol(Number(m.total_due_col));
-    if(m.opening_bal_row!=null) setOpeningBalRow(Number(m.opening_bal_row));
-    if(m.opening_bal_col!=null) setOpeningBalCol(Number(m.opening_bal_col));
+    if(m.total_due_row!=null) setTotalDueRow(String(m.total_due_row));
+    if(m.total_due_col!=null) setTotalDueCol(String(m.total_due_col));
+    if(m.opening_bal_row!=null) setOpeningBalRow(String(m.opening_bal_row));
+    if(m.opening_bal_col!=null) setOpeningBalCol(String(m.opening_bal_col));
     const delim=m.delimiter||"auto";
     setManualDelim(delim);
     setSelMapping(m.id);
@@ -4128,6 +4128,29 @@ function SpendUpload({db,owners}){
       const rows=parseCSV(rawText, delim==="auto"?undefined:delim);
       setRawRows(rows);
       setColWidths([]);
+    }
+  };
+
+  const readBillingFromCSV=()=>{
+    const tdr=parseInt(totalDueRow)||0;
+    const tdc=parseInt(totalDueCol);
+    const obr=parseInt(openingBalRow)||0;
+    const obc=parseInt(openingBalCol);
+    const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+    const readCell=(rowIdx,colIdx)=>{
+      const row=(rawRows[rowIdx]||[]);
+      if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
+      return cn(row[colIdx]||"");
+    };
+    if(rawRows.length>tdr){
+      const due=parseFloat(readCell(tdr,tdc));
+      if(!isNaN(due)&&due>0) setTotalDue(String(due));
+      else setTotalDue("");
+    }
+    if(rawRows.length>obr){
+      const ob=parseFloat(readCell(obr,obc));
+      if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
+      else setOpeningBal("");
     }
   };
 
@@ -4167,7 +4190,7 @@ function SpendUpload({db,owners}){
 
   const saveMapping=async()=>{
     if(!mapName.trim()) return alert("Please enter a mapping name");
-    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:totalDueRow,total_due_col:totalDueCol,opening_bal_row:openingBalRow,opening_bal_col:openingBalCol};
+    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
     try{
       if(selMapping){
         const {error}=await db.from("csv_mappings").update(selMapping,p);
@@ -4295,21 +4318,6 @@ function SpendUpload({db,owners}){
         setRawRows(rows);
         setRawText(text);
         setColWidths([]);
-        // Auto-read billing fields using configured row/col
-        const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
-        const readCell=(rowIdx,colIdx)=>{
-          const row=(rows[rowIdx]||[]);
-          if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
-          return cn(row[colIdx]||"");
-        };
-        if(rows.length>totalDueRow){
-          const due=parseFloat(readCell(totalDueRow,totalDueCol));
-          if(!isNaN(due)&&due>0) setTotalDue(String(due));
-        }
-        if(rows.length>openingBalRow){
-          const ob=parseFloat(readCell(openingBalRow,openingBalCol));
-          if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
-        }
         setStep(2);
       }catch(err){
         setUploadError("Parse error: "+err.message);
@@ -4578,21 +4586,17 @@ function SpendUpload({db,owners}){
           <div style={{borderTop:`1px solid ${bdr}`,paddingTop:14,marginTop:14}}>
             <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Billing Summary</div>
             <div style={{fontSize:11,color:mut,marginBottom:10}}>Configure which row and column to read from. Col -1 = last non-empty cell in that row.</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:10}}>
               <div>
                 <div style={{fontSize:11,fontWeight:500,color:txt,marginBottom:6}}>Total Amount Due</div>
                 <div style={{display:"flex",gap:6}}>
                   <div style={{flex:1}}>
                     {lbl("Row #")}
-                    <input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(Number(e.target.value.replace(/\D/g,""))||0)} placeholder="6"/>
+                    <input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(e.target.value)} placeholder="6"/>
                   </div>
                   <div style={{flex:1}}>
                     {lbl("Col # (-1=last)")}
-                    <input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(Number(e.target.value)||0)} placeholder="-1"/>
-                  </div>
-                  <div style={{flex:1}}>
-                    {lbl("Value (₹)")}
-                    <input type="text" inputMode="decimal" style={{...ss,background:totalDue?grn+"10":ss.background}} value={totalDue} onChange={e=>setTotalDue(e.target.value.replace(/[^0-9.]/g,""))} placeholder="auto"/>
+                    <input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(e.target.value)} placeholder="-1"/>
                   </div>
                 </div>
               </div>
@@ -4601,19 +4605,16 @@ function SpendUpload({db,owners}){
                 <div style={{display:"flex",gap:6}}>
                   <div style={{flex:1}}>
                     {lbl("Row #")}
-                    <input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(Number(e.target.value.replace(/\D/g,""))||0)} placeholder="13"/>
+                    <input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(e.target.value)} placeholder="13"/>
                   </div>
                   <div style={{flex:1}}>
                     {lbl("Col # (-1=last)")}
-                    <input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(Number(e.target.value)||0)} placeholder="0"/>
-                  </div>
-                  <div style={{flex:1}}>
-                    {lbl("Value (₹)")}
-                    <input type="text" inputMode="decimal" style={{...ss,background:openingBal?grn+"10":ss.background}} value={openingBal} onChange={e=>setOpeningBal(e.target.value.replace(/[^0-9.-]/g,""))} placeholder="auto"/>
+                    <input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(e.target.value)} placeholder="0"/>
                   </div>
                 </div>
               </div>
             </div>
+            <button style={{...gbtn,fontSize:12,marginBottom:4}} onClick={readBillingFromCSV}>⟳ Read from CSV</button>
           </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:14,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
             <div style={{display:"flex",gap:8}}>
@@ -4630,6 +4631,33 @@ function SpendUpload({db,owners}){
   // ── Step 3: Preview & categorise ───────────────────────────────────────────
   if(step===3) return(
     <div>
+      {/* Billing summary verification */}
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        {[
+          {label:"Total Amount Due",value:totalDue,row:totalDueRow,col:totalDueCol==="−1"||totalDueCol==="-1"?"last":totalDueCol},
+          {label:"Opening Balance (Prev Stmt Due)",value:openingBal,row:openingBalRow,col:openingBalCol==="−1"||openingBalCol==="-1"?"last":openingBalCol},
+        ].map((f,i)=>(
+          <Card key={i} style={{flex:1,minWidth:180,padding:"12px 16px",border:`2px solid ${f.value?grn+"55":amber+"55"}`}}>
+            <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>{f.label}</div>
+            {f.value?(
+              <div style={{fontSize:20,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>₹{parseFloat(f.value).toLocaleString("en-IN")}</div>
+            ):(
+              <div style={{fontSize:12,color:amber,fontWeight:500}}>⚠ Not read — go back and click "Read from CSV"</div>
+            )}
+            <div style={{fontSize:10,color:mut,marginTop:3}}>Row {f.row} · Col {f.col===-1?"last":f.col}</div>
+          </Card>
+        ))}
+        <Card style={{flex:1,minWidth:180,padding:"12px 16px"}}>
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Debits this import</div>
+          <div style={{fontSize:20,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{parsed.filter(r=>!r.skip&&r.amount>0).reduce((a,r)=>a+r.amount,0).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+          <div style={{fontSize:10,color:mut,marginTop:3}}>{parsed.filter(r=>!r.skip&&r.amount>0).length} transactions</div>
+        </Card>
+        <Card style={{flex:1,minWidth:180,padding:"12px 16px"}}>
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Credits this import</div>
+          <div style={{fontSize:20,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>₹{Math.abs(parsed.filter(r=>!r.skip&&r.amount<0).reduce((a,r)=>a+r.amount,0)).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+          <div style={{fontSize:10,color:mut,marginTop:3}}>{parsed.filter(r=>!r.skip&&r.amount<0).length} transactions</div>
+        </Card>
+      </div>
       <Hdr title="Review Transactions" sub={`${total} transactions · ₹${totalAmt.toLocaleString("en-IN")}`}/>
       <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
         <div style={{fontSize:12,color:mut}}>
