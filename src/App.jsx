@@ -4131,29 +4131,6 @@ function SpendUpload({db,owners}){
     }
   };
 
-  const readBillingFromCSV=()=>{
-    const tdr=parseInt(totalDueRow)||0;
-    const tdc=parseInt(totalDueCol);
-    const obr=parseInt(openingBalRow)||0;
-    const obc=parseInt(openingBalCol);
-    const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
-    const readCell=(rowIdx,colIdx)=>{
-      const row=(rawRows[rowIdx]||[]);
-      if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
-      return cn(row[colIdx]||"");
-    };
-    if(rawRows.length>tdr){
-      const due=parseFloat(readCell(tdr,tdc));
-      if(!isNaN(due)&&due>0) setTotalDue(String(due));
-      else setTotalDue("");
-    }
-    if(rawRows.length>obr){
-      const ob=parseFloat(readCell(obr,obc));
-      if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
-      else setOpeningBal("");
-    }
-  };
-
   const buildParsed=(opts={})=>{
     const sk=opts.skipRows!==undefined?opts.skipRows:skipRows;
     const dc=opts.dateCol!==undefined?opts.dateCol:dateCol;
@@ -4210,6 +4187,27 @@ function SpendUpload({db,owners}){
 
   const goToPreview=()=>{
     if(!stmtMonthSel) return alert("Please select a statement month before previewing.");
+    // Auto-read billing fields from CSV using current row/col settings
+    const tdr=parseInt(totalDueRow)||0;
+    const tdc=parseInt(totalDueCol);
+    const obr=parseInt(openingBalRow)||0;
+    const obc=parseInt(openingBalCol);
+    const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+    const readCell=(rowIdx,colIdx)=>{
+      const row=(rawRows[rowIdx]||[]);
+      if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
+      return cn(row[colIdx]||"");
+    };
+    if(rawRows.length>tdr){
+      const due=parseFloat(readCell(tdr,tdc));
+      if(!isNaN(due)&&due>0) setTotalDue(String(due));
+      else setTotalDue("");
+    }
+    if(rawRows.length>obr){
+      const ob=parseFloat(readCell(obr,obc));
+      if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
+      else setOpeningBal("");
+    }
     setParsed(buildParsed());
     setStep(3);
   };
@@ -4614,7 +4612,7 @@ function SpendUpload({db,owners}){
                 </div>
               </div>
             </div>
-            <button style={{...gbtn,fontSize:12,marginBottom:4}} onClick={readBillingFromCSV}>⟳ Read from CSV</button>
+
           </div>
           <div style={{display:"flex",justifyContent:"space-between",marginTop:14,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
             <div style={{display:"flex",gap:8}}>
