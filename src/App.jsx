@@ -4488,159 +4488,108 @@ function SpendUpload({db,owners}){
           </div>
         </Card>
 
-        <Card>
-          {/* ── Section 1: Identity ─────────────────────────────────── */}
-          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Mapping Identity</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-            <div>
-              {lbl("Mapping Name")}
-              <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
+        {/* Collapsible mapping section */}
+        <div style={{marginBottom:16}}>
+          <button
+            onClick={()=>setMappingExpanded(e=>!e)}
+            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,border:`1px solid ${bdr}`,borderRadius:mappingExpanded?"10px 10px 0 0":"10px",cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:13,fontWeight:600,color:txt}}>{selMapping?mappings.find(m=>m.id===selMapping)?.name||"Custom mapping":"No mapping selected"}</div>
+              <div style={{fontSize:11,color:mut,marginTop:2}}>
+                {manualDelim==="auto"?"Auto":manualDelim==="\t"?"Tab":manualDelim} · Skip {skipRows} · Date col {dateCol+1} · Desc col {descCol+1} · Amt col {amtType==="single"?amtCol+1:"split"}
+              </div>
             </div>
-            <div>
-              {lbl("Card *")}
-              {!selCard&&<div style={{fontSize:11,color:red,marginBottom:4}}>Required</div>}
-              <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
-                <option value="">No card selected</option>
-                {(()=>{
-                  const grouped={};
-                  cards.forEach(c=>{
-                    const owner=owners.find(o=>o.id===c.owner_id);
-                    const ownerName=owner?.name||"Unknown";
-                    if(!grouped[ownerName]) grouped[ownerName]=[];
-                    grouped[ownerName].push(c);
-                  });
-                  return Object.entries(grouped).map(([ownerName,ownerCards])=>(
-                    <optgroup key={ownerName} label={"── "+ownerName+" ──"}>
-                      {ownerCards.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
-                    </optgroup>
-                  ));
-                })()}
-              </select>
-            </div>
-          </div>
-
-          {/* ── Section 2: Parsing ─────────────────────────────────── */}
-          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:14,borderTop:`1px solid ${bdr}`}}>Parsing Settings</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-            <div>
-              {lbl("Delimiter")}
-              <div style={{display:"flex",gap:6}}>
-                <select style={{...ss,flex:1}} value={manualDelim} onChange={e=>setManualDelim(e.target.value)}>
-                  <option value="auto">Auto-detect</option>
-                  <option value="|">Pipe | (HDFC)</option>
-                  <option value=",">Comma ,</option>
-                  <option value="	">Tab</option>
-                  <option value=";">Semicolon ;</option>
-                  <option value="~I~">~I~ (legacy HDFC)</option>
+            <div style={{fontSize:12,color:acc,fontWeight:600,marginLeft:12,flexShrink:0}}>{mappingExpanded?"▲ Collapse":"▼ Edit"}</div>
+          </button>
+          {mappingExpanded&&<div style={{border:`1px solid ${bdr}`,borderTop:"none",borderRadius:"0 0 10px 10px",padding:"16px",background:surf}}>
+            {/* ── Section 1: Identity ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Mapping Identity</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+              <div>
+                {lbl("Mapping Name")}
+                <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
+              </div>
+              <div>
+                {lbl("Linked Card (default)")}
+                <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
+                  <option value="">No default card</option>
+                  {(()=>{const grouped={};cards.forEach(c=>{const o=owners.find(x=>x.id===c.owner_id);const on=o?.name||"Unknown";if(!grouped[on])grouped[on]=[];grouped[on].push(c);});return Object.entries(grouped).map(([on,oc])=>(<optgroup key={on} label={"── "+on+" ──"}>{oc.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}</optgroup>));})()}
                 </select>
-                <button style={{...gbtn,fontSize:11,whiteSpace:"nowrap"}} onClick={()=>{
-                  if(rawText){const rows=parseCSV(rawText,manualDelim==="auto"?undefined:manualDelim);setRawRows(rows);setColWidths([]);}
-                }}>↺</button>
               </div>
             </div>
-            <div>
-              {lbl("Skip header rows")}
-              <select style={ss} value={skipRows} onChange={e=>setSkipRows(Number(e.target.value))}>
-                {Array.from({length:31},(_,n)=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
-              </select>
-            </div>
-            <div>
-              {lbl("Date format")}
-              <select style={ss} value={dateFormat} onChange={e=>setDateFormat(e.target.value)}>
-                <option value="DD/MM/YYYY">DD/MM/YYYY</option>
-                <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-                <option value="YYYY-MM-DD">YYYY-MM-DD</option>
-                <option value="auto">Auto-detect</option>
-              </select>
-            </div>
-          </div>
-
-          {/* ── Section 3: Column Mapping ─────────────────────────── */}
-          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:14,borderTop:`1px solid ${bdr}`}}>Column Mapping</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
-            <div>
-              {lbl("Date column")}
-              <select style={ss} value={dateCol} onChange={e=>setDateCol(Number(e.target.value))}>
-                {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              {lbl("Description column")}
-              <select style={ss} value={descCol} onChange={e=>setDescCol(Number(e.target.value))}>
-                {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
-              </select>
-            </div>
-            <div>
-              {lbl("Amount type")}
-              <select style={ss} value={amtType} onChange={e=>setAmtType(e.target.value)}>
-                <option value="single">Single column</option>
-                <option value="split">Separate Debit / Credit</option>
-              </select>
-            </div>
-            {amtType==="single"?(
-              <>
-                <div>
-                  {lbl("Amount column")}
-                  <select style={ss} value={amtCol} onChange={e=>setAmtCol(Number(e.target.value))}>
-                    {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
+            {/* ── Section 2: Parsing ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Parsing Settings</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                {lbl("Delimiter")}
+                <div style={{display:"flex",gap:6}}>
+                  <select style={{...ss,flex:1}} value={manualDelim} onChange={e=>setManualDelim(e.target.value)}>
+                    <option value="auto">Auto-detect</option>
+                    <option value="|">Pipe | (HDFC)</option>
+                    <option value=",">Comma ,</option>
+                    <option value="\t">Tab</option>
+                    <option value=";">Semicolon ;</option>
                   </select>
+                  <button style={{...gbtn,fontSize:11}} onClick={()=>{if(rawText){const rows=parseCSV(rawText,manualDelim==="auto"?undefined:manualDelim);setRawRows(rows);setColWidths([]);}}}>↺</button>
                 </div>
-                <div>
-                  {lbl("Credit indicator col (if non-empty = credit)")}
-                  <select style={ss} value={creditIndCol} onChange={e=>setCreditIndCol(Number(e.target.value))}>
-                    <option value={-1}>None</option>
-                    {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
-                  </select>
-                </div>
-              </>
-            ):(
-              <>
-                <div>
-                  {lbl("Debit column")}
-                  <select style={ss} value={debitCol} onChange={e=>setDebitCol(Number(e.target.value))}>
-                    {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
-                  </select>
-                </div>
-                <div>
-                  {lbl("Credit column")}
-                  <select style={ss} value={creditCol} onChange={e=>setCreditCol(Number(e.target.value))}>
-                    {colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}
-                  </select>
-                </div>
-              </>
-            )}
-          </div>
-
-          {/* ── Section 4: Billing Summary ─────────────────────────── */}
-          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,paddingTop:14,borderTop:`1px solid ${bdr}`}}>Billing Summary Location</div>
-          <div style={{fontSize:11,color:mut,marginBottom:10}}>Enter the row and column numbers as you see them in the CSV preview above (Col 1 = first column).</div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:4}}>
-            <div>
-              <div style={{fontSize:12,fontWeight:500,color:txt,marginBottom:6}}>Total Amount Due</div>
-              <div style={{display:"flex",gap:8}}>
-                <div style={{flex:1}}>{lbl("Row #")}<input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(e.target.value)} placeholder="6"/></div>
-                <div style={{flex:1}}>{lbl("Col #")}<input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(e.target.value)} placeholder="2"/></div>
+              </div>
+              <div>
+                {lbl("Skip header rows")}
+                <select style={ss} value={skipRows} onChange={e=>setSkipRows(Number(e.target.value))}>
+                  {Array.from({length:31},(_,n)=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
+                </select>
+              </div>
+              <div>
+                {lbl("Date format")}
+                <select style={ss} value={dateFormat} onChange={e=>setDateFormat(e.target.value)}>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                  <option value="auto">Auto-detect</option>
+                </select>
               </div>
             </div>
-            <div>
-              <div style={{fontSize:12,fontWeight:500,color:txt,marginBottom:6}}>Opening Balance (Prev Stmt Due)</div>
-              <div style={{display:"flex",gap:8}}>
-                <div style={{flex:1}}>{lbl("Row #")}<input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(e.target.value)} placeholder="13"/></div>
-                <div style={{flex:1}}>{lbl("Col #")}<input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(e.target.value)} placeholder="1"/></div>
+            {/* ── Section 3: Column Mapping ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Column Mapping</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <div>{lbl("Date column")}<select style={ss} value={dateCol} onChange={e=>setDateCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              <div>{lbl("Description column")}<select style={ss} value={descCol} onChange={e=>setDescCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              <div>{lbl("Amount type")}<select style={ss} value={amtType} onChange={e=>setAmtType(e.target.value)}><option value="single">Single column</option><option value="split">Separate Debit / Credit</option></select></div>
+              {amtType==="single"?(<>
+                <div>{lbl("Amount column")}<select style={ss} value={amtCol} onChange={e=>setAmtCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+                <div>{lbl("Credit indicator col")}<select style={ss} value={creditIndCol} onChange={e=>setCreditIndCol(Number(e.target.value))}><option value={-1}>None</option>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              </>):(<>
+                <div>{lbl("Debit column")}<select style={ss} value={debitCol} onChange={e=>setDebitCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+                <div>{lbl("Credit column")}<select style={ss} value={creditCol} onChange={e=>setCreditCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              </>)}
+            </div>
+            {/* ── Section 4: Billing Summary ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Billing Summary Location</div>
+            <div style={{fontSize:11,color:mut,marginBottom:10}}>Col 1 = first column</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:txt,marginBottom:6}}>Total Amount Due</div>
+                <div style={{display:"flex",gap:8}}><div style={{flex:1}}>{lbl("Row #")}<input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(e.target.value)} placeholder="6"/></div><div style={{flex:1}}>{lbl("Col #")}<input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(e.target.value)} placeholder="2"/></div></div>
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:txt,marginBottom:6}}>Opening Balance</div>
+                <div style={{display:"flex",gap:8}}><div style={{flex:1}}>{lbl("Row #")}<input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(e.target.value)} placeholder="13"/></div><div style={{flex:1}}>{lbl("Col #")}<input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(e.target.value)} placeholder="1"/></div></div>
               </div>
             </div>
-          </div>
-
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:14,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
-            <div style={{display:"flex",gap:8}}>
-              <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+            {/* Save mapping */}
+            <div style={{paddingTop:12,borderTop:`1px solid ${bdr}`,display:"flex",justifyContent:"flex-end"}}>
               <button style={{...gbtn,fontSize:12}} onClick={saveMapping}>Save mapping</button>
             </div>
-            <button style={pbtn} onClick={goToPreview}>Preview →</button>
-          </div>
-        </Card>
+          </div>}
+        </div>
+        {/* Navigation — always visible */}
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+          <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+          <button style={pbtn} onClick={goToPreview}>Preview →</button>
+        </div>
       </div>
     </div>
+  );
   );
 
   // ── Step 3: Preview & categorise ───────────────────────────────────────────
