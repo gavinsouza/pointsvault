@@ -6100,6 +6100,9 @@ function SpendTransactions({db,owners}){
 function SpendLedger({db,owners}){
   const [people,setPeople]=useState([]);
   const [entries,setEntries]=useState([]);
+  const [cards,setCards]=useState([]);
+  const [mCards,setMCards]=useState([]);
+  const [txnMap,setTxnMap]=useState({}); // transaction_id -> {statement_month, card_id}
   const [busy,setBusy]=useState(true);
   const [selPerson,setSelPerson]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
@@ -6117,11 +6120,36 @@ function SpendLedger({db,owners}){
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [p,e]=await Promise.all([db.from("people").select(),db.from("ledger_entries").select()]);
+    const [p,e,c,mc,t]=await Promise.all([
+      db.from("people").select(),
+      db.from("ledger_entries").select(),
+      db.from("my_cards").select(),
+      db.from("master_cards").select(),
+      db.from("spend_transactions").select(),
+    ]);
     setPeople(p.data||[]); setEntries(e.data||[]);
+    setCards(c.data||[]); setMCards(mc.data||[]);
+    // Build txn lookup map
+    const map={};
+    (t.data||[]).forEach(t=>{map[t.id]={statement_month:t.statement_month,card_id:t.card_id};});
+    setTxnMap(map);
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
+
+  const entrySource=e=>{
+    if(e.entry_type==="transaction"&&e.transaction_id){
+      const txn=txnMap[e.transaction_id];
+      if(txn){
+        const card=cards.find(c=>c.id===txn.card_id);
+        const mc=card&&mCards.find(m=>m.id===card.master_id);
+        const cardName=card?.nickname||mc?.name||"Card";
+        const month=txn.statement_month?fmtMonth(txn.statement_month):"";
+        return month?`${month} · ${cardName}`:cardName;
+      }
+    }
+    return "Manual Entry";
+  };
 
   const balance=pid=>{
     const pe=entries.filter(e=>e.person_id===pid);
@@ -6212,8 +6240,8 @@ function SpendLedger({db,owners}){
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
                 <tr style={{borderBottom:`2px solid ${bdr}`}}>
-                  {["Date","Description","You Paid","They Paid","Balance","Method",""].map((h,i)=>(
-                    <th key={i} style={{padding:"8px 10px",textAlign:i>=2&&i<=4?"right":"left",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",color:mut,whiteSpace:"nowrap"}}>{h}</th>
+                  {["Date","Description","Source","You Paid","They Paid","Balance","Method",""].map((h,i)=>(
+                    <th key={i} style={{padding:"8px 10px",textAlign:i>=3&&i<=5?"right":"left",fontSize:10,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.07em",color:mut,whiteSpace:"nowrap"}}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -6222,6 +6250,7 @@ function SpendLedger({db,owners}){
                   <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:surf}}>
                     <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
                     <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>{e.description}</td>
+                    <td style={{padding:"8px 10px",fontSize:11,color:mut,whiteSpace:"nowrap"}}>{entrySource(e)}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:400,color:txt}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
@@ -6239,7 +6268,7 @@ function SpendLedger({db,owners}){
                   </tr>
                 ))}
                 <tr style={{borderTop:`2px solid ${bdr}`,background:surf2}}>
-                  <td colSpan={2} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Total (all entries)</td>
+                  <td colSpan={3} style={{padding:"10px",fontWeight:700,fontSize:12,color:txt}}>Total (all entries)</td>
                   <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:grn,fontSize:12}}>₹{entriesWithBal.reduce((a,e)=>a+e._yp,0).toLocaleString("en-IN")}</td>
                   <td style={{padding:"10px",textAlign:"right",fontWeight:700,color:red,fontSize:12}}>₹{entriesWithBal.reduce((a,e)=>a+e._tp,0).toLocaleString("en-IN")}</td>
                   <td style={{padding:"10px",textAlign:"right",fontWeight:700,fontSize:14,color:finalBal>0?grn:finalBal<0?red:mut}}>{finalBal===0?"₹0":(finalBal>0?"+":"")+"₹"+finalBal.toLocaleString("en-IN")}</td>
