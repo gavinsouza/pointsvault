@@ -4285,7 +4285,7 @@ function SpendUpload({db,owners}){
       }
       const category=applyRules(desc,rules);
       // Validate dateStr is a proper YYYY-MM-DD format
-      const validDate=dateStr&&/^\d{4}-\d{2}-\d{2}$/.test(dateStr);
+      const validDate=dateStr&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dateStr);
       return{date:validDate?dateStr:null,desc,amount,category,skip:!validDate};
     }).filter(r=>r.date);
   };
