@@ -4044,7 +4044,10 @@ function SpendUpload({db,owners}){
   const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
   const [totalDue,setTotalDue]=useState("");
   const [openingBal,setOpeningBal]=useState("");
-  const [financeCharges,setFinanceCharges]=useState("");
+  const [totalDueRow,setTotalDueRow]=useState(6);
+  const [totalDueCol,setTotalDueCol]=useState(-1); // -1 = last non-empty col
+  const [openingBalRow,setOpeningBalRow]=useState(13);
+  const [openingBalCol,setOpeningBalCol]=useState(0);
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
@@ -4113,6 +4116,10 @@ function SpendUpload({db,owners}){
     setDebitCol(Number(m.debit_col)||2); setCreditCol(Number(m.credit_col)||3);
     setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(Number(m.skip_rows)||1);
     setCreditIndCol(m.credit_ind_col!==undefined&&m.credit_ind_col!==null?Number(m.credit_ind_col):-1);
+    if(m.total_due_row!=null) setTotalDueRow(Number(m.total_due_row));
+    if(m.total_due_col!=null) setTotalDueCol(Number(m.total_due_col));
+    if(m.opening_bal_row!=null) setOpeningBalRow(Number(m.opening_bal_row));
+    if(m.opening_bal_col!=null) setOpeningBalCol(Number(m.opening_bal_col));
     const delim=m.delimiter||"auto";
     setManualDelim(delim);
     setSelMapping(m.id);
@@ -4160,7 +4167,7 @@ function SpendUpload({db,owners}){
 
   const saveMapping=async()=>{
     if(!mapName.trim()) return alert("Please enter a mapping name");
-    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim};
+    const p={name:mapName.trim(),card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:totalDueRow,total_due_col:totalDueCol,opening_bal_row:openingBalRow,opening_bal_col:openingBalCol};
     try{
       if(selMapping){
         const {error}=await db.from("csv_mappings").update(selMapping,p);
@@ -4209,7 +4216,6 @@ function SpendUpload({db,owners}){
         file_name:fileName,
         total_due:parseFloat(totalDue)||0,
         opening_balance:parseFloat(openingBal)||0,
-        finance_charges:parseFloat(financeCharges)||0,
       });
       stmtId=stmtData?.[0]?.id||null;
     }catch(e){console.warn("statements table:",e);}
@@ -4289,19 +4295,20 @@ function SpendUpload({db,owners}){
         setRawRows(rows);
         setRawText(text);
         setColWidths([]);
-        // Auto-read billing fields (HDFC: row 6 = Total Due, row 13 = Opening/Finance)
+        // Auto-read billing fields using configured row/col
         const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
-        if(rows.length>13){
-          const r6=(rows[6]||[]).filter(x=>x.trim());
-          const due=parseFloat(cn(r6[r6.length-1]||""));
+        const readCell=(rowIdx,colIdx)=>{
+          const row=(rows[rowIdx]||[]);
+          if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
+          return cn(row[colIdx]||"");
+        };
+        if(rows.length>totalDueRow){
+          const due=parseFloat(readCell(totalDueRow,totalDueCol));
           if(!isNaN(due)&&due>0) setTotalDue(String(due));
-          const r13=(rows[13]||[]).filter(x=>x.trim());
-          if(r13.length>=2){
-            const ob=parseFloat(cn(r13[0]||""));
-            const fc=parseFloat(cn(r13[r13.length-2]||""));
-            if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
-            if(!isNaN(fc)&&fc>0) setFinanceCharges(String(fc));
-          }
+        }
+        if(rows.length>openingBalRow){
+          const ob=parseFloat(readCell(openingBalRow,openingBalCol));
+          if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
         }
         setStep(2);
       }catch(err){
@@ -4569,19 +4576,42 @@ function SpendUpload({db,owners}){
           )}
           {/* Billing fields */}
           <div style={{borderTop:`1px solid ${bdr}`,paddingTop:14,marginTop:14}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Billing Summary (auto-read from CSV)</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Billing Summary</div>
+            <div style={{fontSize:11,color:mut,marginBottom:10}}>Configure which row and column to read from. Col -1 = last non-empty cell in that row.</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
               <div>
-                {lbl("Total Amount Due (₹)")}
-                <input type="text" inputMode="decimal" style={ss} value={totalDue} onChange={e=>setTotalDue(e.target.value.replace(/[^0-9.]/g,""))} placeholder="e.g. 72141"/>
+                <div style={{fontSize:11,fontWeight:500,color:txt,marginBottom:6}}>Total Amount Due</div>
+                <div style={{display:"flex",gap:6}}>
+                  <div style={{flex:1}}>
+                    {lbl("Row #")}
+                    <input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(Number(e.target.value.replace(/\D/g,""))||0)} placeholder="6"/>
+                  </div>
+                  <div style={{flex:1}}>
+                    {lbl("Col # (-1=last)")}
+                    <input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(Number(e.target.value)||0)} placeholder="-1"/>
+                  </div>
+                  <div style={{flex:1}}>
+                    {lbl("Value (₹)")}
+                    <input type="text" inputMode="decimal" style={{...ss,background:totalDue?grn+"10":ss.background}} value={totalDue} onChange={e=>setTotalDue(e.target.value.replace(/[^0-9.]/g,""))} placeholder="auto"/>
+                  </div>
+                </div>
               </div>
               <div>
-                {lbl("Opening Balance (₹)")}
-                <input type="text" inputMode="decimal" style={ss} value={openingBal} onChange={e=>setOpeningBal(e.target.value.replace(/[^0-9.-]/g,""))} placeholder="e.g. 233011"/>
-              </div>
-              <div>
-                {lbl("Finance Charges (₹)")}
-                <input type="text" inputMode="decimal" style={ss} value={financeCharges} onChange={e=>setFinanceCharges(e.target.value.replace(/[^0-9.]/g,""))} placeholder="e.g. 0"/>
+                <div style={{fontSize:11,fontWeight:500,color:txt,marginBottom:6}}>Opening Balance (Prev Stmt Due)</div>
+                <div style={{display:"flex",gap:6}}>
+                  <div style={{flex:1}}>
+                    {lbl("Row #")}
+                    <input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(Number(e.target.value.replace(/\D/g,""))||0)} placeholder="13"/>
+                  </div>
+                  <div style={{flex:1}}>
+                    {lbl("Col # (-1=last)")}
+                    <input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(Number(e.target.value)||0)} placeholder="0"/>
+                  </div>
+                  <div style={{flex:1}}>
+                    {lbl("Value (₹)")}
+                    <input type="text" inputMode="decimal" style={{...ss,background:openingBal?grn+"10":ss.background}} value={openingBal} onChange={e=>setOpeningBal(e.target.value.replace(/[^0-9.-]/g,""))} placeholder="auto"/>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
