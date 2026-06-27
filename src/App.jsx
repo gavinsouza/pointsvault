@@ -328,7 +328,8 @@ const mut  = "#8a8883";          // secondary text — warm grey
 const mut2 = "#5c5a57";          // tertiary text
 const acc  = "#b07d3a";          // restrained gold — not flashy
 const grn  = "#2d6a4f";          // muted forest green for positive values
-const red  = "#9b2335";          // muted burgundy for negative
+const red  = "#9b2335";
+const amber= "#c67c1a";          // amber for warnings          // muted burgundy for negative
 const amb  = "#8a6914";          // amber for warnings
 
 // Font: Manrope — all weights 400/500/600/700
@@ -6337,6 +6338,48 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
           </Card>
         ))}
       </div>
+      {/* Reconciliation check */}
+      {(()=>{
+        const calcDue=prevStmtData?(prevStmtData.total_due||0)-totalCredits+totalSpends:null;
+        const stmtDue=stmt.total_due||0;
+        const diff=calcDue!=null&&stmtDue?Math.abs(calcDue-stmtDue):null;
+        const matched=diff!=null&&diff<1;
+        if(!stmtDue&&!prevStmtData) return null;
+        return(
+          <Card style={{marginBottom:16,padding:"14px 16px",borderLeft:`3px solid ${matched?grn:diff!=null?amber:bdr}`}}>
+            <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Reconciliation Check</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+              <div>
+                <div style={{fontSize:10,color:mut,marginBottom:3}}>Calculated Due</div>
+                <div style={{fontSize:15,fontWeight:700,color:txt}}>
+                  {calcDue!=null?`₹${calcDue.toLocaleString("en-IN",{maximumFractionDigits:0})}`:"—"}
+                </div>
+                {!prevStmtData&&<div style={{fontSize:10,color:mut,marginTop:2}}>Prev stmt missing</div>}
+              </div>
+              <div>
+                <div style={{fontSize:10,color:mut,marginBottom:3}}>Statement Due (from bill)</div>
+                <div style={{fontSize:15,fontWeight:700,color:txt}}>
+                  {stmtDue?`₹${stmtDue.toLocaleString("en-IN")}` :"Not set"}
+                </div>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:mut,marginBottom:3}}>Status</div>
+                {!stmtDue||calcDue==null?(
+                  <div style={{fontSize:12,color:mut}}>Insufficient data</div>
+                ):matched?(
+                  <div style={{fontSize:13,fontWeight:600,color:grn}}>✓ Match</div>
+                ):(
+                  <div>
+                    <div style={{fontSize:13,fontWeight:600,color:amber}}>⚠ Difference</div>
+                    <div style={{fontSize:11,color:mut,marginTop:2}}>₹{diff.toLocaleString("en-IN",{maximumFractionDigits:0})} off — check for missing or misassigned transactions</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
+
       {/* Pie chart below stats */}
       {pieSlices.length>0&&<Card style={{marginBottom:16}}>
         <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12,fontWeight:500}}>Spend by Category (debits only)</div>
