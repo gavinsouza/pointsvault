@@ -4187,7 +4187,7 @@ function SpendUpload({db,owners}){
 
   const goToPreview=()=>{
     if(!stmtMonthSel) return alert("Please select a statement month before previewing.");
-    // Auto-read billing fields from CSV using current row/col settings
+    // Read billing fields synchronously before state update
     const tdr=parseInt(totalDueRow)||0;
     const tdc=parseInt(totalDueCol);
     const obr=parseInt(openingBalRow)||0;
@@ -4198,16 +4198,20 @@ function SpendUpload({db,owners}){
       if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
       return cn(row[colIdx]||"");
     };
+    // Compute values synchronously
+    let newTotalDue="";
+    let newOpeningBal="";
     if(rawRows.length>tdr){
       const due=parseFloat(readCell(tdr,tdc));
-      if(!isNaN(due)&&due>0) setTotalDue(String(due));
-      else setTotalDue("");
+      if(!isNaN(due)&&due>0) newTotalDue=String(due);
     }
     if(rawRows.length>obr){
       const ob=parseFloat(readCell(obr,obc));
-      if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
-      else setOpeningBal("");
+      if(!isNaN(ob)&&ob!==0) newOpeningBal=String(ob);
     }
+    // Set all state at once then move to step 3
+    setTotalDue(newTotalDue);
+    setOpeningBal(newOpeningBal);
     setParsed(buildParsed());
     setStep(3);
   };
@@ -4640,7 +4644,7 @@ function SpendUpload({db,owners}){
             {f.value?(
               <div style={{fontSize:20,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>₹{parseFloat(f.value).toLocaleString("en-IN")}</div>
             ):(
-              <div style={{fontSize:12,color:amber,fontWeight:500}}>⚠ Not read — go back and click "Read from CSV"</div>
+              <div style={{fontSize:12,color:amber,fontWeight:500}}>⚠ Not found at Row {f.row} Col {f.col} — check settings in Step 2</div>
             )}
             <div style={{fontSize:10,color:mut,marginTop:3}}>Row {f.row} · Col {f.col===-1?"last":f.col}</div>
           </Card>
