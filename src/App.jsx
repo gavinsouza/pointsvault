@@ -4045,9 +4045,9 @@ function SpendUpload({db,owners}){
   const [totalDue,setTotalDue]=useState("");
   const [openingBal,setOpeningBal]=useState("");
   const [totalDueRow,setTotalDueRow]=useState("6");
-  const [totalDueCol,setTotalDueCol]=useState("1"); // col 1 = "63,828.00" in HDFC
+  const [totalDueCol,setTotalDueCol]=useState("2"); // 1-based: col 2 in HDFC
   const [openingBalRow,setOpeningBalRow]=useState("13");
-  const [openingBalCol,setOpeningBalCol]=useState("0"); // col 0 = opening balance
+  const [openingBalCol,setOpeningBalCol]=useState("1"); // 1-based: col 1 in HDFC
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
@@ -4189,14 +4189,14 @@ function SpendUpload({db,owners}){
     if(!stmtMonthSel) return alert("Please select a statement month before previewing.");
     // Read billing fields synchronously before state update
     const tdr=parseInt(totalDueRow)||0;
-    const tdc=parseInt(totalDueCol);
+    const tdc=parseInt(totalDueCol)||1;
     const obr=parseInt(openingBalRow)||0;
-    const obc=parseInt(openingBalCol);
+    const obc=parseInt(openingBalCol)||1;
     const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
-    const readCell=(rowIdx,colIdx)=>{
+    const readCell=(rowIdx,colIdx1based)=>{
       const row=(rawRows[rowIdx]||[]);
-      if(colIdx===-1){const nv=row.filter(x=>x.trim());return cn(nv[nv.length-1]||"");}
-      return cn(row[colIdx]||"");
+      const ci=colIdx1based-1; // convert 1-based to 0-based
+      return cn(row[ci]||"");
     };
     // Compute values synchronously
     let newTotalDue="";
@@ -4597,8 +4597,8 @@ function SpendUpload({db,owners}){
                     <input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(e.target.value)} placeholder="6"/>
                   </div>
                   <div style={{flex:1}}>
-                    {lbl("Col # (-1=last)")}
-                    <input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(e.target.value)} placeholder="-1"/>
+                    {lbl("Col #")}
+                    <input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(e.target.value)} placeholder="2"/>
                   </div>
                 </div>
               </div>
@@ -4610,8 +4610,8 @@ function SpendUpload({db,owners}){
                     <input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(e.target.value)} placeholder="13"/>
                   </div>
                   <div style={{flex:1}}>
-                    {lbl("Col # (-1=last)")}
-                    <input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(e.target.value)} placeholder="0"/>
+                    {lbl("Col #")}
+                    <input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(e.target.value)} placeholder="1"/>
                   </div>
                 </div>
               </div>
@@ -4641,38 +4641,37 @@ function SpendUpload({db,owners}){
         const obr=parseInt(openingBalRow)||0;
         const obc=parseInt(openingBalCol);
         const getRow=ri=>(rawRows[ri]||[]);
-        const getCell=(ri,ci)=>{
+        const getCell=(ri,ci1based)=>{
           const row=getRow(ri);
-          if(ci===-1){const nv=row.filter(x=>x.trim());return nv[nv.length-1]||"";}
-          return row[ci]||"";
+          return row[ci1based-1]||"";
         };
         const rawDue=getCell(tdr,tdc);
         const rawOb=getCell(obr,obc);
-        const rowDueCells=getRow(tdr).map((v,i)=>`col${i+1}[${i}]: ${v||"(empty)"}`).join(" | ");
-        const rowObCells=getRow(obr).map((v,i)=>`col${i+1}[${i}]: ${v||"(empty)"}`).join(" | ");
+        const rowDueCells=getRow(tdr).map((v,i)=>`Col${i+1}: ${v||"—"}`).join(" | ");
+        const rowObCells=getRow(obr).map((v,i)=>`Col${i+1}: ${v||"—"}`).join(" | ");
         return(
           <details style={{marginBottom:12}}>
             <summary style={{fontSize:11,color:mut,cursor:"pointer",padding:"6px 10px",background:surf2,borderRadius:8}}>🔍 Debug: raw CSV values (click to expand)</summary>
             <div style={{fontSize:11,fontFamily:"monospace",padding:"10px 12px",background:surf2,borderRadius:"0 0 8px 8px",borderTop:`1px solid ${bdr}`}}>
               <div style={{marginBottom:6}}><strong>Row {tdr} (Total Due):</strong> {rowDueCells||"(row empty)"}</div>
-              <div style={{marginBottom:6}}><strong>Reading Col {tdc===-1?"last (highest non-empty)":tdc+" (0-based = visual col "+(tdc+1)+")"}:</strong> "{rawDue}"</div>
+              <div style={{marginBottom:6}}><strong>Reading Col {tdc}:</strong> "{rawDue}"</div>
               <div style={{marginBottom:6}}><strong>Row {obr} (Opening Bal):</strong> {rowObCells||"(row empty)"}</div>
-              <div><strong>Reading Col {obc===-1?"last (highest non-empty)":obc+" (0-based = visual col "+(obc+1)+")"}:</strong> "{rawOb}"</div>
+              <div><strong>Reading Col {obc}:</strong> "{rawOb}"</div>
             </div>
           </details>
         );
       })()}
       <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
         {[
-          {label:"Total Amount Due",value:totalDue,row:totalDueRow,col:totalDueCol==="-1"?"last":totalDueCol},
-          {label:"Opening Balance (Prev Stmt Due)",value:openingBal,row:openingBalRow,col:openingBalCol==="-1"?"last":openingBalCol},
+          {label:"Total Amount Due",value:totalDue,row:totalDueRow,col:totalDueCol},
+          {label:"Opening Balance (Prev Stmt Due)",value:openingBal,row:openingBalRow,col:openingBalCol},
         ].map((f,i)=>(
           <Card key={i} style={{flex:1,minWidth:180,padding:"12px 16px",border:`2px solid ${f.value?grn+"55":amber+"55"}`}}>
             <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>{f.label}</div>
             {f.value?(
               <div style={{fontSize:20,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>₹{parseFloat(f.value).toLocaleString("en-IN")}</div>
             ):(
-              <div style={{fontSize:12,color:amber,fontWeight:500}}>⚠ Not found at Row {f.row} Col {f.col} — check settings in Step 2</div>
+              <div style={{fontSize:12,color:amber,fontWeight:500}}>⚠ Not read — check Row/Col settings in Step 2</div>
             )}
             <div style={{fontSize:10,color:mut,marginTop:3}}>Row {f.row} · Col {f.col===-1?"last":f.col}</div>
           </Card>
