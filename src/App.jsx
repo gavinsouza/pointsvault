@@ -4045,9 +4045,9 @@ function SpendUpload({db,owners}){
   const [totalDue,setTotalDue]=useState("");
   const [openingBal,setOpeningBal]=useState("");
   const [totalDueRow,setTotalDueRow]=useState("6");
-  const [totalDueCol,setTotalDueCol]=useState("-1"); // -1 = last non-empty col
+  const [totalDueCol,setTotalDueCol]=useState("1"); // col 1 = "63,828.00" in HDFC
   const [openingBalRow,setOpeningBalRow]=useState("13");
-  const [openingBalCol,setOpeningBalCol]=useState("0");
+  const [openingBalCol,setOpeningBalCol]=useState("0"); // col 0 = opening balance
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
