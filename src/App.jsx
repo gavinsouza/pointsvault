@@ -4634,10 +4634,38 @@ function SpendUpload({db,owners}){
   if(step===3) return(
     <div>
       {/* Billing summary verification */}
+      {(()=>{
+        // Show raw CSV cell values for debugging
+        const tdr=parseInt(totalDueRow)||0;
+        const tdc=parseInt(totalDueCol);
+        const obr=parseInt(openingBalRow)||0;
+        const obc=parseInt(openingBalCol);
+        const getRow=ri=>(rawRows[ri]||[]);
+        const getCell=(ri,ci)=>{
+          const row=getRow(ri);
+          if(ci===-1){const nv=row.filter(x=>x.trim());return nv[nv.length-1]||"";}
+          return row[ci]||"";
+        };
+        const rawDue=getCell(tdr,tdc);
+        const rawOb=getCell(obr,obc);
+        const rowDueCells=getRow(tdr).map((v,i)=>`[${i}]: ${v||"(empty)"}`).join(" | ");
+        const rowObCells=getRow(obr).map((v,i)=>`[${i}]: ${v||"(empty)"}`).join(" | ");
+        return(
+          <details style={{marginBottom:12}}>
+            <summary style={{fontSize:11,color:mut,cursor:"pointer",padding:"6px 10px",background:surf2,borderRadius:8}}>🔍 Debug: raw CSV values (click to expand)</summary>
+            <div style={{fontSize:11,fontFamily:"monospace",padding:"10px 12px",background:surf2,borderRadius:"0 0 8px 8px",borderTop:`1px solid ${bdr}`}}>
+              <div style={{marginBottom:6}}><strong>Row {tdr} (Total Due):</strong> {rowDueCells||"(row empty)"}</div>
+              <div style={{marginBottom:6}}><strong>Reading Col {tdc===-1?"last":tdc}:</strong> "{rawDue}"</div>
+              <div style={{marginBottom:6}}><strong>Row {obr} (Opening Bal):</strong> {rowObCells||"(row empty)"}</div>
+              <div><strong>Reading Col {obc===-1?"last":obc}:</strong> "{rawOb}"</div>
+            </div>
+          </details>
+        );
+      })()}
       <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
         {[
-          {label:"Total Amount Due",value:totalDue,row:totalDueRow,col:totalDueCol==="−1"||totalDueCol==="-1"?"last":totalDueCol},
-          {label:"Opening Balance (Prev Stmt Due)",value:openingBal,row:openingBalRow,col:openingBalCol==="−1"||openingBalCol==="-1"?"last":openingBalCol},
+          {label:"Total Amount Due",value:totalDue,row:totalDueRow,col:totalDueCol==="-1"?"last":totalDueCol},
+          {label:"Opening Balance (Prev Stmt Due)",value:openingBal,row:openingBalRow,col:openingBalCol==="-1"?"last":openingBalCol},
         ].map((f,i)=>(
           <Card key={i} style={{flex:1,minWidth:180,padding:"12px 16px",border:`2px solid ${f.value?grn+"55":amber+"55"}`}}>
             <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>{f.label}</div>
