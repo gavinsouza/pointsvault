@@ -4490,9 +4490,9 @@ function SpendUpload({db,owners}){
 
         {/* Collapsible mapping section */}
         <div style={{marginBottom:16}}>
-          <button
+          <div
             onClick={()=>setMappingExpanded(e=>!e)}
-            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,border:`1px solid ${bdr}`,borderRadius:mappingExpanded?"10px 10px 0 0":"10px",cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,border:`1px solid ${bdr}`,borderRadius:mappingExpanded?"10px 10px 0 0":"10px",cursor:"pointer",userSelect:"none"}}>
             <div style={{textAlign:"left"}}>
               <div style={{fontSize:13,fontWeight:600,color:txt}}>{selMapping?mappings.find(m=>m.id===selMapping)?.name||"Custom mapping":"No mapping selected"}</div>
               <div style={{fontSize:11,color:mut,marginTop:2}}>
@@ -4500,7 +4500,7 @@ function SpendUpload({db,owners}){
               </div>
             </div>
             <div style={{fontSize:12,color:acc,fontWeight:600,marginLeft:12,flexShrink:0}}>{mappingExpanded?"▲ Collapse":"▼ Edit"}</div>
-          </button>
+          </div>
           {mappingExpanded&&<div style={{border:`1px solid ${bdr}`,borderTop:"none",borderRadius:"0 0 10px 10px",padding:"16px",background:surf}}>
             {/* ── Section 1: Identity ── */}
             <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Mapping Identity</div>
@@ -4527,7 +4527,7 @@ function SpendUpload({db,owners}){
                     <option value="auto">Auto-detect</option>
                     <option value="|">Pipe | (HDFC)</option>
                     <option value=",">Comma ,</option>
-                    <option value="\t">Tab</option>
+                    <option value={"	"}>Tab</option>
                     <option value=";">Semicolon ;</option>
                   </select>
                   <button style={{...gbtn,fontSize:11}} onClick={()=>{if(rawText){const rows=parseCSV(rawText,manualDelim==="auto"?undefined:manualDelim);setRawRows(rows);setColWidths([]);}}}>↺</button>
