@@ -4233,7 +4233,7 @@ function SpendUpload({db,owners}){
       const r7=rows[6]||[]; // 0-indexed row 7
       if(r7[0]&&r7[0].toString().toLowerCase().includes("date")){
         // Axis format detected
-        setSkipRows(7);
+        setSkipRows(8);
         setDateCol(0);
         setDescCol(1);
         setAmtCol(3);
@@ -4370,7 +4370,8 @@ function SpendUpload({db,owners}){
       const dup=(existingStmts||[]).find(s=>s.statement_month===stmtMonth);
       if(dup){
         setImporting(false);
-        return alert("A statement for "+stmtMonth+" already exists for this card. Delete it first (Spend Tracker → My Cards → View Statements) or choose a different month.");
+        alert("A statement for "+stmtMonth+" already exists for this card. Delete it first or choose a different month.");
+        return;
       }
     }
     let stmtId=null;
@@ -4395,8 +4396,14 @@ function SpendUpload({db,owners}){
         opening_balance:parseFloat(openingBal)||0,
       });
       stmtId=stmtData?.[0]?.id||null;
-    }catch(e){console.warn("statements table:",e);}
+    }catch(e){
+      console.error("Statement insert failed:",e);
+      setImporting(false);
+      alert("Failed to create statement record: "+JSON.stringify(e));
+      return;
+    }
 
+    console.log("runImport: parsed rows=",parsed.length,"selCard=",selCard,"stmtMonth=",stmtMonth);
     for(const row of parsed){
       if(row.skip) continue;
       const txnData={
@@ -4412,7 +4419,8 @@ function SpendUpload({db,owners}){
       };
       if(stmtId) txnData.statement_id=stmtId;
       const {error}=await db.from("spend_transactions").insert(txnData);
-      if(!error) added++;
+      if(error){console.error("Txn insert error:",error,txnData);skipped++;}
+      else added++;
     }
     setImporting(false);
 
