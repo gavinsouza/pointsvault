@@ -4290,7 +4290,7 @@ function SpendUpload({db,owners}){
   const saveMapping=async()=>{
     const name=mapName.trim();
     if(!name) return alert("Please enter a mapping name.");
-    const p={name,card_id:selCard||null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
+    const p={name,card_id:null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
     // Only rule: does a mapping with this name already exist?
     const existing=mappings.find(m=>m.name.trim().toLowerCase()===name.toLowerCase());
     try{
@@ -4352,7 +4352,7 @@ function SpendUpload({db,owners}){
   const [modalYear,setModalYear]=useState("");
 
   const doImport=async()=>{
-    if(!selCard) return alert("Please select a card before importing. Every statement must be linked to a card.");
+
     // Always show month modal — reset fields each time
     setModalMonth("");
     setModalYear("");
@@ -4653,18 +4653,9 @@ function SpendUpload({db,owners}){
           {mappingExpanded&&<div style={{border:`1px solid ${bdr}`,borderTop:"none",borderRadius:"0 0 10px 10px",padding:"16px",background:surf}}>
             {/* ── Section 1: Identity ── */}
             <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Mapping Identity</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
-              <div>
-                {lbl("Mapping Name")}
-                <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
-              </div>
-              <div>
-                {lbl("Linked Card (default)")}
-                <select style={ss} value={selCard} onChange={e=>setSelCard(e.target.value)}>
-                  <option value="">No default card</option>
-                  {(()=>{const grouped={};cards.forEach(c=>{const o=owners.find(x=>x.id===c.owner_id);const on=o?.name||"Unknown";if(!grouped[on])grouped[on]=[];grouped[on].push(c);});return Object.entries(grouped).map(([on,oc])=>(<optgroup key={on} label={"── "+on+" ──"}>{oc.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}</optgroup>));})()}
-                </select>
-              </div>
+            <div style={{marginBottom:16}}>
+              {lbl("Mapping Name")}
+              <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
             </div>
             {/* ── Section 2: Parsing ── */}
             <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Parsing Settings</div>
@@ -4847,11 +4838,29 @@ function SpendUpload({db,owners}){
       <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
         <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
       </div>
-      <Modal show={showMonthModal} onClose={()=>setShowMonthModal(false)} title="Select Statement Month">
-        <div style={{fontSize:13,color:mut,marginBottom:16}}>Which month is this statement for?</div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+      <Modal show={showMonthModal} onClose={()=>setShowMonthModal(false)} title="Import Statement">
+        <div style={{fontSize:13,color:mut,marginBottom:16}}>Select the card and statement month for this import.</div>
+        {lbl("Card *")}
+        <select style={inp} value={selCard} onChange={e=>setSelCard(e.target.value)}>
+          <option value="">Select card…</option>
+          {(()=>{
+            const grouped={};
+            cards.forEach(c=>{
+              const o=owners.find(x=>x.id===c.owner_id);
+              const on=o?.name||"Unknown";
+              if(!grouped[on]) grouped[on]=[];
+              grouped[on].push(c);
+            });
+            return Object.entries(grouped).map(([on,oc])=>(
+              <optgroup key={on} label={"── "+on+" ──"}>
+                {oc.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
+              </optgroup>
+            ));
+          })()}
+        </select>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:4}}>
           <div>
-            {lbl("Month")}
+            {lbl("Month *")}
             <select style={inp} value={modalMonth} onChange={e=>setModalMonth(e.target.value)}>
               <option value="">Select month…</option>
               {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
@@ -4860,7 +4869,7 @@ function SpendUpload({db,owners}){
             </select>
           </div>
           <div>
-            {lbl("Year")}
+            {lbl("Year *")}
             <select style={inp} value={modalYear} onChange={e=>setModalYear(e.target.value)}>
               <option value="">Select year…</option>
               {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=>(
@@ -4869,7 +4878,8 @@ function SpendUpload({db,owners}){
             </select>
           </div>
         </div>
-        <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:8}} onClick={()=>{
+          if(!selCard) return alert("Please select a card.");
           if(!modalMonth||!modalYear) return alert("Please select both month and year.");
           const chosen=modalYear+"-"+modalMonth;
           setStmtMonthSel(chosen);
