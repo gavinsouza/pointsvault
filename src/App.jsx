@@ -4905,9 +4905,9 @@ function SpendOverview({db,owners}){
   const now=new Date();
   const ytdStart=now.getFullYear()+"-01-01";
   const thisMonth=now.toISOString().slice(0,7);
-  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart).reduce((a,t)=>a+Number(t.amount||0),0);
-  const monthSpend=txns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth).reduce((a,t)=>a+Number(t.amount||0),0);
-  const totalSpend=txns.reduce((a,t)=>a+Number(t.amount||0),0);
+  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  const monthSpend=txns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  const totalSpend=txns.filter(t=>Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
 
   const catTotals={};
   txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
@@ -5018,9 +5018,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   // Stats
   const now=new Date();
   const ytdStart=now.getFullYear()+"-01-01";
-  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart).reduce((a,t)=>a+Number(t.amount||0),0);
+  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
   const lastStmt=stmts[0];
-  const lastStmtSpend=txns.filter(t=>t.statement_month===lastStmt?.statement_month).reduce((a,t)=>a+Number(t.amount||0),0);
+  const lastStmtSpend=txns.filter(t=>t.statement_month===lastStmt?.statement_month&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
 
   // Billing YTD
   let billingYtdSpend=null;
@@ -5030,7 +5030,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     let billingStart=new Date(now.getFullYear(),bm-1,bd);
     if(billingStart>now) billingStart=new Date(now.getFullYear()-1,bm-1,bd);
     const bStartStr=billingStart.toISOString().split("T")[0];
-    billingYtdSpend=txns.filter(t=>t.txn_date>=bStartStr).reduce((a,t)=>a+Number(t.amount||0),0);
+    billingYtdSpend=txns.filter(t=>t.txn_date>=bStartStr&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
   } else {
     billingYtdMsg="Set billing year start in card settings";
   }
@@ -5473,7 +5473,7 @@ function SpendCards({db,owners,onNavigate}){
 
   const visibleCards=cards.filter(c=>!c.hidden_in_spend);
   const hiddenCards=cards.filter(c=>c.hidden_in_spend);
-  const cardSpend=id=>txns.filter(t=>t.card_id===id).reduce((a,t)=>a+Number(t.amount||0),0);
+  const cardSpend=id=>txns.filter(t=>t.card_id===id&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
   const cardStmtCount=id=>stmts.filter(s=>s.card_id===id).length;
 
 
@@ -6200,20 +6200,23 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   };
 
   // Mini dashboard stats
-  const myShare=txns.reduce((a,t)=>{
+  const totalSpends=txns.filter(t=>Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  const totalCredits=txns.filter(t=>Number(t.amount||0)<0).reduce((a,t)=>a+Math.abs(Number(t.amount)),0);
+  const myShare=txns.filter(t=>Number(t.amount||0)>0).reduce((a,t)=>{
     const sp=txnSplitsMap[t.id];
-    if(!sp||!sp.length) return a+Number(t.amount||0);
+    if(!sp||!sp.length) return a+Number(t.amount); // unsplit = 100% mine
     const mine=sp.find(s=>s.is_personal);
     return a+Number(mine?.amount||0);
   },0);
-  const othersShare=total-myShare;
+  const othersShare=totalSpends-myShare;
+  // Pie chart only on debit transactions, by category
   const catTotals={};
-  txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+  txns.filter(t=>Number(t.amount||0)>0).forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
   const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9"];
   let angle=0;
   const pieSlices=topCats.length>0?topCats.map(([cat,val],i)=>{
-    const pct=val/total; const a1=angle; const a2=angle+pct*2*Math.PI; angle=a2;
+    const pct=val/totalSpends; const a1=angle; const a2=angle+pct*2*Math.PI; angle=a2;
     const cx=50,cy=50,r=42;
     const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
     const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
@@ -6230,34 +6233,40 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
         </div>
       </div>
 
-      {/* Mini dashboard */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,marginBottom:20}}>
-        {[{label:"Total Spend",value:total},{label:"My Share",value:myShare,color:grn},{label:"Others' Share",value:othersShare,color:acc},{label:"Avg Transaction",value:txns.length>0?total/txns.length:0}].map((s,i)=>(
+      {/* Stats row */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+        {[
+          {label:"Total Spends",value:totalSpends},
+          {label:"Total Credits",value:totalCredits,color:grn},
+          {label:"My Share",value:myShare},
+          {label:"Others' Share",value:othersShare,color:othersShare>0?acc:mut},
+        ].map((s,i)=>(
           <Card key={i} style={{padding:"12px 14px"}}>
             <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4,fontWeight:500}}>{s.label}</div>
-            <div style={{fontSize:17,fontWeight:700,color:s.color||txt}}>₹{(s.value||0).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+            <div style={{fontSize:17,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif"}}>₹{(s.value||0).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
           </Card>
         ))}
-        {pieSlices.length>0&&<Card style={{padding:"12px 14px",gridColumn:"span 2"}}>
-          <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:8,fontWeight:500}}>By Category</div>
-          <div style={{display:"flex",gap:12,alignItems:"center"}}>
-            <svg width="80" height="80" viewBox="0 0 100 100" style={{flexShrink:0}}>
-              {pieSlices.map((s,i)=><path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1"/>)}
-            </svg>
-            <div style={{flex:1}}>
-              {topCats.map(([cat,val],i)=>(
-                <div key={i} style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:11}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <div style={{width:7,height:7,borderRadius:1,background:PIE_COLORS[i],flexShrink:0}}/>
-                    <span style={{color:txt}}>{cat}</span>
-                  </div>
-                  <span style={{fontWeight:600,color:txt,marginLeft:8}}>₹{val.toLocaleString("en-IN")}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </Card>}
       </div>
+      {/* Pie chart below stats */}
+      {pieSlices.length>0&&<Card style={{marginBottom:16}}>
+        <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12,fontWeight:500}}>Spend by Category (debits only)</div>
+        <div style={{display:"flex",gap:24,alignItems:"center",flexWrap:"wrap"}}>
+          <svg width="120" height="120" viewBox="0 0 100 100" style={{flexShrink:0}}>
+            {pieSlices.map((s,i)=><path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1"/>)}
+          </svg>
+          <div style={{flex:1,minWidth:180}}>
+            {topCats.map(([cat,val],i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{width:8,height:8,borderRadius:2,background:PIE_COLORS[i],flexShrink:0}}/>
+                  <span style={{fontSize:12,color:txt}}>{cat}</span>
+                </div>
+                <span style={{fontSize:12,fontWeight:500,color:txt,marginLeft:12}}>₹{val.toLocaleString("en-IN")}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </Card>}
 
       {/* Toolbar */}
       <div style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
