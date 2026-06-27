@@ -4590,7 +4590,6 @@ function SpendUpload({db,owners}){
       </div>
     </div>
   );
-  );
 
   // ── Step 3: Preview & categorise ───────────────────────────────────────────
   if(step===3) return(
