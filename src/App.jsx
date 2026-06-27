@@ -4217,18 +4217,22 @@ function SpendUpload({db,owners}){
   };
 
   const [showMonthModal,setShowMonthModal]=useState(false);
+  const [modalMonth,setModalMonth]=useState("");
+  const [modalYear,setModalYear]=useState("");
 
   const doImport=async()=>{
     if(!selCard) return alert("Please select a card before importing. Every statement must be linked to a card.");
-    if(!stmtMonthSel){setShowMonthModal(true);return;}
-    runImport();
+    // Always show month modal — reset fields each time
+    setModalMonth("");
+    setModalYear("");
+    setShowMonthModal(true);
   };
 
-  const runImport=async()=>{
+  const runImport=async(chosenMonth)=>{
     setShowMonthModal(false);
     setImporting(true);
     let added=0,skipped=0;
-    const stmtMonth=stmtMonthSel;
+    const stmtMonth=chosenMonth;
     // Check for duplicate statement (same card + same month)
     if(selCard){
       const {data:existingStmts}=await db.from("statements").filter("card_id",selCard);
@@ -4751,22 +4755,28 @@ function SpendUpload({db,owners}){
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
           <div>
             {lbl("Month")}
-            <select style={inp} value={stmtMonthSel?stmtMonthSel.split("-")[1]||"":""} onChange={e=>{const y=stmtMonthSel?stmtMonthSel.split("-")[0]||new Date().getFullYear().toString():new Date().getFullYear().toString();setStmtMonthSel(e.target.value?y+"-"+e.target.value:"");}}>
+            <select style={inp} value={modalMonth} onChange={e=>setModalMonth(e.target.value)}>
               <option value="">Select month…</option>
-              {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=><option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>)}
+              {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
+                <option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>
+              ))}
             </select>
           </div>
           <div>
             {lbl("Year")}
-            <select style={inp} value={stmtMonthSel?stmtMonthSel.split("-")[0]||"":""} onChange={e=>{const m=stmtMonthSel?stmtMonthSel.split("-")[1]||"01":"01";setStmtMonthSel(e.target.value?e.target.value+"-"+m:"");}}>
+            <select style={inp} value={modalYear} onChange={e=>setModalYear(e.target.value)}>
               <option value="">Select year…</option>
-              {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=><option key={y} value={y}>{y}</option>)}
+              {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=>(
+                <option key={y} value={y}>{y}</option>
+              ))}
             </select>
           </div>
         </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{
-          if(!stmtMonthSel||!stmtMonthSel.includes("-")||stmtMonthSel.endsWith("-")||stmtMonthSel.startsWith("-")) return alert("Please select both month and year.");
-          runImport();
+          if(!modalMonth||!modalYear) return alert("Please select both month and year.");
+          const chosen=modalYear+"-"+modalMonth;
+          setStmtMonthSel(chosen);
+          runImport(chosen);
         }}>Import</button>
       </Modal>
     </div>
