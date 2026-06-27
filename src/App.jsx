@@ -4041,6 +4041,9 @@ function SpendUpload({db,owners}){
   const [stmtMonthSel,setStmtMonthSel]=useState(()=>new Date().toISOString().slice(0,7));
   const [ruleSuggestions,setRuleSuggestions]=useState([]); // [{keyword,category,checked}]
   const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
+  const [totalDue,setTotalDue]=useState("");
+  const [openingBal,setOpeningBal]=useState("");
+  const [financeCharges,setFinanceCharges]=useState("");
   const [rawText,setRawText]=useState("");
   const [colWidths,setColWidths]=useState([]);
   const [uploadError,setUploadError]=useState("");
@@ -4201,8 +4204,11 @@ function SpendUpload({db,owners}){
         card_id:selCard||null,
         statement_month:stmtMonth,
         transaction_count:parsed.filter(r=>!r.skip).length,
-        total_spend:parsed.filter(r=>!r.skip).reduce((a,r)=>a+r.amount,0),
+        total_spend:parsed.filter(r=>!r.skip&&r.amount>0).reduce((a,r)=>a+r.amount,0),
         file_name:fileName,
+        total_due:parseFloat(totalDue)||0,
+        opening_balance:parseFloat(openingBal)||0,
+        finance_charges:parseFloat(financeCharges)||0,
       });
       stmtId=stmtData?.[0]?.id||null;
     }catch(e){console.warn("statements table:",e);}
@@ -4282,6 +4288,20 @@ function SpendUpload({db,owners}){
         setRawRows(rows);
         setRawText(text);
         setColWidths([]);
+        // Auto-read billing fields (HDFC: row 6 = Total Due, row 13 = Opening/Finance)
+        const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+        if(rows.length>13){
+          const r6=(rows[6]||[]).filter(x=>x.trim());
+          const due=parseFloat(cn(r6[r6.length-1]||""));
+          if(!isNaN(due)&&due>0) setTotalDue(String(due));
+          const r13=(rows[13]||[]).filter(x=>x.trim());
+          if(r13.length>=2){
+            const ob=parseFloat(cn(r13[0]||""));
+            const fc=parseFloat(cn(r13[r13.length-2]||""));
+            if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
+            if(!isNaN(fc)&&fc>0) setFinanceCharges(String(fc));
+          }
+        }
         setStep(2);
       }catch(err){
         setUploadError("Parse error: "+err.message);
@@ -4546,7 +4566,25 @@ function SpendUpload({db,owners}){
               <div>{lbl("Credit column")}<select style={ss} value={creditCol} onChange={e=>setCreditCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
             </div>
           )}
-          <div style={{display:"flex",justifyContent:"space-between",marginTop:20,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
+          {/* Billing fields */}
+          <div style={{borderTop:`1px solid ${bdr}`,paddingTop:14,marginTop:14}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Billing Summary (auto-read from CSV)</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+              <div>
+                {lbl("Total Amount Due (₹)")}
+                <input type="text" inputMode="decimal" style={ss} value={totalDue} onChange={e=>setTotalDue(e.target.value.replace(/[^0-9.]/g,""))} placeholder="e.g. 72141"/>
+              </div>
+              <div>
+                {lbl("Opening Balance (₹)")}
+                <input type="text" inputMode="decimal" style={ss} value={openingBal} onChange={e=>setOpeningBal(e.target.value.replace(/[^0-9.-]/g,""))} placeholder="e.g. 233011"/>
+              </div>
+              <div>
+                {lbl("Finance Charges (₹)")}
+                <input type="text" inputMode="decimal" style={ss} value={financeCharges} onChange={e=>setFinanceCharges(e.target.value.replace(/[^0-9.]/g,""))} placeholder="e.g. 0"/>
+              </div>
+            </div>
+          </div>
+          <div style={{display:"flex",justifyContent:"space-between",marginTop:14,paddingTop:14,borderTop:`1px solid ${bdr}`}}>
             <div style={{display:"flex",gap:8}}>
               <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
               <button style={{...gbtn,fontSize:12}} onClick={saveMapping}>Save mapping</button>
@@ -5264,14 +5302,16 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       {/* Stats */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
         {[
-          {label:"Year to Date",value:ytdSpend},
+          {label:"Amount Due",value:lastStmt?.total_due||0,color:lastStmt?.total_due>0?red:mut,note:!lastStmt?.total_due?"Not set — re-import stmt":null},
+          {label:"YTD Spends",value:ytdSpend},
           {label:"Last Statement"+(lastStmt?" ("+fmtMonth(lastStmt.statement_month)+")":""),value:lastStmtSpend,show:!!lastStmt},
-          {label:"Billing Year to Date",value:billingYtdSpend,msg:billingYtdMsg},
+          {label:"Billing YTD",value:billingYtdSpend,msg:billingYtdMsg},
         ].map((s,i)=>(
           <Card key={i} style={{padding:"14px 16px"}}>
             <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>{s.label}</div>
             {s.msg?<div style={{fontSize:11,color:acc}}>{s.msg}</div>:
-            <div style={{fontSize:18,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{(s.value||0).toLocaleString("en-IN")}</div>}
+            <div style={{fontSize:18,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif"}}>₹{(s.value||0).toLocaleString("en-IN")}</div>}
+            {s.note&&<div style={{fontSize:10,color:mut,marginTop:3}}>{s.note}</div>}
           </Card>
         ))}
         <Card style={{padding:"14px 16px"}}>
@@ -6012,6 +6052,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   const [categories,setCategories]=useState([]);
   const [txnSplitsMap,setTxnSplitsMap]=useState({});
   const [colW,setColW]=useState([90,200,120,90,150,80]);
+  const [prevStmtData,setPrevStmtData]=useState(null);
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("date");
   const [sortDir,setSortDir]=useState("desc");
@@ -6027,6 +6068,16 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   const [showCreateRule,setShowCreateRule]=useState(null); // {keyword, category}
 
   const loadData=useCallback(async()=>{
+    // Find previous statement (same card, one month prior)
+    if(stmt.card_id&&stmt.statement_month){
+      const [y,m]=stmt.statement_month.split("-").map(Number);
+      const prevM=m===1?12:m-1;
+      const prevY=m===1?y-1:y;
+      const prevMonthStr=`${prevY}-${String(prevM).padStart(2,"0")}`;
+      const {data:prevStmts}=await db.from("statements").filter("card_id",stmt.card_id);
+      const prev=(prevStmts||[]).find(s=>s.statement_month===prevMonthStr);
+      setPrevStmtData(prev||null);
+    }
     const [p,cats,tById,allSp,tAll]=await Promise.all([
       db.from("people").select(),
       db.from("spend_categories").select(),
@@ -6225,13 +6276,52 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
 
   return(
     <div>
-      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,flexWrap:"wrap"}}>
         <button onClick={onBack} style={{...gbtn,fontSize:12}}>← Back</button>
         <div style={{flex:1}}>
           <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{fmtMonth(stmt.statement_month)}</div>
-          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions · ₹{total.toLocaleString("en-IN")}</div>
+          <div style={{fontSize:12,color:mut,marginTop:2}}>{txns.length} transactions</div>
         </div>
       </div>
+
+      {/* Billing equation */}
+      {(()=>{
+        const prevStmt=prevStmtData;
+        const hasPrev=!!prevStmt;
+        const prevDue=prevStmt?.total_due||0;
+        const thisDue=stmt.total_due||0;
+        const EQ=[
+          {label:"Prev Stmt Due",value:hasPrev?prevDue:null,missing:!hasPrev,color:txt},
+          {op:"−"},
+          {label:"Payments / Credits",value:totalCredits,color:grn},
+          {op:"+"},
+          {label:"Total Spends",value:totalSpends,color:txt},
+          {op:"="},
+          {label:"Total Amount Due",value:thisDue||null,missing:!thisDue,color:thisDue>0?red:mut,highlight:true},
+        ];
+        return(
+          <Card style={{marginBottom:16,padding:"14px 16px"}}>
+            <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Billing Equation</div>
+            <div style={{display:"flex",alignItems:"center",flexWrap:"wrap",gap:4}}>
+              {EQ.map((e,i)=>e.op?(
+                <div key={i} style={{fontSize:18,fontWeight:300,color:mut,padding:"0 4px"}}>{e.op}</div>
+              ):(
+                <div key={i} style={{padding:"8px 14px",borderRadius:10,background:e.highlight?acc+"12":surf2,border:`1px solid ${e.highlight?acc+"44":bdr}`,minWidth:100,textAlign:"center"}}>
+                  <div style={{fontSize:9,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,whiteSpace:"nowrap"}}>{e.label}</div>
+                  {e.missing?(
+                    <div style={{fontSize:10,color:mut,fontStyle:"italic"}}>Stmt missing</div>
+                  ):(
+                    <div style={{fontSize:15,fontWeight:700,color:e.color,fontFamily:"'Manrope',sans-serif"}}>
+                      {e.value!=null?"₹"+e.value.toLocaleString("en-IN"):"—"}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            {!stmt.total_due&&<div style={{fontSize:11,color:mut,marginTop:10}}>Total Amount Due not set — re-import this statement or update it via Edit.</div>}
+          </Card>
+        );
+      })()}
 
       {/* Stats row */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
