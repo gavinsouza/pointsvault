@@ -4039,7 +4039,7 @@ function SpendUpload({db,owners}){
   const [importing,setImporting]=useState(false);
   const [importResult,setImportResult]=useState(null);
   const [categories,setCategories]=useState(DEFAULT_CATEGORIES);
-  const [stmtMonthSel,setStmtMonthSel]=useState(()=>new Date().toISOString().slice(0,7));
+  const [stmtMonthSel,setStmtMonthSel]=useState("");
   const [ruleSuggestions,setRuleSuggestions]=useState([]); // [{keyword,category,checked}]
   const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
   const [totalDue,setTotalDue]=useState("");
@@ -4228,8 +4228,8 @@ function SpendUpload({db,owners}){
     setShowMonthModal(false);
     setImporting(true);
     let added=0,skipped=0;
+    const stmtMonth=stmtMonthSel;
     // Check for duplicate statement (same card + same month)
-    const stmtMonth=stmtMonthSel||new Date().toISOString().slice(0,7);
     if(selCard){
       const {data:existingStmts}=await db.from("statements").filter("card_id",selCard);
       const dup=(existingStmts||[]).find(s=>s.statement_month===stmtMonth);
@@ -4240,6 +4240,16 @@ function SpendUpload({db,owners}){
     }
     let stmtId=null;
     try{
+      // Check for duplicate file name on same card
+      if(fileName){
+        const {data:existingByName}=await db.from("statements").filter("card_id",selCard);
+        const dupName=(existingByName||[]).find(s=>s.file_name===fileName&&s.statement_month!==stmtMonth);
+        if(dupName){
+          setImporting(false);
+          const msg=`A statement with the file name "${fileName}" was already imported for ${fmtMonth(dupName.statement_month)}. Are you importing the same file for a different month?`;
+          if(!confirm(msg+" Click OK to continue anyway, or Cancel to go back.")) return;
+        }
+      }
       const {data:stmtData}=await db.from("statements").insert({
         card_id:selCard||null,
         statement_month:stmtMonth,
@@ -4295,6 +4305,7 @@ function SpendUpload({db,owners}){
     }
 
     setImportResult({added,skipped});
+    setStmtMonthSel("");
     setStep(4);
   };
 
@@ -4674,14 +4685,7 @@ function SpendUpload({db,owners}){
             <div style={{fontSize:10,color:mut,marginTop:3}}>Row {f.row} · Col {f.col===-1?"last":f.col}</div>
           </Card>
         ))}
-        <Card style={{flex:1,minWidth:180,padding:"12px 16px",border:`2px solid ${stmtMonthSel?grn+"55":bdr}`}}>
-          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Statement Month</div>
-          {stmtMonthSel?(
-            <div style={{fontSize:18,fontWeight:700,color:grn}}>{fmtMonth(stmtMonthSel)}</div>
-          ):(
-            <div style={{fontSize:12,color:mut}}>Will be asked before import</div>
-          )}
-        </Card>
+
         <Card style={{flex:1,minWidth:180,padding:"12px 16px"}}>
           <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Debits this import</div>
           <div style={{fontSize:20,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{parsed.filter(r=>!r.skip&&r.amount>0).reduce((a,r)=>a+r.amount,0).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
@@ -4742,21 +4746,28 @@ function SpendUpload({db,owners}){
       <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
         <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
       </div>
-      <Modal show={showMonthModal} onClose={()=>setShowMonthModal(false)} title="Statement Month">
-        <div style={{fontSize:13,color:mut,marginBottom:16,lineHeight:1.6}}>Which month's statement is this?</div>
-        <div style={{display:"flex",gap:8,marginBottom:16}}>
-          <select style={{...inp,flex:1,marginBottom:0}} value={stmtMonthSel?stmtMonthSel.split("-")[1]||"":""} onChange={e=>{const y=stmtMonthSel?stmtMonthSel.split("-")[0]||new Date().getFullYear().toString():new Date().getFullYear().toString();setStmtMonthSel(e.target.value?y+"-"+e.target.value:"");}}>
-            <option value="">Month…</option>
-            {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=><option key={m} value={m}>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i]}</option>)}
-          </select>
-          <select style={{...inp,flex:1,marginBottom:0}} value={stmtMonthSel?stmtMonthSel.split("-")[0]||"":""} onChange={e=>{const m=stmtMonthSel?stmtMonthSel.split("-")[1]||"01":"01";setStmtMonthSel(e.target.value?e.target.value+"-"+m:"");}}>
-            <option value="">Year…</option>
-            {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=><option key={y} value={y}>'{y.slice(2)}</option>)}
-          </select>
+      <Modal show={showMonthModal} onClose={()=>setShowMonthModal(false)} title="Select Statement Month">
+        <div style={{fontSize:13,color:mut,marginBottom:16}}>Which month is this statement for?</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+          <div>
+            {lbl("Month")}
+            <select style={inp} value={stmtMonthSel?stmtMonthSel.split("-")[1]||"":""} onChange={e=>{const y=stmtMonthSel?stmtMonthSel.split("-")[0]||new Date().getFullYear().toString():new Date().getFullYear().toString();setStmtMonthSel(e.target.value?y+"-"+e.target.value:"");}}>
+              <option value="">Select month…</option>
+              {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=><option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>)}
+            </select>
+          </div>
+          <div>
+            {lbl("Year")}
+            <select style={inp} value={stmtMonthSel?stmtMonthSel.split("-")[0]||"":""} onChange={e=>{const m=stmtMonthSel?stmtMonthSel.split("-")[1]||"01":"01";setStmtMonthSel(e.target.value?e.target.value+"-"+m:"");}}>
+              <option value="">Select year…</option>
+              {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
         </div>
-        <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:stmtMonthSel?1:0.5}} onClick={()=>{if(!stmtMonthSel) return alert("Please select month and year.");runImport();}}>
-          Confirm & Import
-        </button>
+        <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{
+          if(!stmtMonthSel||!stmtMonthSel.includes("-")||stmtMonthSel.endsWith("-")||stmtMonthSel.startsWith("-")) return alert("Please select both month and year.");
+          runImport();
+        }}>Import</button>
       </Modal>
     </div>
   );
