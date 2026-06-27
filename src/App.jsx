@@ -4088,6 +4088,28 @@ function parseCSV(text, forcedDelim){
   });
 }
 
+async function parseXLSXFile(file){
+  // Use SheetJS (xlsx) to parse Excel files
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const data=new Uint8Array(e.target.result);
+        const XLSX=window.XLSX;
+        if(!XLSX) return reject(new Error("SheetJS not loaded"));
+        const wb=XLSX.read(data,{type:"array",raw:false,cellText:true,cellDates:false});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+        // Convert all cells to strings, trim whitespace
+        const cleaned=rows.map(row=>row.map(cell=>String(cell===null||cell===undefined?"":cell).trim()));
+        resolve(cleaned);
+      }catch(err){reject(err);}
+    };
+    reader.onerror=()=>reject(new Error("Failed to read file"));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
 function SpendUpload({db,owners}){
   const [step,setStep]=useState(1); // 1=upload 2=map 3=preview 4=done
   const [rawRows,setRawRows]=useState([]);
@@ -4153,8 +4175,16 @@ function SpendUpload({db,owners}){
 
   const parseDate=(str,fmt)=>{
     str=(str||"").trim().replace(/^["']+|["']+$/g,"");
-    // Strip time component if present (e.g. "02/05/2026 15:49:44")
-    str=str.split(" ")[0].split("T")[0];
+    str=str.split("T")[0]; // strip time
+    // Axis Bank format: "19 Jun '26" or "19 Jun 2026"
+    const MONTHS={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+    const axisMatch=str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2,4})$/);
+    if(axisMatch){
+      const d=axisMatch[1].padStart(2,"0");
+      const m=MONTHS[axisMatch[2].toLowerCase()]||"01";
+      const y=axisMatch[3].length===2?"20"+axisMatch[3]:axisMatch[3];
+      return `${y}-${m}-${d}`;
+    }
     if(fmt==="DD/MM/YYYY"||fmt==="auto"){
       const p=str.split(/[\/\-\.]/);
       if(p.length===3){
@@ -4194,6 +4224,34 @@ function SpendUpload({db,owners}){
     }
   };
 
+  const autoDetectXLSX=rows=>{
+    // Try to detect Axis Bank format: header row at row 7, data from row 8
+    // Row 4: Total Payment Due in col 0, Opening Balance in col 4
+    // Row 7: Date | Transaction Details | | Amount (INR) | Debit/Credit
+    const cleanNum=s=>(s||"").replace(/[₹,\s]/g,"").trim();
+    if(rows.length>7){
+      const r7=rows[6]||[]; // 0-indexed row 7
+      if(r7[0]&&r7[0].toString().toLowerCase().includes("date")){
+        // Axis format detected
+        setSkipRows(7);
+        setDateCol(0);
+        setDescCol(1);
+        setAmtCol(3);
+        setAmtType("single");
+        setCreditIndCol(4); // "Debit" or "Credit"
+        setDateFormat("DD MMM 'YY");
+        setManualDelim("auto");
+        // Read billing fields from row 4 (index 3)
+        const r4=rows[3]||[];
+        const totalDueStr=cleanNum(r4[0]);
+        const openingBalStr=cleanNum(r4[4]);
+        if(totalDueStr) setTotalDue(totalDueStr);
+        if(openingBalStr) setOpeningBal(openingBalStr);
+        setMappingExpanded(false); // keep collapsed, settings auto-set
+      }
+    }
+  };
+
   const buildParsed=(opts={})=>{
     const sk=opts.skipRows!==undefined?opts.skipRows:skipRows;
     const dc=opts.dateCol!==undefined?opts.dateCol:dateCol;
@@ -4211,10 +4269,11 @@ function SpendUpload({db,owners}){
       const dateStr=parseDate(row[dc]||"",df);
       let amount=0;
       if(at==="single"){
-        const raw=(row[ac]||"").replace(/[,'"₹Rs\s]/g,"").trim();
+        const raw=(row[ac]||"").replace(/[,'"₹Rs\s₹]/g,"").trim();
         const absAmt=Math.abs(parseFloat(raw)||0);
         // If a credit indicator column is set and non-empty, it's a credit/refund
-        const isCredit=cic>=0&&(row[cic]||"").trim().length>0;
+        const creditCell=(row[cic]||"").trim().toLowerCase();
+        const isCredit=cic>=0&&(creditCell==="credit"||creditCell==="cr"||(creditCell.length>0&&creditCell!=="debit"&&creditCell!=="dr"&&isNaN(parseFloat(creditCell))));
         amount=isCredit?-absAmt:absAmt;
       } else {
         const dRaw=(row[dbc]||"").replace(/[,'"₹Rs]/g,"").trim();
@@ -4402,26 +4461,56 @@ function SpendUpload({db,owners}){
 
 
   // ── Step 1: Upload ──────────────────────────────────────────────────────────
-  const processFile=file=>{
+  const processFile=async file=>{
     if(!file) return;
     setUploadError("");
     setFileName(file.name);
+    const isExcel=file.name.match(/\.xlsx?$/i);
+    if(isExcel){
+      try{
+        const rows=await parseXLSXFile(file);
+        if(!rows||rows.length===0){setUploadError("Could not parse any rows from Excel file");return;}
+        setRawRows(rows);
+        setRawText("");
+        setColWidths([]);
+        autoDetectXLSX(rows);
+        setStep(2);
+      }catch(err){
+        setUploadError("Error reading Excel file: "+err.message);
+      }
+      return;
+    }
+    // CSV path
     const reader=new FileReader();
     reader.onload=ev=>{
       try{
         const text=ev.target.result;
         if(!text||text.length===0){setUploadError("File appears to be empty");return;}
-        const rows=parseCSV(text, manualDelim==="auto"?undefined:manualDelim);
+        const rows=parseCSV(text,manualDelim==="auto"?undefined:manualDelim);
         if(!rows||rows.length===0){setUploadError("Could not parse any rows from file");return;}
         setRawRows(rows);
         setRawText(text);
         setColWidths([]);
+        const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+        const readCell=(rowIdx,colIdx1based)=>{
+          const row=(rows[rowIdx]||[]);
+          const ci=colIdx1based-1;
+          return cn(row[ci]||"");
+        };
+        if(rows.length>parseInt(totalDueRow)||0){
+          const due=parseFloat(readCell(parseInt(totalDueRow)||0,parseInt(totalDueCol)||1));
+          if(!isNaN(due)&&due>0) setTotalDue(String(due));
+        }
+        if(rows.length>parseInt(openingBalRow)||0){
+          const ob=parseFloat(readCell(parseInt(openingBalRow)||0,parseInt(openingBalCol)||1));
+          if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
+        }
         setStep(2);
       }catch(err){
-        setUploadError("Parse error: "+err.message);
+        setUploadError("Error reading file: "+err.message);
       }
     };
-    reader.onerror=()=>setUploadError("Could not read file: "+reader.error);
+    reader.onerror=()=>setUploadError("Could not read file");
     reader.readAsText(file);
   };
 
@@ -4433,7 +4522,7 @@ function SpendUpload({db,owners}){
           <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:16}}>Select your CSV file</div>
           <input
             type="file"
-            accept=".csv,.txt,text/csv,text/plain"
+            accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain"
             style={{display:"block",width:"100%",padding:"12px",border:`2px solid ${bdr}`,borderRadius:10,fontSize:13,background:surf2,cursor:"pointer",color:txt,fontFamily:"'Manrope',sans-serif"}}
             onChange={e=>{
               const file=e.target.files&&e.target.files[0];
