@@ -4316,7 +4316,7 @@ function SpendUpload({db,owners}){
   const upd=(i,field,val)=>setParsed(prev=>prev.map((r,ri)=>ri===i?{...r,[field]:val}:r));
 
   // Use max columns across all rows for column options
-  const maxCols=Math.max(...rawRows.map(r=>r.length),1);
+  const maxCols=rawRows.length>0?Math.max(...rawRows.map(r=>r.length),1):20;
   // Show transaction header row labels (skipRows-1 is usually the header)
   const headerRow=rawRows[skipRows>0?skipRows-1:0]||[];
   const colLbl=i=>`Col ${i+1}${headerRow[i]?` (${headerRow[i].substring(0,14)})`:""}`;
@@ -4412,7 +4412,7 @@ function SpendUpload({db,owners}){
             </div>
           </div>
           {(()=>{
-            const numCols=Math.max(...rawRows.slice(0,30).map(r=>r.length),1);
+            const numCols=rawRows.length>0?Math.max(...rawRows.slice(0,30).map(r=>r.length),1):1;
             const widths=colWidths.length===numCols?colWidths:Array(numCols).fill(160);
 
             const onResizeStart=(e,ci)=>{
@@ -4496,7 +4496,7 @@ function SpendUpload({db,owners}){
             <div style={{textAlign:"left"}}>
               <div style={{fontSize:13,fontWeight:600,color:txt}}>{selMapping?mappings.find(m=>m.id===selMapping)?.name||"Custom mapping":"No mapping selected"}</div>
               <div style={{fontSize:11,color:mut,marginTop:2}}>
-                {manualDelim==="auto"?"Auto":manualDelim==="\t"?"Tab":manualDelim} · Skip {skipRows} · Date col {dateCol+1} · Desc col {descCol+1} · Amt col {amtType==="single"?amtCol+1:"split"}
+                {manualDelim==="auto"?"Auto":manualDelim==="	"?"Tab":manualDelim||"auto"} · Skip {skipRows||0} · Date col {(dateCol||0)+1} · Desc col {(descCol||0)+1} · Amt col {amtType==="single"?(amtCol||0)+1:"split"}
               </div>
             </div>
             <div style={{fontSize:12,color:acc,fontWeight:600,marginLeft:12,flexShrink:0}}>{mappingExpanded?"▲ Collapse":"▼ Edit"}</div>
