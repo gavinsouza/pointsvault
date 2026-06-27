@@ -4066,6 +4066,7 @@ function SpendUpload({db,owners}){
   const [skipRows,setSkipRows]=useState(1);
   const [manualDelim,setManualDelim]=useState("auto");
   const [selMapping,setSelMapping]=useState("");
+  const [mappingExpanded,setMappingExpanded]=useState(false);
 
   useEffect(()=>{
     (async()=>{
