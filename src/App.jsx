@@ -1035,38 +1035,14 @@ function PartnerRow({p,gName,gLogo}){
 
 // ── CardPartnersWithImport ────────────────────────────────────────────────────
 function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onRefresh}){
-  const [importing,setImporting]=useState(false);
-  const [importDone,setImportDone]=useState(false);
-  const libCard=LIBRARY.cards.find(c=>c.name.toLowerCase()===(masterName||"").toLowerCase());
-  const hasMore=libCard&&libCard.partners.length>partners.length;
-  const doImport=async()=>{
-    if(!libCard||!masterId) return;
-    setImporting(true);
-    const {data:allProgs}=await db.from("master_programs").select();
-    const {data:existing}=await db.from("master_partners").filter("from_id",masterId);
-    const existIds=new Set((existing||[]).map(p=>p.to_id));
-    for(const lp of libCard.partners){
-      const libLp=LIBRARY.programs.find(x=>x.lid===lp.to_lid);
-      if(!libLp) continue;
-      let prog=allProgs?.find(p=>p.name.toLowerCase()===libLp.name.toLowerCase());
-      if(!prog){
-        const {data}=await db.from("master_programs").insert({name:libLp.name,category:libLp.category,points_currency:libLp.points_currency,inr_per_point:libLp.inr_per_point,expiry_rule:libLp.expiry_rule,logo_url:libLp.logo_url||null});
-        if(data&&data[0]) prog=data[0];
-      }
-      if(!prog||existIds.has(prog.id)) continue;
-      await db.from("master_partners").insert({from_id:masterId,from_type:"card",to_id:prog.id,to_type:"program",ratio_from:lp.ratio_from,ratio_to:lp.ratio_to,min_transfer:lp.min_transfer||null,transfer_time:lp.transfer_time||null,notes:lp.notes||null,has_reverse:false});
-    }
-    setImporting(false);setImportDone(true);onRefresh();
-    setTimeout(()=>setImportDone(false),3000);
-  };
+
+  // No library import here - that belongs in Master catalog only
   const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
       <div onClick={()=>setShow(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={e=>{e.stopPropagation();doImport();}}>{importing?"Importing...":"Import from Library"}</button>}
-          {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
           <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
         </div>
       </div>
@@ -1080,8 +1056,7 @@ function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
 
 // ── ProgPartnersWithImport ────────────────────────────────────────────────────
 function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onRefresh}){
-  const [importing,setImporting]=useState(false);
-  const [importDone,setImportDone]=useState(false);
+
   const libRoutes=LIBRARY.lp_partners.filter(r=>{
     const fromLp=LIBRARY.programs.find(x=>x.lid===r.from_lid);
     return fromLp?.name?.toLowerCase()===(masterName||"").toLowerCase();
@@ -1113,8 +1088,6 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
       <div onClick={()=>setShow(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          {hasMore&&!importDone&&<button style={{...gbtn,padding:"4px 12px",fontSize:11,opacity:importing?0.6:1}} onClick={e=>{e.stopPropagation();doImport();}}>{importing?"Importing...":"Import from Library"}</button>}
-          {importDone&&<span style={{fontSize:11,color:grn,fontWeight:500}}>Imported</span>}
           <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
         </div>
       </div>
@@ -3834,7 +3807,21 @@ function SettingsDanger({db,owners,onReset}){
   };
 
   // ── Delete helpers ──────────────────────────────────────────────────────────
-  const delAll=async(table)=>{const {data}=await db.from(table).select();for(const r of(data||[]))await db.from(table).delete(r.id);};
+  const delAll=async(table)=>{
+    // Before deleting master_programs, clean up orphaned master_partners
+    if(table==="master_programs"){
+      const {data:progs}=await db.from("master_programs").select();
+      const progIds=new Set((progs||[]).map(p=>p.id));
+      const {data:partners}=await db.from("master_partners").select();
+      for(const p of(partners||[])){
+        if(!progIds.has(p.to_id)||!progIds.has(p.from_id)){
+          await db.from("master_partners").delete(p.id);
+        }
+      }
+    }
+    const {data}=await db.from(table).select();
+    for(const r of(data||[]))await db.from(table).delete(r.id);
+  };
 
   const clearActivity=async()=>run(async()=>{
     for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries"])await delAll(t);
