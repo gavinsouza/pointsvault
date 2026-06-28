@@ -5085,12 +5085,6 @@ const NAV=[
     {id:"spend-cards",      label:"My Cards"},
     {id:"spend-ledger",     label:"Ledger"},
     {id:"spend-upload",     label:"CC Statement Upload", beta:true},
-  ], sub:[
-    {label:"Setup", items:[
-      {id:"spend-setup-people",      label:"People"},
-      {id:"spend-setup-categories",  label:"Categories"},
-      {id:"spend-setup-mappings",    label:"CC Mappings"},
-    ]},
   ]},
   {section:"Points & Miles", items:[
     {id:"overview",         label:"Overview"},
@@ -5099,17 +5093,20 @@ const NAV=[
     {id:"transfer",         label:"Transfer Points"},
     {id:"transfer-history", label:"Transfer History"},
     {id:"vouchers",         label:"Vouchers"},
-  ], sub:[
-    {label:"Setup", items:[
-      {id:"pm-setup-catalog", label:"Master"},
-      {id:"pm-setup-owners",  label:"Owners"},
-    ]},
   ]},
   {section:"Transfer Routes", comingSoon:true, items:[]},
   {section:"Double Dip",      comingSoon:true, items:[]},
   {section:"Settings", items:[
     {id:"settings-general", label:"General"},
     {id:"settings-danger",  label:"Danger Zone"},
+  ], sub:[
+    {label:"Setup", items:[
+      {id:"setup-people",      label:"People"},
+      {id:"setup-categories",  label:"Categories"},
+      {id:"setup-mappings",    label:"CC Mappings"},
+      {id:"setup-catalog",     label:"Master"},
+      {id:"setup-owners",      label:"Owners"},
+    ]},
   ]},
 ];
 
@@ -5282,11 +5279,11 @@ export default function App(){
         {tab==="transfer"          &&<TransferPoints db={db} owners={owners}/>}
         {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
         {tab==="vouchers"          &&<Vouchers db={db} owners={owners}/>}
-        {tab==="pm-setup-owners"   &&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
-        {tab==="pm-setup-catalog"  &&<Catalog db={db}/>}
-        {tab==="spend-setup-people"&&<SetupPeople db={db}/>}
-        {tab==="spend-setup-categories"&&<SetupCategories db={db}/>}
-        {tab==="spend-setup-mappings"&&<SetupMappings db={db}/>}
+        {(tab==="pm-setup-owners"||tab==="setup-owners")&&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
+        {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog db={db}/>}
+        {(tab==="spend-setup-people"||tab==="setup-people")&&<SetupPeople db={db}/>}
+        {(tab==="spend-setup-categories"||tab==="setup-categories")&&<SetupCategories db={db}/>}
+        {(tab==="spend-setup-mappings"||tab==="setup-mappings")&&<SetupMappings db={db}/>}
         {tab==="settings-general"  &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
         {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
