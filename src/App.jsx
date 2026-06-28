@@ -3248,7 +3248,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="adjust">Adjustment</option></select>
