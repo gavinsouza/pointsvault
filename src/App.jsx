@@ -2617,7 +2617,7 @@ function MyCards({db,owners}){
 
   return(
     <div>
-      <Hdr title="My Cards" sub="Your loyalty credit cards and their point balances" sub={`${filtered.length} cards · ${total.toLocaleString("en-IN")} pts${totalInr>0?" · "+inrFmt(totalInr):""}`}
+      <Hdr title="My Cards" sub={`${filtered.length} cards · ${total.toLocaleString("en-IN")} pts${totalInr>0?" · "+inrFmt(totalInr):""}`}
         action={<button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Card</button>}/>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:1,minWidth:160}}>
@@ -3801,7 +3801,7 @@ function Vouchers({db,owners}){
 
   return(
     <div>
-      <Hdr title="Vouchers" sub="Redeemed rewards — vouchers, gift cards and benefits earned" sub={`${rows.filter(v=>!expired(v)).length} active`}
+      <Hdr title="Vouchers" sub={`${rows.filter(v=>!expired(v)).length} active · Rewards and benefits redeemed from your points`}
         action={<button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>}/>
       {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:rows.length===0?<Empty icon="🎟️" msg="No vouchers yet — vouchers are created when you redeem points for a reward"/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
