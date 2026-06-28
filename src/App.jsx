@@ -3922,7 +3922,9 @@ function SettingsDanger({db,owners,onReset}){
 
   // For master tables: use anon client which has authenticated role via JWT
   const delMasterTable=async(table)=>{
-    await db.rpc("delete_master_table",{tbl:table});
+    const {data,error}=await db.rpc("delete_master_table",{tbl:table});
+    console.log("delMasterTable",table,"→",{data,error});
+    if(error) console.error("RPC error:",JSON.stringify(error));
   };
 
   const clearActivity=async()=>run(async()=>{
