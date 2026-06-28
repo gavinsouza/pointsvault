@@ -5637,22 +5637,29 @@ export default function App(){
       </div>
 
       {/* ── Mobile Bottom Nav ── */}
-      <div style={{display:"none"}} className="mobile-bottom-nav">
-        {[
-          {id:"home",        label:"Home",     icon:"⊞"},
-          {id:"overview",    label:"Points",   icon:"✈️"},
-          {id:"spend-overview", label:"Spend", icon:"💳"},
-          {id:"transfer",    label:"Transfer", icon:"↗️"},
-          {id:"__menu__",    label:"More",     icon:"☰"},
-        ].map(item=>(
-          <div key={item.id}
-            onClick={()=>item.id==="__menu__"?setMenuOpen(v=>!v):(()=>{setTab(item.id);setMenuOpen(false);})()}
-            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"8px 4px",cursor:"pointer",color:tab===item.id&&item.id!=="__menu__"?acc:menuOpen&&item.id==="__menu__"?acc:mut}}>
-            <span style={{fontSize:20,lineHeight:1}}>{item.icon}</span>
-            <span style={{fontSize:10,fontWeight:tab===item.id||menuOpen&&item.id==="__menu__"?600:400}}>{item.label}</span>
+      {(()=>{
+        const NavIcon=({id,label,svg})=>{
+          const active=(id==="__menu__"?menuOpen:tab===id);
+          return(
+            <div onClick={()=>id==="__menu__"?setMenuOpen(v=>!v):(()=>{setTab(id);setMenuOpen(false);})()}
+              style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,padding:"6px 4px",cursor:"pointer"}}>
+              <div style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",color:active?acc:mut,transition:"color 0.15s"}}>
+                {svg}
+              </div>
+              <span style={{fontSize:10,fontWeight:active?600:400,color:active?acc:mut,letterSpacing:"-0.01em",transition:"color 0.15s"}}>{label}</span>
+            </div>
+          );
+        };
+        return(
+          <div style={{display:"none"}} className="mobile-bottom-nav">
+            <NavIcon id="home" label="Home" svg={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H5a1 1 0 01-1-1V9.5z"/><path d="M9 21V12h6v9"/></svg>}/>
+            <NavIcon id="overview" label="Points" svg={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/><path d="M12 6v6l4 2"/></svg>}/>
+            <NavIcon id="spend-overview" label="Spend" svg={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>}/>
+            <NavIcon id="transfer" label="Transfer" svg={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4l4 4"/><path d="M17 8v12m0 0l4-4m-4 4l-4-4"/></svg>}/>
+            <NavIcon id="__menu__" label="More" svg={<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>}/>
           </div>
-        ))}
-      </div>
+        );
+      })()}
 
       <style>{`
         @media (max-width:700px){
