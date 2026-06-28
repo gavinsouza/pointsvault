@@ -347,7 +347,14 @@ function createAuthedClient(token){
   const base=`${SUPA_URL}/rest/v1`;
   const req=async(path,opts={})=>{try{const r=await fetch(`${base}${path}`,{...opts,headers:authH});let d=null;try{d=await r.json();}catch(_){}return{data:Array.isArray(d)?d:d?[d]:[],error:r.ok?null:d};}catch(e){return{data:[],error:{message:e.message}};}};
   const storage=createClient(SUPA_URL,SUPA_KEY).storage;
-  return{from:t=>({select:(q="")=>req(`/${t}?select=*${q}`),insert:row=>req(`/${t}`,{method:"POST",body:JSON.stringify(row)}),update:(id,row)=>req(`/${t}?id=eq.${id}`,{method:"PATCH",body:JSON.stringify(row)}),delete:id=>req(`/${t}?id=eq.${id}`,{method:"DELETE"}),filter:(col,val)=>req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`)}),storage};
+  const rpc=async(fn,params={})=>{
+    try{
+      const r=await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`,{method:"POST",headers:authH,body:JSON.stringify(params)});
+      const d=await r.json();
+      return{data:d,error:r.ok?null:d};
+    }catch(e){return{data:null,error:{message:e.message}};}
+  };
+  return{from:t=>({select:(q="")=>req(`/${t}?select=*${q}`),insert:row=>req(`/${t}`,{method:"POST",body:JSON.stringify(row)}),update:(id,row)=>req(`/${t}?id=eq.${id}`,{method:"PATCH",body:JSON.stringify(row)}),delete:id=>req(`/${t}?id=eq.${id}`,{method:"DELETE"}),filter:(col,val)=>req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`)}),storage,rpc};
 }
 
 // ── Design tokens: private-banking premium ────────────────────────────────────
@@ -3915,19 +3922,7 @@ function SettingsDanger({db,owners,onReset}){
 
   // For master tables: use anon client which has authenticated role via JWT
   const delMasterTable=async(table)=>{
-    // Use direct fetch to delete all rows - bypasses row-by-row issues
-    // DELETE with a filter that matches all rows (id is never this value)
-    const session=getStoredSession();
-    const token=session?.access_token||SUPA_KEY;
-    const r=await fetch(`${SUPA_URL}/rest/v1/${table}?id=neq.00000000-0000-0000-0000-000000000000`,{
-      method:"DELETE",
-      headers:{apikey:SUPA_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json",Prefer:"return=minimal"}
-    });
-    if(!r.ok){
-      // Fallback: row by row
-      const {data}=await db.from(table).select();
-      for(const row of(data||[])) await db.from(table).delete(row.id);
-    }
+    await db.rpc("delete_master_table",{tbl:table});
   };
 
   const clearActivity=async()=>run(async()=>{
