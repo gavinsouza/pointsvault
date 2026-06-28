@@ -971,6 +971,7 @@ function AutoTransferName({masterId,db}){
 // ── CardMilestones ────────────────────────────────────────────────────────────
 function CardMilestones({masterId,db}){
   const [ms,setMs]=useState([]);
+  const [show,setShow]=useState(false);
   useEffect(()=>{
     if(!masterId) return;
     db.from("master_milestones").filter("master_card_id",masterId).then(({data})=>{
@@ -980,7 +981,6 @@ function CardMilestones({masterId,db}){
   if(!ms.length) return null;
   const cLbl={calendar_year:"Cal. Year",billing_year:"Billing Year",calendar_month:"Cal. Month",billing_month:"Bill. Month",lifetime:"Lifetime"};
   const tLbl={bonus_points:"Bonus Points",voucher:"Voucher",fee_waiver:"Fee Waiver",lounge:"Lounge",gift:"Gift",status_upgrade:"Status Upgrade",other:"Benefit"};
-  const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
       <div onClick={()=>setShow(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
