@@ -4535,7 +4535,7 @@ async function parseXLSXFile(file){
   });
 }
 
-function SpendUpload({db,owners}){
+function SpendUpload({db,owners=[]}){
   const [step,setStep]=useState(1); // 1=upload 2=map 3=preview 4=done
   const [rawRows,setRawRows]=useState([]);
   const [fileName,setFileName]=useState("");
@@ -4547,7 +4547,7 @@ function SpendUpload({db,owners}){
   const [parsed,setParsed]=useState([]); // [{date,desc,amount,category,reimbursable,person_id,skip}]
   const [importing,setImporting]=useState(false);
   const [importResult,setImportResult]=useState(null);
-  const [categories,setCategories]=useState(DEFAULT_CATEGORIES);
+  const [categories,setCategories]=useState(CATEGORIES);
   const [stmtMonthSel,setStmtMonthSel]=useState("");
   const [ruleSuggestions,setRuleSuggestions]=useState([]); // [{keyword,category,checked}]
   const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
