@@ -3715,7 +3715,7 @@ function TransferHistory({db,owners}){
 // Vouchers
 
 function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
-  const [step,setStep]=useState(supaUrl&&supaKey?"login":"setup"); // setup|login|signup|forgot
+  const [step,setStep]=useState("login"); // login|signup|forgot
   const [url,setUrl]=useState(supaUrl||"");
   const [key,setKey]=useState(supaKey||"");
   const [email,setEmail]=useState("");
@@ -3772,21 +3772,6 @@ function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
 
   const lbl=(t)=><div style={{fontSize:11,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:5}}>{t}</div>;
 
-  if(step==="setup") return(
-    <div>
-      <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:4}}>Connect to Supabase</div>
-      <div style={{fontSize:12,color:mut,marginBottom:20}}>Enter your Supabase project URL and anon key to get started.</div>
-      {lbl("Project URL")}
-      <input style={inputStyle} placeholder="https://xxxx.supabase.co" value={url} onChange={e=>setUrl(e.target.value)}/>
-      {lbl("Anon Key")}
-      <input type="password" style={inputStyle} placeholder="eyJhbGc…" value={key} onChange={e=>setKey(e.target.value)}/>
-      {err&&<div style={{fontSize:12,color:red,marginBottom:10}}>{err}</div>}
-      <button onClick={saveSetup} style={{width:"100%",padding:"11px",borderRadius:10,background:txt,color:"#fff",border:"none",cursor:"pointer",fontSize:13,fontWeight:600,fontFamily:"'Manrope',sans-serif"}}>
-        Continue
-      </button>
-    </div>
-  );
-
   if(step==="login") return(
     <div>
       <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:20}}>Sign in to PointsVault</div>
@@ -3803,9 +3788,7 @@ function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
         <button onClick={()=>{setStep("signup");setErr("");setMsg("");}} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontFamily:"'Manrope',sans-serif",fontWeight:500}}>Create account</button>
         <button onClick={()=>{setStep("forgot");setErr("");setMsg("");}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>Forgot password?</button>
       </div>
-      <div style={{marginTop:20,paddingTop:16,borderTop:`1px solid ${bdr}`,textAlign:"center"}}>
-        <button onClick={()=>{setStep("setup");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:11,fontFamily:"'Manrope',sans-serif"}}>Change Supabase project</button>
-      </div>
+
     </div>
   );
 
@@ -3846,8 +3829,8 @@ function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
 export default function App(){
   const [db,setDb]=useState(null);
   const [user,setUser]=useState(null);
-  const [supaUrl,setSupaUrl]=useState(()=>localStorage.getItem("pv_u")||"");
-  const [supaKey,setSupaKey]=useState(()=>localStorage.getItem("pv_k")||"");
+  const [supaUrl,setSupaUrl]=useState("https://gmrpweqrclfiaxnzqvtn.supabase.co");
+  const [supaKey,setSupaKey]=useState("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc");
   const [tab,setTab]=useState("home");
   const [menuOpen,setMenuOpen]=useState(false);
   const [owners,setOwners]=useState([]);
@@ -3855,20 +3838,16 @@ export default function App(){
 
   useEffect(()=>{
     try{
-      const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
-      if(u&&k){
-        // Try to restore existing session
-        const session=getStoredSession(u);
-        if(session&&session.access_token){
-          const c=createAuthedClient(u,k,session.access_token);
-          setDb(c);setUser(session.user);setSupaUrl(u);setSupaKey(k);
-          loadOwners(c);
-        }
+      const u="https://gmrpweqrclfiaxnzqvtn.supabase.co",k="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
+      const session=getStoredSession(u);
+      if(session&&session.access_token){
+        const c=createAuthedClient(u,k,session.access_token);
+        setDb(c);setUser(session.user);
+        loadOwners(c);
       }
     }catch(e){
       console.error("Session restore failed:",e);
-      // Clear broken session and show login
-      try{localStorage.removeItem("pv_session_"+localStorage.getItem("pv_u"));}catch(_){}
+      try{localStorage.removeItem("pv_session_https://gmrpweqrclfiaxnzqvtn.supabase.co");}catch(_){}
     }
   },[]);
 
@@ -3895,20 +3874,19 @@ export default function App(){
   };
 
   const handleAuth=(u,k,session,usr)=>{
-    localStorage.setItem("pv_u",u); localStorage.setItem("pv_k",k);
-    storeSession(u,{...session,user:usr});
+    storeSession("https://gmrpweqrclfiaxnzqvtn.supabase.co",{...session,user:usr});
     const c=createAuthedClient(u,k,session.access_token);
     setDb(c); setUser(usr); setSupaUrl(u); setSupaKey(k);
     loadOwners(c);
   };
 
   const handleSignOut=async()=>{
-    if(supaUrl&&supaKey&&user){
-      const base=createClient(supaUrl,supaKey);
-      const session=getStoredSession(supaUrl);
+    try{
+      const base=createClient("https://gmrpweqrclfiaxnzqvtn.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc");
+      const session=getStoredSession("https://gmrpweqrclfiaxnzqvtn.supabase.co");
       if(session) await base.auth.signOut(session.access_token);
-    }
-    clearSession(supaUrl);
+    }catch(_){}
+    clearSession("https://gmrpweqrclfiaxnzqvtn.supabase.co");
     setDb(null); setUser(null); setTab("home");
   };
 
