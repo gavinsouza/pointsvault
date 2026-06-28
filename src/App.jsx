@@ -3818,125 +3818,182 @@ function SettingsGeneral({db,onDisconnect}){
 
 // ── SettingsDanger ────────────────────────────────────────────────────────────
 function SettingsDanger({db,owners,onReset}){
-  const [busy,setBusy]=useState(null); // which action is running
+  const [modal,setModal]=useState(null); // which action is open
+  const [typed,setTyped]=useState("");
+  const [checked,setChecked]=useState(false);
+  const [busy,setBusy]=useState(false);
 
-  const confirm2=(msg)=>{
-    const v=window.prompt(msg+"\n\nType DELETE to confirm:");
-    if(v===null) return false; // cancelled
-    if(v!=="DELETE"){ alert("Incorrect entry — action cancelled. Please type DELETE exactly (case-sensitive)."); return false; }
-    return true;
+  const openModal=(id)=>{setModal(id);setTyped("");setChecked(false);};
+  const closeModal=()=>{setModal(null);setTyped("");setChecked(false);};
+
+  const run=async(action)=>{
+    setBusy(true);
+    try{ await action(); }catch(e){ alert("Error: "+JSON.stringify(e)); }
+    setBusy(false);
+    closeModal();
   };
 
-  const deleteAllMyCards=async()=>{
-    if(!confirm2("This will permanently delete ALL My Cards and their transactions.")) return;
-    setBusy("mycards");
+  // ── Delete helpers ──────────────────────────────────────────────────────────
+  const delAll=async(table)=>{const {data}=await db.from(table).select();for(const r of(data||[]))await db.from(table).delete(r.id);};
+
+  const clearActivity=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries"])await delAll(t);
+    // Reset balances
     const {data:cards}=await db.from("my_cards").select();
-    for(const c of (cards||[])){
-      const {data:txns}=await db.from("point_transactions").filter("entity_id",c.id);
-      for(const t of (txns||[])) await db.from("point_transactions").delete(t.id);
-      const {data:tl1}=await db.from("transfer_log").filter("from_id",c.id);
-      const {data:tl2}=await db.from("transfer_log").filter("to_id",c.id);
-      for(const t of [...(tl1||[]),...(tl2||[])]) await db.from("transfer_log").delete(t.id);
-      await db.from("my_cards").delete(c.id);
-    }
-    setBusy(null);
-    alert("Deleted "+(cards||[]).length+" My Cards and all their transactions.");
-  };
-
-  const deleteAllMyLPs=async()=>{
-    if(!confirm2("This will permanently delete ALL My Loyalty Programs and their transactions.")) return;
-    setBusy("mylps");
+    for(const c of(cards||[]))await db.from("my_cards").update(c.id,{points_balance:0});
     const {data:progs}=await db.from("my_programs").select();
-    for(const p of (progs||[])){
-      const {data:txns}=await db.from("point_transactions").filter("entity_id",p.id);
-      for(const t of (txns||[])) await db.from("point_transactions").delete(t.id);
-      const {data:tl1}=await db.from("transfer_log").filter("from_id",p.id);
-      const {data:tl2}=await db.from("transfer_log").filter("to_id",p.id);
-      for(const t of [...(tl1||[]),...(tl2||[])]) await db.from("transfer_log").delete(t.id);
-      await db.from("my_programs").delete(p.id);
-    }
-    setBusy(null);
-    alert("Deleted "+(progs||[]).length+" My Programs and all their transactions.");
-  };
+    for(const p of(progs||[]))await db.from("my_programs").update(p.id,{points_balance:0});
+    alert("All activity cleared.");
+  });
 
-  const deleteAllBalancesAndTxns=async()=>{
-    if(!confirm2("This will delete ALL transactions and reset ALL balances to 0. Your cards and programs will remain but history will be wiped.")) return;
-    setBusy("balances");
-    // Delete all transactions
-    const {data:txns}=await db.from("point_transactions").select();
-    for(const t of (txns||[])) await db.from("point_transactions").delete(t.id);
-    // Delete all transfer logs
-    const {data:tl}=await db.from("transfer_log").select();
-    for(const t of (tl||[])) await db.from("transfer_log").delete(t.id);
-    // Reset all balances to 0
+  const clearSpend=async()=>run(async()=>{
+    for(const t of["statements","spend_transactions","transaction_splits","ledger_entries","people","csv_mappings"])await delAll(t);
+    alert("Spend Tracker data cleared.");
+  });
+
+  const clearMiles=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers"])await delAll(t);
     const {data:cards}=await db.from("my_cards").select();
-    for(const c of (cards||[])) await db.from("my_cards").update(c.id,{points_balance:0});
+    for(const c of(cards||[]))await db.from("my_cards").update(c.id,{points_balance:0});
     const {data:progs}=await db.from("my_programs").select();
-    for(const p of (progs||[])) await db.from("my_programs").update(p.id,{points_balance:0});
-    setBusy(null);
-    alert("Deleted "+((txns||[]).length)+" transactions and reset all balances to 0.");
-  };
+    for(const p of(progs||[]))await db.from("my_programs").update(p.id,{points_balance:0});
+    alert("Points & Miles data cleared.");
+  });
 
-  const deleteAllTransferPartners=async()=>{
-    if(!confirm2("This will permanently delete ALL master transfer partner routes from the catalog.")) return;
-    setBusy("partners");
-    const {data:parts}=await db.from("master_partners").select();
-    for(const p of (parts||[])) await db.from("master_partners").delete(p.id);
-    setBusy(null);
-    alert("Deleted "+(parts||[]).length+" transfer partner routes.");
-  };
+  const fullReset=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings"])await delAll(t);
+    alert("Full reset complete. Master catalog preserved.");
+    onReset&&onReset();
+  });
 
-  const resetAll=async()=>{
-    if(!confirm2("This will permanently delete ALL data and reset PointsVault to blank.")) return;
-    setBusy("all");
-    const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
-    const h={apikey:k,Authorization:"Bearer "+k,"Content-Type":"application/json"};
-    for(const t of ["point_transactions","transfer_log","vouchers","my_cards","my_programs","master_milestones","master_partners","master_cards","master_programs","owners"]){
-      await fetch(u+"/rest/v1/"+t+"?created_at=gte.2000-01-01",{method:"DELETE",headers:h}).catch(()=>{});
-    }
-    setBusy(null);
-    alert("All data deleted.");
-    localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");
-    onReset();
-  };
+  const completeWipe=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","master_partners","master_milestones","master_programs","master_cards","spend_categories"])await delAll(t);
+    alert("Complete wipe done. App is factory fresh.");
+    onReset&&onReset();
+  });
 
-  const dangerItem=(title,desc,btnLabel,action,key)=>(
-    <div style={{padding:"18px 20px",border:`1.5px solid #fecaca`,borderRadius:12,marginBottom:12,background:"#fef2f2"}}>
-      <div style={{fontSize:13,fontWeight:600,color:red,marginBottom:4}}>{title}</div>
-      <div style={{fontSize:12,color:mut,marginBottom:12,lineHeight:1.5}}>{desc}</div>
-      <button style={{...dbtn,background:red,color:"#fff",border:"none",opacity:busy===key?0.6:1,fontSize:12}} onClick={busy?undefined:action}>
-        {busy===key?"Working…":btnLabel}
-      </button>
-    </div>
+  // ── Actions config ──────────────────────────────────────────────────────────
+  const ACTIONS=[
+    {
+      id:"clear-activity",
+      label:"Clear Activity",
+      desc:"Deletes all transactions, statements, transfers and balances. Keeps all cards, programs, people and settings.",
+      color:"#c67c1a",
+      confirm:"checkbox",
+      checkLabel:"I understand this will delete all transaction history and reset all balances to zero",
+      action:clearActivity,
+    },
+    {
+      id:"clear-spend",
+      label:"Clear Spend Tracker",
+      desc:"Deletes all CC statements, spend transactions, splits, ledger entries, people and CC mappings. Points & Miles untouched.",
+      color:"#c67c1a",
+      confirm:"type",
+      word:"SPEND",
+      action:clearSpend,
+    },
+    {
+      id:"clear-miles",
+      label:"Clear Points & Miles",
+      desc:"Deletes all point transactions, transfers and vouchers. Resets card and program balances to zero. Spend Tracker untouched.",
+      color:"#c67c1a",
+      confirm:"type",
+      word:"MILES",
+      action:clearMiles,
+    },
+    {
+      id:"full-reset",
+      label:"Full Reset",
+      desc:"Deletes all personal data — owners, cards, programs, people, all transactions and activity. Master catalog (HDFC Infinia, Amex etc.) is preserved.",
+      color:"#9b2335",
+      confirm:"type",
+      word:"RESET",
+      action:fullReset,
+    },
+    {
+      id:"complete-wipe",
+      label:"Complete Wipe",
+      desc:"Deletes absolutely everything including the master catalog. Returns the app to factory fresh as if just installed.",
+      color:"#9b2335",
+      confirm:"two-step",
+      word:"COMPLETE WIPE",
+      checkLabel:"I understand everything including the master catalog will be permanently and irreversibly deleted",
+      action:completeWipe,
+    },
+  ];
+
+  const activeAction=ACTIONS.find(a=>a.id===modal);
+  const canConfirm=activeAction&&(
+    activeAction.confirm==="checkbox"?checked:
+    activeAction.confirm==="type"?typed===activeAction.word:
+    activeAction.confirm==="two-step"?checked&&typed===activeAction.word:
+    false
   );
 
   return(
     <div>
-      <Hdr title="Danger Zone" sub="Irreversible actions — type DELETE to confirm each one"/>
-      <div style={{maxWidth:560}}>
-        {dangerItem("Delete all My Cards","Deletes all your My Cards and every transaction linked to them. Master cards in the catalog are unaffected.","Delete all My Cards",deleteAllMyCards,"mycards")}
-        {dangerItem("Delete all My Loyalty Programs","Deletes all your My Programs and every transaction linked to them. Master programs in the catalog are unaffected.","Delete all My LPs",deleteAllMyLPs,"mylps")}
-        {dangerItem("Reset spend categories to defaults","Deletes all custom categories and restores the original default list.","Reset categories to defaults",async()=>{
-          if(!confirm2("This will delete all custom categories and restore defaults.")) return;
-          setBusy("categories");
-          const {data:existing}=await db.from("spend_categories").select();
-          for(const c of (existing||[])) await db.from("spend_categories").delete(c.id);
-          for(const name of ["Dining","Travel","Fuel","Groceries","Shopping","Utilities","Entertainment","Healthcare","Education","Rent","Insurance","Vouchers / Wallet","Reimbursable","Other"]){
-            await db.from("spend_categories").insert({name,is_default:true});
-          }
-          setBusy(null);alert("Categories reset to defaults.");
-        },"categories")}
-        {dangerItem("Reset all balances & transactions","Wipes all transaction history and resets every card and LP balance to 0. Your cards and programs remain — just the history is cleared.","Reset all balances & transactions",deleteAllBalancesAndTxns,"balances")}
-        {dangerItem("Delete all transfer partner routes","Removes all transfer partner routes from the catalog. Master cards and programs are unaffected.","Delete all transfer routes",deleteAllTransferPartners,"partners")}
-        {dangerItem("Reset everything","Permanently deletes ALL data including owners, catalog, cards, programs, transactions and transfers. Cannot be undone.","Reset everything — start fresh",resetAll,"all")}
+      <Hdr title="Danger Zone" sub="Irreversible actions — read carefully before proceeding"/>
+      <div style={{display:"flex",flexDirection:"column",gap:12,maxWidth:600}}>
+        {ACTIONS.map((a,i)=>(
+          <Card key={a.id} style={{border:`1.5px solid ${a.color}22`}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:700,color:a.color,marginBottom:4}}>{a.label}</div>
+                <div style={{fontSize:12,color:mut,lineHeight:1.6}}>{a.desc}</div>
+              </div>
+              <button
+                style={{...dbtn,background:a.color,border:"none",color:"#fff",fontSize:12,padding:"6px 16px",flexShrink:0,opacity:busy?0.5:1,whiteSpace:"nowrap"}}
+                onClick={()=>openModal(a.id)}
+                disabled={busy}
+              >{busy?"Working…":a.label}</button>
+            </div>
+          </Card>
+        ))}
       </div>
+
+      {/* Confirmation Modal */}
+      <Modal show={!!modal} onClose={closeModal} title={activeAction?.label||""}>
+        <div style={{background:activeAction?.color+"11",border:`1px solid ${activeAction?.color}44`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:600,color:activeAction?.color,marginBottom:4}}>⚠ Warning</div>
+          <div style={{fontSize:13,color:txt,lineHeight:1.6}}>{activeAction?.desc}</div>
+          <div style={{fontSize:12,color:mut,marginTop:8,fontWeight:500}}>This action cannot be undone.</div>
+        </div>
+
+        {/* Checkbox step */}
+        {(activeAction?.confirm==="checkbox"||activeAction?.confirm==="two-step")&&(
+          <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",marginBottom:16,fontSize:13,color:txt,lineHeight:1.5}}>
+            <input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)} style={{marginTop:3,accentColor:activeAction?.color,flexShrink:0,width:16,height:16}}/>
+            {activeAction?.checkLabel}
+          </label>
+        )}
+
+        {/* Type confirmation */}
+        {(activeAction?.confirm==="type"||(activeAction?.confirm==="two-step"&&checked))&&(
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,color:mut,marginBottom:6}}>
+              Type <strong style={{color:activeAction?.color,fontFamily:"monospace",letterSpacing:"0.05em"}}>{activeAction?.word}</strong> to confirm:
+            </div>
+            <input
+              style={{...inp,fontFamily:"monospace",letterSpacing:"0.05em",borderColor:typed===activeAction?.word?activeAction?.color:bdr}}
+              value={typed}
+              onChange={e=>setTyped(e.target.value)}
+              placeholder={activeAction?.word}
+              autoFocus
+            />
+          </div>
+        )}
+
+        <button
+          style={{...dbtn,width:"100%",justifyContent:"center",background:canConfirm?activeAction?.color:"#ccc",border:"none",color:"#fff",opacity:busy?0.6:1,cursor:canConfirm?"pointer":"not-allowed"}}
+          onClick={()=>canConfirm&&!busy&&activeAction?.action()}
+          disabled={!canConfirm||busy}
+        >{busy?"Working…":"Confirm — "+activeAction?.label}</button>
+      </Modal>
     </div>
   );
 }
 
 
-
-// ── SetupMappings ─────────────────────────────────────────────────────────────
 function SetupMappings({db}){
   const [mappings,setMappings]=useState([]);
   const [cards,setCards]=useState([]);
