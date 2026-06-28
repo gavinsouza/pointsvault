@@ -2244,6 +2244,9 @@ function Catalog({db,ownersData=[],reloadOwners}){
         <button style={tb("cards")} onClick={()=>setTab("cards")}>Master Cards</button>
         <button style={tb("programs")} onClick={()=>setTab("programs")}>Master Programs</button>
         <button style={tb("partners")} onClick={()=>setTab("partners")}>Transfer Partners</button>
+        <button style={tb("people")} onClick={()=>setTab("people")}>People</button>
+        <button style={tb("categories")} onClick={()=>setTab("categories")}>Categories</button>
+        <button style={tb("owners")} onClick={()=>setTab("owners")}>Owners</button>
       </div>
       <Modal show={showLibrary} onClose={()=>setShowLibrary(false)} title="" wide>
         <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load}/>
