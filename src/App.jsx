@@ -342,6 +342,7 @@ const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 function getStoredSession(){try{const r=localStorage.getItem("pv_session");if(!r)return null;const s=JSON.parse(r);if(s.expires_at&&Date.now()/1000>s.expires_at-60)return null;return s;}catch(_){return null;}}
 function storeSession(s){localStorage.setItem("pv_session",JSON.stringify(s));}
 function clearSession(){localStorage.removeItem("pv_session");}
+function getCurrentUserId(){try{const s=getStoredSession();return s?.user?.id||null;}catch(_){return null;}}
 function createAuthedClient(token){
   const authH={apikey:SUPA_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json",Prefer:"return=representation"};
   const base=`${SUPA_URL}/rest/v1`;
@@ -1129,11 +1130,11 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
       if(!toLp) continue;
       let toDbProg=allProgs?.find(p=>p.name.toLowerCase()===toLp.name.toLowerCase());
       if(!toDbProg){
-        const {data}=await db.from("master_programs").insert({name:toLp.name,category:toLp.category,points_currency:toLp.points_currency,inr_per_point:toLp.inr_per_point,expiry_rule:toLp.expiry_rule,logo_url:toLp.logo_url||null});
+        const {data}=await db.from("master_programs").insert({name:toLp.name,category:toLp.category,points_currency:toLp.points_currency,inr_per_point:toLp.inr_per_point,expiry_rule:toLp.expiry_rule,logo_url:toLp.logo_url||null,user_id:userId||getCurrentUserId()});
         if(data&&data[0]) toDbProg=data[0];
       }
       if(!toDbProg||existIds.has(toDbProg.id)) continue;
-      await db.from("master_partners").insert({from_id:masterId,from_type:"program",to_id:toDbProg.id,to_type:"program",ratio_from:route.ratio_from,ratio_to:route.ratio_to,min_transfer:route.min_transfer||null,transfer_time:route.transfer_time||null,notes:route.notes||null,has_reverse:false});
+      await db.from("master_partners").insert({from_id:masterId,from_type:"program",to_id:toDbProg.id,to_type:"program",ratio_from:route.ratio_from,ratio_to:route.ratio_to,min_transfer:route.min_transfer||null,transfer_time:route.transfer_time||null,notes:route.notes||null,has_reverse:false,user_id:userId||getCurrentUserId()});
     }
     setImporting(false);setImportDone(true);onRefresh();
     setTimeout(()=>setImportDone(false),3000);
@@ -1227,7 +1228,7 @@ function MergeMasters({db, type, onClose, onDone}){
         ratio_from:p.ratio_from, ratio_to:p.ratio_to,
         min_transfer:p.min_transfer, transfer_time:p.transfer_time,
         notes:p.notes, has_reverse:p.has_reverse,
-      });
+      ,user_id:userId||getCurrentUserId()});
       entries.push({type:"ok", msg:`Copied transfer route to kept master`});
     }
 
@@ -1330,7 +1331,7 @@ function MergeMasters({db, type, onClose, onDone}){
 }
 
 // ── LibraryImport — import pre-loaded cards and programs ─────────────────────
-function LibraryImport({db, onClose, onDone}){
+function LibraryImport({db, onClose, onDone, userId}){
   const [step, setStep] = useState(1); // 1=select 1.5=confirm-matches 2=review 3=importing 4=done
   const [selectedCards, setSelectedCards] = useState(new Set());
   const [selectedProgs, setSelectedProgs] = useState(new Set());
@@ -1504,7 +1505,7 @@ function LibraryImport({db, onClose, onDone}){
       if(!lp||progIdMap[lid]) continue;
       const {data,error} = await db.from("master_programs").insert({
         name:lp.name, category:lp.category, points_currency:lp.points_currency,
-        inr_per_point:lp.inr_per_point, expiry_rule:lp.expiry_rule, logo_url:lp.logo_url||null
+        inr_per_point:lp.inr_per_point, expiry_rule:lp.expiry_rule, logo_url:lp.logo_url||null, user_id:userId||getCurrentUserId()
       });
       if(error){ log.push({type:"error", msg:`Failed: ${lp.name} — ${error.message}`}); continue; }
       if(data&&data[0]){ progIdMap[lid]=data[0].id; log.push({type:"ok", msg:`Added LP: ${lp.name}`}); }
@@ -1549,7 +1550,7 @@ function LibraryImport({db, onClose, onDone}){
       const {data,error} = await db.from("master_cards").insert({
         name:card.name, bank:card.bank, network:card.network,
         points_currency:card.points_currency, inr_per_point:card.inr_per_point,
-        annual_fee:card.annual_fee, logo_url:card.logo_url||null,
+        annual_fee:card.annual_fee, logo_url:card.logo_url||null, user_id:userId||getCurrentUserId(),
         auto_transfer_to:auto_id,
         auto_transfer_ratio_from:card.auto_transfer_ratio_from||1,
         auto_transfer_ratio_to:card.auto_transfer_ratio_to||1,
@@ -1568,7 +1569,7 @@ function LibraryImport({db, onClose, onDone}){
           cycle_type:m.cycle_type, benefit_type:m.benefit_type,
           benefit_value:m.benefit_value, benefit_points:m.benefit_points||null,
           stackable:m.stackable, sort_order:m.sort_order,
-        });
+        ,user_id:userId||getCurrentUserId()});
       }
       if((card.milestones||[]).length>0) log.push({type:"ok", msg:`Added ${card.milestones.length} milestones for ${card.name}`});
     }
@@ -1590,7 +1591,7 @@ function LibraryImport({db, onClose, onDone}){
           ratio_from:p.ratio_from, ratio_to:p.ratio_to,
           min_transfer:p.min_transfer||null, transfer_time:p.transfer_time||null,
           notes:p.notes||null, has_reverse:false,
-        });
+        ,user_id:userId||getCurrentUserId()});
         added++;
       }
       if(added>0) log.push({type:"ok", msg:`Added ${added} transfer routes for ${card.name}`});
@@ -1610,7 +1611,7 @@ function LibraryImport({db, onClose, onDone}){
         ratio_from:r.ratio_from, ratio_to:r.ratio_to,
         min_transfer:r.min_transfer||null, transfer_time:r.transfer_time||null,
         notes:r.notes||null, has_reverse:false,
-      });
+      ,user_id:userId||getCurrentUserId()});
       lpAdded++;
     }
     if(lpAdded>0) log.push({type:"ok", msg:`Added ${lpAdded} LP→LP transfer routes`});
@@ -2106,7 +2107,7 @@ function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
 }
 
 
-function Catalog({db,ownersData=[],reloadOwners}){
+function Catalog({db,ownersData=[],reloadOwners,userId}){
   const [tab,setTab]=useState("cards");
   const [mCards,setMCards]=useState([]);
   const [mProgs,setMProgs]=useState([]);
@@ -2160,7 +2161,7 @@ function Catalog({db,ownersData=[],reloadOwners}){
     if(!fC.name.trim()) return alert("Name required");
     const dupes=mCards.filter(c=>c.name.toLowerCase()===fC.name.trim().toLowerCase()&&(!editItem||c.id!==editItem.id));
     if(dupes.length>0) return alert("A master card named '"+fC.name.trim()+"' already exists.");
-    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar",auto_transfer_to:(fC.auto_transfer_to&&fC.auto_transfer_to!=="pending")?fC.auto_transfer_to:null};
+    const p={name:fC.name.trim(),bank:fC.bank,network:fC.network,points_currency:fC.points_currency,inr_per_point:parseFloat(fC.inr_per_point)||0,annual_fee:parseFloat(fC.annual_fee)||0,fee_waiver_amt:parseFloat(fC.fee_waiver_amt)||0,fee_waiver_cycle:fC.fee_waiver_cycle||"calendar",user_id:getCurrentUserId(),auto_transfer_to:(fC.auto_transfer_to&&fC.auto_transfer_to!=="pending")?fC.auto_transfer_to:null};
     setSaving(true);
     if(editItem){
       let logo_url=editItem.logo_url;
@@ -2179,7 +2180,7 @@ function Catalog({db,ownersData=[],reloadOwners}){
     if(!fP.name.trim()) return alert("Name required");
     const dupes=mProgs.filter(p=>p.name.toLowerCase()===fP.name.trim().toLowerCase()&&(!editItem||p.id!==editItem.id));
     if(dupes.length>0) return alert("A master program named '"+fP.name.trim()+"' already exists.");
-    const p={name:fP.name.trim(),category:fP.category,points_currency:fP.points_currency||"pts",inr_per_point:parseFloat(fP.inr_per_point)||0,expiry_rule:fP.expiry_rule};
+    const p={name:fP.name.trim(),category:fP.category,points_currency:fP.points_currency||"pts",inr_per_point:parseFloat(fP.inr_per_point)||0,expiry_rule:fP.expiry_rule,user_id:getCurrentUserId()};
     if(editItem){
       let logo_url=editItem.logo_url;
       if(logoFile){const u=await upLogo("programs",editItem.id);if(u) logo_url=u;}
@@ -2200,11 +2201,11 @@ function Catalog({db,ownersData=[],reloadOwners}){
             if(!toLib) continue;
             let toDbProg=allProgs?.find(q=>q.name.toLowerCase()===toLib.name.toLowerCase());
             if(!toDbProg){
-              const {data:nd}=await db.from("master_programs").insert({name:toLib.name,category:toLib.category,points_currency:toLib.points_currency,inr_per_point:toLib.inr_per_point,expiry_rule:toLib.expiry_rule,logo_url:toLib.logo_url||null});
+              const {data:nd}=await db.from("master_programs").insert({name:toLib.name,category:toLib.category,points_currency:toLib.points_currency,inr_per_point:toLib.inr_per_point,expiry_rule:toLib.expiry_rule,logo_url:toLib.logo_url||null,user_id:getCurrentUserId()});
               if(nd&&nd[0]) toDbProg=nd[0];
             }
             if(!toDbProg) continue;
-            await db.from("master_partners").insert({from_id:newProg.id,from_type:"program",to_id:toDbProg.id,to_type:"program",ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,min_transfer:partner.min_transfer||null,transfer_time:partner.transfer_time||null,notes:partner.notes||null,has_reverse:false});
+            await db.from("master_partners").insert({from_id:newProg.id,from_type:"program",to_id:toDbProg.id,to_type:"program",ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,min_transfer:partner.min_transfer||null,transfer_time:partner.transfer_time||null,notes:partner.notes||null,has_reverse:false,user_id:userId||getCurrentUserId()});
           }
         }
       }
@@ -2220,7 +2221,7 @@ function Catalog({db,ownersData=[],reloadOwners}){
     else await db.from("master_partners").insert(p);
     // If has_reverse, create the reverse route too
     if(!editItem&&fPt.has_reverse){
-      await db.from("master_partners").insert({from_id:p.to_id,from_type:p.to_type,to_id:p.from_id,to_type:p.from_type,ratio_from:p.reverse_ratio_from,ratio_to:p.reverse_ratio_to,min_transfer:p.min_transfer,max_monthly:p.max_monthly,transfer_time:p.transfer_time,notes:p.notes,has_reverse:false,reverse_ratio_from:1,reverse_ratio_to:1});
+      await db.from("master_partners").insert({from_id:p.to_id,from_type:p.to_type,to_id:p.from_id,to_type:p.from_type,ratio_from:p.reverse_ratio_from,ratio_to:p.reverse_ratio_to,min_transfer:p.min_transfer,max_monthly:p.max_monthly,transfer_time:p.transfer_time,notes:p.notes,has_reverse:false,reverse_ratio_from:1,reverse_ratio_to:1,user_id:userId||getCurrentUserId()});
     }
     setShowPart(false);setEditItem(null);load();
   };
@@ -2309,7 +2310,7 @@ function Catalog({db,ownersData=[],reloadOwners}){
         <button style={tb("owners")} onClick={()=>setTab("owners")}>Owners</button>
       </div>
       <Modal show={showLibrary} onClose={()=>setShowLibrary(false)} title="" wide>
-        <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load}/>
+        <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load} userId={user?.id}/>
       </Modal>
       <Modal show={!!showMerge} onClose={()=>setShowMerge(null)} title="">
         {showMerge&&<MergeMasters db={db} type={showMerge} onClose={()=>setShowMerge(null)} onDone={load}/>}
@@ -3973,10 +3974,8 @@ function SettingsDanger({db,owners,onReset}){
   });
 
   const completeWipe=async()=>run(async()=>{
-    // Personal tables (RLS scoped to user)
-    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","spend_categories"])await delAll(t);
-    // Master tables (no user_id, use authenticated write policy)
-    for(const t of["master_partners","master_milestones","master_programs","master_cards"])await delMasterTable(t);
+    // All tables now have user_id - delAll handles everything
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","spend_categories","master_partners","master_milestones","master_programs","master_cards"])await delAll(t);
     alert("Complete wipe done. App is factory fresh.");
     onReset&&onReset();
   });
@@ -5602,7 +5601,7 @@ export default function App(){
         {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
         {tab==="vouchers"          &&<Vouchers db={db} owners={owners}/>}
         {(tab==="pm-setup-owners"||tab==="setup-owners")&&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
-        {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog db={db} ownersData={owners} reloadOwners={()=>loadOwners()}/>}
+        {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog db={db} ownersData={owners} reloadOwners={()=>loadOwners()} userId={user?.id}/>}
         {(tab==="spend-setup-people"||tab==="setup-people")&&<SetupPeople db={db}/>}
         {(tab==="spend-setup-categories"||tab==="setup-categories")&&<SetupCategories db={db}/>}
         {(tab==="spend-setup-mappings"||tab==="setup-mappings")&&<SetupMappings db={db}/>}
