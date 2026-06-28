@@ -3832,7 +3832,7 @@ function SetupOwners({db,owners,reloadOwners}){
 
   const addOwner=async()=>{
     if(!newOwner.trim()) return;
-    await db.from("owners").insert({name:newOwner.trim()});
+    await db.from("owners").insert({name:newOwner.trim(),user_id:getCurrentUserId()});
     setNewOwner(""); reloadOwners();
   };
   const delOwner=async owner=>{
@@ -4255,7 +4255,6 @@ function SetupCategories({db}){
       db.from("merchant_rules").select(),
     ]);
     let rows=c.data||[];
-    if(rows.length===0){await seedCategories(db);const {data:d2}=await db.from("spend_categories").select();rows=d2||[];}
     setCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
     setRules((r.data||[]).sort((a,b)=>a.keyword.localeCompare(b.keyword)));
     setBusy(false);
@@ -4265,7 +4264,7 @@ function SetupCategories({db}){
   // Category CRUD
   const addCat=async()=>{
     if(!newName.trim()) return;
-    await db.from("spend_categories").insert({name:newName.trim(),is_default:false});
+    await db.from("spend_categories").insert({name:newName.trim(),is_default:false,user_id:getCurrentUserId()});
     setNewName(""); load();
   };
   const delCat=async id=>{if(!confirm("Delete this category?")) return;await db.from("spend_categories").delete(id);load();};
@@ -4384,7 +4383,7 @@ function SetupPeople({db}){
 
   const add=async()=>{
     if(!newName.trim()) return;
-    await db.from("people").insert({name:newName.trim()});
+    await db.from("people").insert({name:newName.trim(),user_id:getCurrentUserId()});
     setNewName(""); load();
   };
   const del=async id=>{
