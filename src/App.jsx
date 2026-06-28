@@ -980,10 +980,14 @@ function CardMilestones({masterId,db}){
   if(!ms.length) return null;
   const cLbl={calendar_year:"Cal. Year",billing_year:"Billing Year",calendar_month:"Cal. Month",billing_month:"Bill. Month",lifetime:"Lifetime"};
   const tLbl={bonus_points:"Bonus Points",voucher:"Voucher",fee_waiver:"Fee Waiver",lounge:"Lounge",gift:"Gift",status_upgrade:"Status Upgrade",other:"Benefit"};
+  const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
-      <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Milestones</div>
-      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+      <div onClick={()=>setShow(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Milestones ({ms.length})</div>
+        <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
+      </div>
+      {show&&<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:14}}>
         {ms.map(m=>(
           <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
             <div style={{flexShrink:0,textAlign:"center",minWidth:64}}>
@@ -997,7 +1001,7 @@ function CardMilestones({masterId,db}){
             </div>
           </div>
         ))}
-      </div>
+      </div>}
     </Card>
   );
 }
@@ -2781,6 +2785,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
+  const [showPtsHistory,setShowPtsHistory]=useState(false);
   const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
@@ -2937,8 +2942,11 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <Card>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:16}}>Points History</div>
-        {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
+        <div onClick={()=>setShowPtsHistory(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:showPtsHistory?16:0}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
+          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPtsHistory?"▲":"▼"}</span>
+        </div>
+        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
@@ -2957,7 +2965,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
               </tbody>
             </table>
           </div>
-        )}
+        ))}
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {master?.auto_transfer_to&&<div style={{background:acc+"10",border:`1px solid ${acc}33`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:acc,fontWeight:500}}>
@@ -3108,6 +3116,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
+  const [showPtsHistory,setShowPtsHistory]=useState(false);
   const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
@@ -3216,8 +3225,11 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <Card>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:16}}>Points History</div>
-        {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
+        <div onClick={()=>setShowPtsHistory(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:showPtsHistory?16:0}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
+          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPtsHistory?"▲":"▼"}</span>
+        </div>
+        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
@@ -5397,6 +5409,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [txnSort,setTxnSort]=useState("date-desc");
   const [colW,setColW]=useState([90,200,120,90,140,90]); // date,desc,cat,amt,split,stmt
   const [pieMyShareOnly,setPieMyShareOnly]=useState(false);
+  const [showTxns,setShowTxns]=useState(false);
   const [pieExcludeCats,setPieExcludeCats]=useState(new Set());
   const [showPieFilter,setShowPieFilter]=useState(false);
   const [showStmts,setShowStmts]=useState(false);
@@ -5778,6 +5791,11 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
 
       {/* Transactions */}
       <Card>
+        <div onClick={()=>setShowTxns(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:showTxns?12:0}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transactions ({txns.length})</div>
+          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showTxns?"▲":"▼"}</span>
+        </div>
+        {showTxns&&<>
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
           <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search transactions…" value={txnSearch} onChange={e=>{setTxnSearch(e.target.value);setPage(0);}}/>
           <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={txnSort} onChange={e=>setTxnSort(e.target.value)}>
@@ -5846,6 +5864,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,txns.length)} of {txns.length}</span>
           <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
         </div>}
+        </>}
       </Card>
       {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>
 }
