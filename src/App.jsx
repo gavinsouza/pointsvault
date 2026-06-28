@@ -2525,7 +2525,7 @@ function MyCards({db,owners}){
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today});
     }
     setShow(false); load();
   };
@@ -2625,7 +2625,7 @@ function AddCardModal({db,mCards,owners,onSave,onClose}){
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today});
     }
     setSaving(false);
     onSave&&onSave();
@@ -4039,47 +4039,79 @@ function SetupCategories({db}){
 // ── SetupPeople ───────────────────────────────────────────────────────────────
 function SetupPeople({db}){
   const [people,setPeople]=useState([]);
-  const [showAdd,setShowAdd]=useState(false);
+  const [busy,setBusy]=useState(true);
   const [newName,setNewName]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
 
   const load=useCallback(async()=>{
+    setBusy(true);
     const {data}=await db.from("people").select();
-    setPeople(data||[]);
+    setPeople((data||[]).sort((a,b)=>a.name.localeCompare(b.name)));
+    setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
 
   const add=async()=>{
     if(!newName.trim()) return;
     await db.from("people").insert({name:newName.trim()});
-    setNewName("");setShowAdd(false);load();
+    setNewName(""); load();
   };
   const del=async id=>{
-    if(!confirm("Delete this person?")) return;
-    await db.from("people").delete(id);
-    load();
+    if(!confirm("Delete this person? This may affect split records.")) return;
+    await db.from("people").delete(id); load();
   };
+  const startEdit=p=>{setEditId(p.id);setEditName(p.name);};
+  const saveEdit=async()=>{
+    if(!editName.trim()) return;
+    await db.from("people").update(editId,{name:editName.trim()});
+    setEditId(null); setEditName(""); load();
+  };
+
+  if(busy) return <div style={{color:mut,padding:32,fontSize:13}}>Loading…</div>;
 
   return(
     <div>
-      <Hdr title="People" sub="Friends and family for reimbursement tracking"/>
+      <Hdr title="People" sub="Friends and family for split and reimbursement tracking"/>
       <div style={{maxWidth:520}}>
-        <Card>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>People</div>
-            <button style={{...gbtn,padding:"6px 14px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Person</button>
+        {/* Add form inline like categories */}
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Add Person</div>
+          <div style={{display:"flex",gap:8}}>
+            <input
+              style={{...inp,flex:1,marginBottom:0}}
+              placeholder="e.g. Priya"
+              value={newName}
+              onChange={e=>setNewName(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&add()}
+            />
+            <button style={{...pbtn,whiteSpace:"nowrap"}} onClick={add}>+ Add</button>
           </div>
-          {people.length===0?<div style={{color:mut,fontSize:13}}>No people added yet</div>:people.map(p=>(
-            <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
-              <div style={{fontSize:14,fontWeight:600,color:txt}}>{p.name}</div>
-              <button style={{...dbtn,padding:"4px 10px",fontSize:12}} onClick={()=>del(p.id)}>Delete</button>
+        </Card>
+        {/* People list */}
+        <Card>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>People ({people.length})</div>
+          {people.length===0?(
+            <div style={{color:mut,fontSize:13,padding:"8px 0"}}>No people added yet</div>
+          ):people.map(p=>(
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+              {editId===p.id?(
+                <>
+                  <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                  <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+                </>
+              ):(
+                <>
+                  <div style={{flex:1,fontSize:14,fontWeight:600,color:txt}}>{p.name}</div>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>startEdit(p)}>Edit</button>
+                  <button style={{...dbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>del(p.id)}>Delete</button>
+                </>
+              )}
             </div>
           ))}
         </Card>
       </div>
-      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add Person">
-        {lbl("Name")}<input style={inp} placeholder="Priya" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&add()}/>
-        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={add}>Add Person</button>
-      </Modal>
     </div>
   );
 }
@@ -5400,7 +5432,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     if(amt>0) catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+amt;
   });
   const catData=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,8);
-  const total=catData.reduce((a,[,v])=>a+v,0);
+  const total=catData.reduce((a,[,v])=>a+v,0)||1;
   const allCategories=[...new Set(txns.map(t=>t.category||"Other"))].sort();
   const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9","#e67e22","#16a085","#8a8883"];
 
@@ -5880,7 +5912,7 @@ function SpendCards({db,owners,onNavigate}){
             })}
           </div>
         </div>}
-
+      {showAddCard&&<AddCardModal db={db} mCards={mCards} owners={owners} onSave={()=>load()} onClose={()=>setShowAddCard(false)}/>}
     </div>
   );
 }
