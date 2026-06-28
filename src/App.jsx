@@ -3826,6 +3826,34 @@ function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
   return null;
 }
 
+const NAV=[
+  {section:"Spend Tracker", items:[
+    {id:"spend-overview",   label:"Overview"},
+    {id:"spend-cards",      label:"My Cards"},
+    {id:"spend-ledger",     label:"Ledger"},
+    {id:"spend-upload",     label:"CC Statement Upload", beta:true},
+  ]},
+  {section:"Points & Miles", items:[
+    {id:"overview",         label:"Overview"},
+    {id:"my-cards",         label:"My Cards"},
+    {id:"my-programs",      label:"My Programs"},
+    {id:"transfer",         label:"Transfer Points"},
+    {id:"transfer-history", label:"Transfer History"},
+    {id:"vouchers",         label:"Vouchers"},
+  ]},
+  {section:"Transfer Routes", comingSoon:true, items:[]},
+  {section:"Double Dip",      comingSoon:true, items:[]},
+  {section:"Settings", items:[
+    {id:"settings-general", label:"General"},
+    {id:"settings-danger",  label:"Danger Zone"},
+  ], sub:[
+    {label:"Setup", items:[
+      {id:"setup-mappings",    label:"CC Mappings"},
+      {id:"setup-catalog",     label:"Master"},
+    ]},
+  ]},
+];
+
 export default function App(){
   const [db,setDb]=useState(null);
   const [user,setUser]=useState(null);
