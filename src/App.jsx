@@ -24,7 +24,7 @@ const LIBRARY = {
     {lid:"lp_qantas", logo_url:"https://www.google.com/s2/favicons?domain=qantas.com&sz=128",       name:"Qantas Frequent Flyer",            category:"Airline", points_currency:"Points",             inr_per_point:1.10, expiry_rule:"Points expire after 18 months of inactivity"},
     {lid:"lp_iberia", logo_url:"https://www.google.com/s2/favicons?domain=iberia.com&sz=128",       name:"Iberia Plus",                      category:"Airline", points_currency:"Avios",              inr_per_point:1.00, expiry_rule:"Avios expire after 36 months of inactivity"},
     {lid:"lp_aerlingus", logo_url:"https://www.google.com/s2/favicons?domain=aerlingus.com&sz=128",    name:"Aer Lingus AerClub",               category:"Airline", points_currency:"Avios",              inr_per_point:1.00, expiry_rule:"Avios expire after 36 months of inactivity"},
-    {lid:"lp_alaska", logo_url:"https://www.google.com/s2/favicons?domain=alaskaair.com&sz=128",       name:"Alaska Mileage Plan",              category:"Airline", points_currency:"Miles",              inr_per_point:1.40, expiry_rule:"Miles expire after 24 months of inactivity"},
+    {lid:"lp_alaska", logo_url:"https://www.google.com/s2/favicons?domain=alaskaairlines.com&sz=128",       name:"Alaska Mileage Plan",              category:"Airline", points_currency:"Miles",              inr_per_point:1.40, expiry_rule:"Miles expire after 24 months of inactivity"},
     {lid:"lp_american", logo_url:"https://www.google.com/s2/favicons?domain=aa.com&sz=128",     name:"American Airlines AAdvantage",     category:"Airline", points_currency:"Miles",              inr_per_point:1.20, expiry_rule:"Miles expire after 18 months of inactivity"},
     // Airlines — SkyTeam
     {lid:"lp_flyingblue", logo_url:"https://www.google.com/s2/favicons?domain=airfrance.com&sz=128",   name:"Air France KLM Flying Blue",       category:"Airline", points_currency:"Miles",              inr_per_point:1.20, expiry_rule:"Miles expire after 24 months of inactivity"},
@@ -199,7 +199,7 @@ const LIBRARY = {
       ],
     },
     {
-      lid:"cc_scapia", logo_url:"https://www.google.com/s2/favicons?domain=federalbank.co.in&sz=128",
+      lid:"cc_scapia", logo_url:"https://www.google.com/s2/favicons?domain=scapia.cards&sz=128",
       name:"Scapia Federal Bank Credit Card", bank:"Federal Bank", network:"Visa",
       points_currency:"Scapia Coins", inr_per_point:0.20, annual_fee:0,
       auto_transfer_to:null,
@@ -230,7 +230,7 @@ const LIBRARY = {
     {from_lid:"lp_marriott", to_lid:"lp_aeroplan", logo_url:"https://www.google.com/s2/favicons?domain=aircanada.com&sz=128",   ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"+5,000 bonus miles per 60,000 pts transferred"},
     {from_lid:"lp_marriott", to_lid:"lp_united", logo_url:"https://www.google.com/s2/favicons?domain=united.com&sz=128",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"+10,000 bonus miles per 60,000 pts (special United rate)"},
     {from_lid:"lp_marriott", to_lid:"lp_american", logo_url:"https://www.google.com/s2/favicons?domain=aa.com&sz=128",   ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"No transfer bonus. Marriott is the ONLY hotel partner for AAdvantage"},
-    {from_lid:"lp_marriott", to_lid:"lp_alaska", logo_url:"https://www.google.com/s2/favicons?domain=alaskaair.com&sz=128",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"+5,000 bonus miles per 60,000 pts transferred"},
+    {from_lid:"lp_marriott", to_lid:"lp_alaska", logo_url:"https://www.google.com/s2/favicons?domain=alaskaairlines.com&sz=128",     ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"+5,000 bonus miles per 60,000 pts transferred"},
     {from_lid:"lp_marriott", to_lid:"lp_ana", logo_url:"https://www.google.com/s2/favicons?domain=ana.co.jp&sz=128",        ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"+5,000 bonus miles per 60,000 pts transferred"},
     {from_lid:"lp_marriott", to_lid:"lp_lufthansa", logo_url:"https://www.google.com/s2/favicons?domain=lufthansa.com&sz=128",  ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"3–7 days",  notes:"+5,000 bonus miles per 60,000 pts transferred"},
     {from_lid:"lp_marriott", to_lid:"lp_lifemiles", logo_url:"https://www.google.com/s2/favicons?domain=avianca.com&sz=128",  ratio_from:3, ratio_to:1, min_transfer:3000, transfer_time:"1–3 days",  notes:"No transfer bonus"},
