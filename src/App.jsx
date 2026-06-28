@@ -2178,7 +2178,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
       await db.from("master_cards").update(editItem.id,{...p,logo_url});
     } else {
       const {data}=await db.from("master_cards").insert(p);
-      if(data&&data[0]&&logoFile){const u=await upLogo("cards",data[0].id);if(u) await db.from("master_cards").update(data[0].id,{logo_url:u});}
+      if(data&&data[0]&&logoFile){const u=await upLogo("cards",data[0].id);if(u) await db.from("master_cards").update(data[0].id,{logo_url:u});,user_id:getCurrentUserId()}
     }
     setSaving(false);
     setShowCard(false);setEditItem(null);setLogoFile(null);setLogoPrev(null);load();
@@ -2599,7 +2599,7 @@ function MyCards({db,owners}){
     const ob=parseInt(f.opening_balance)||0;
     const p={master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,last4:f.last4,opening_balance:ob,points_balance:0,stmt_date:parseInt(f.stmt_date)||null,card_expiry:f.card_expiry||null,fee_override:f.fee_override,fee_override_value:f.fee_override?parseFloat(f.fee_override_value)||0:null,billing_year_start:f.billing_year_start||null,fee_charge_date:f.fee_charge_date||null,linked_program_id:f.linked_program_id||null,user_id:getCurrentUserId()};
     const {data,error}=await db.from("my_cards").insert(p);
-    if(error){ alert("Failed to add card: "+JSON.stringify(error)); return; }
+    if(error){ alert("Failed to add card: "+JSON.stringify(error)); return; ,user_id:getCurrentUserId()}
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
@@ -3145,7 +3145,7 @@ function MyPrograms({db,owners}){
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:ob,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:0,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
     }
     setShow(false);load();
   };
@@ -3793,7 +3793,7 @@ function Vouchers({db,owners}){
     else{await db.from("vouchers").insert(p);}
     setShow(false);setEdit(null);setF(eF);load();
   };
-  const del=async id=>{if(!confirm("Delete voucher?")) return;await db.from("vouchers").delete(id);load();};
+  const del=async id=>{if(!confirm("Delete voucher?")) return;await db.from("vouchers").delete(id);load();,user_id:getCurrentUserId()};
   const openEdit=v=>{setEdit(v);setF({owner_id:v.owner_id||"",title:v.title||"",code:v.code||"",expiry:v.expiry||"",value:String(v.value||""),notes:v.notes||""});setShow(true);};
 
   const today=new Date().toISOString().split("T")[0];
@@ -4300,7 +4300,7 @@ function SetupCategories({db}){
       if(uid){
         const defaults=CATEGORIES.map(name=>({name,is_default:true,user_id:uid}));
         for(const d of defaults) await db.from("spend_categories").insert(d);
-        const {data:d2}=await db.from("spend_categories").select();
+        const {data:d2,user_id:getCurrentUserId()}=await db.from("spend_categories").select();
         rows=d2||[];
       }
     }
@@ -4895,7 +4895,7 @@ function SpendUpload({db,owners=[]}){
       };
       if(stmtId) txnData.statement_id=stmtId;
       const {error}=await db.from("spend_transactions").insert(txnData);
-      if(error){console.error("Txn insert error:",error,txnData);skipped++;}
+      if(error){console.error("Txn insert error:",error,txnData);skipped++;,user_id:getCurrentUserId()}
       else added++;
     }
     setImporting(false);
@@ -6846,7 +6846,7 @@ function SpendLedger({db,owners}){
     setYouPaid(""); setTheyPaid(""); setDesc(""); load();
   };
 
-  const del=async id=>{if(!confirm("Delete this entry?")) return;await db.from("ledger_entries").delete(id);load();};
+  const del=async id=>{if(!confirm("Delete this entry?")) return;await db.from("ledger_entries").delete(id);load();,user_id:getCurrentUserId()};
 
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
