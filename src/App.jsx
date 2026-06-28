@@ -442,6 +442,21 @@ function Hdr({title,sub,action}){
   );
 }
 
+// ── CC Mapping Library ────────────────────────────────────────────────────────
+const MAPPING_LIBRARY=[
+  {lid:"ml_hdfc_csv",name:"HDFC Bank CSV",bank:"HDFC Bank",
+   description:"HDFC Bank credit card statement (pipe-delimited CSV)",
+   delimiter:"|",skip_rows:0,date_col:0,desc_col:2,amount_type:"single",
+   amount_col:4,debit_col:-1,credit_col:-1,date_format:"DD/MM/YYYY",
+   credit_ind_col:-1,total_due_row:6,total_due_col:1,opening_bal_row:13,opening_bal_col:0},
+  {lid:"ml_axis_xlsx",name:"Axis Bank XLSX",bank:"Axis Bank",
+   description:"Axis Bank credit card statement (Excel XLSX format)",
+   delimiter:"auto",skip_rows:8,date_col:0,desc_col:1,amount_type:"debit_credit",
+   amount_col:-1,debit_col:3,credit_col:4,date_format:"DD/MM/YYYY",
+   credit_ind_col:-1,total_due_row:4,total_due_col:1,opening_bal_row:0,opening_bal_col:-1},
+];
+
+
 function LogoCircle({url,name,size=56}){
   const [err,setErr]=useState(false);
   const init=(name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
@@ -4094,6 +4109,10 @@ function SetupMappings({db}){
   const [mCards,setMCards]=useState([]);
   const [owners,setOwners]=useState([]);
   const [busy,setBusy]=useState(true);
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
+  const [showLibrary,setShowLibrary]=useState(false);
+  const [importing,setImporting]=useState(null);
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -4103,27 +4122,81 @@ function SetupMappings({db}){
       db.from("master_cards").select(),
       db.from("owners").select(),
     ]);
-    setMappings(m.data||[]);
-    setCards(c.data||[]);
-    setMCards(mc.data||[]);
-    setOwners(o.data||[]);
+    setMappings(m.data||[]);setCards(c.data||[]);setMCards(mc.data||[]);setOwners(o.data||[]);
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
 
   const del=async id=>{
-    if(!confirm("Delete this mapping? This cannot be undone.")) return;
+    if(!confirm("Delete this mapping?")) return;
     await db.from("csv_mappings").delete(id);
     load();
+  };
+
+  const saveEdit=async()=>{
+    if(!editName.trim()) return;
+    const dupe=mappings.find(m=>m.name.toLowerCase()===editName.trim().toLowerCase()&&m.id!==editId);
+    if(dupe) return alert("A mapping with that name already exists.");
+    await db.from("csv_mappings").update(editId,{name:editName.trim()});
+    setEditId(null);setEditName("");load();
+  };
+
+  const importFromLibrary=async(lib)=>{
+    setImporting(lib.lid);
+    const exists=mappings.find(m=>m.name.toLowerCase()===lib.name.toLowerCase());
+    if(exists){alert(`"${lib.name}" is already saved.`);setImporting(null);return;}
+    await db.from("csv_mappings").insert({
+      name:lib.name,card_id:null,
+      date_col:lib.date_col,desc_col:lib.desc_col,
+      amount_type:lib.amount_type,amount_col:lib.amount_col,
+      debit_col:lib.debit_col,credit_col:lib.credit_col,
+      date_format:lib.date_format,skip_rows:lib.skip_rows,
+      credit_ind_col:lib.credit_ind_col,delimiter:lib.delimiter,
+      total_due_row:lib.total_due_row,total_due_col:lib.total_due_col,
+      opening_bal_row:lib.opening_bal_row,opening_bal_col:lib.opening_bal_col,
+    });
+    setImporting(null);setShowLibrary(false);load();
   };
 
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
   return(
     <div>
-      <Hdr title="CC Mappings" sub="Saved import configurations for your credit cards"/>
+      <Hdr title="CC Mappings" sub="Saved import configurations for your credit cards"
+        action={<button style={{...gbtn,fontSize:12}} onClick={()=>setShowLibrary(v=>!v)}>
+          {showLibrary?"Hide Library":"✦ Import from Library"}
+        </button>}
+      />
+
+      {showLibrary&&(
+        <div style={{maxWidth:600,marginBottom:20}}>
+          <Card>
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Mapping Library</div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {MAPPING_LIBRARY.map(lib=>{
+                const already=mappings.some(m=>m.name.toLowerCase()===lib.name.toLowerCase());
+                return(
+                  <div key={lib.lid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:13,fontWeight:600,color:txt}}>{lib.name}</div>
+                      <div style={{fontSize:11,color:mut,marginTop:2}}>{lib.description}</div>
+                    </div>
+                    {already
+                      ?<span style={{fontSize:11,color:grn,fontWeight:500}}>✓ Already saved</span>
+                      :<button style={{...pbtn,fontSize:12,padding:"5px 14px",opacity:importing===lib.lid?0.5:1}} onClick={()=>importFromLibrary(lib)} disabled={!!importing}>
+                        {importing===lib.lid?"Importing…":"Import"}
+                      </button>
+                    }
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
       {mappings.length===0?(
-        <Empty icon="M" msg="No saved mappings yet — create one during CC Statement Upload"/>
+        <Empty icon="M" msg="No saved mappings yet — create one during CC Statement Upload or import from Library above"/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:600}}>
           {mappings.map(m=>{
@@ -4131,15 +4204,28 @@ function SetupMappings({db}){
             const mc=card&&mCards.find(x=>x.id===card.master_id);
             const owner=card&&owners.find(o=>o.id===card.owner_id);
             return(
-              <Card key={m.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:3}}>{m.name}</div>
-                  <div style={{fontSize:11,color:mut}}>
-                    {mc?.name&&<span>{mc.name}{owner?" · "+owner.name:""} · </span>}
-                    {m.delimiter==="auto"?"Auto":m.delimiter==="	"?"Tab":m.delimiter||"Auto"} delimiter · Skip {m.skip_rows||0} rows · Date col {(m.date_col||0)+1} · Desc col {(m.desc_col||0)+1}
+              <Card key={m.id}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                  <div style={{flex:1}}>
+                    {editId===m.id?(
+                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                        <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                        <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
+                        <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+                      </div>
+                    ):(
+                      <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:3}}>{m.name}</div>
+                    )}
+                    <div style={{fontSize:11,color:mut,marginTop:editId===m.id?6:0}}>
+                      {mc?.name&&<span>{mc.name}{owner?" · "+owner.name:""} · </span>}
+                      {m.delimiter==="auto"?"Auto":m.delimiter==="	"?"Tab":m.delimiter||"Auto"} delimiter · Skip {m.skip_rows||0} rows · Date col {(m.date_col||0)+1} · Desc col {(m.desc_col||0)+1}
+                    </div>
+                  </div>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                    {editId!==m.id&&<button onClick={()=>{setEditId(m.id);setEditName(m.name);}} style={{...gbtn,fontSize:12,padding:"4px 10px"}}>Edit</button>}
+                    <button onClick={()=>del(m.id)} style={{...dbtn,fontSize:12,padding:"4px 10px"}}>Delete</button>
                   </div>
                 </div>
-                <button onClick={()=>del(m.id)} style={{...dbtn,fontSize:12,padding:"4px 12px",flexShrink:0}}>Delete</button>
               </Card>
             );
           })}
@@ -4149,18 +4235,6 @@ function SetupMappings({db}){
   );
 }
 
-// ── SetupCategories ───────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES=[
-  "Dining","Travel","Fuel","Groceries","Shopping","Utilities",
-  "Entertainment","Healthcare","Education","Rent","Insurance",
-  "Vouchers / Wallet","Reimbursable","Other"
-];
-
-async function seedCategories(db){
-  for(const name of DEFAULT_CATEGORIES){
-    await db.from("spend_categories").insert({name,is_default:true});
-  }
-}
 
 function SetupCategories({db}){
   const [cats,setCats]=useState([]);
