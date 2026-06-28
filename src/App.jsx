@@ -405,12 +405,12 @@ function LogoCircle({url,name,size=56}){
   const [err,setErr]=useState(false);
   const init=(name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   if(url&&url.length>10&&!err) return(
-    <div style={{width:size,height:size,borderRadius:size*0.18,overflow:"hidden",flexShrink:0,backgroundColor:"#ffffff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <img src={url} alt={name||""} style={{width:"90%",height:"90%",objectFit:"contain",display:"block",backgroundColor:"#ffffff"}} onError={()=>setErr(true)}/>
+    <div style={{width:size,height:size,borderRadius:size*0.18,overflow:"hidden",flexShrink:0,border:`1px solid ${bdr}`,backgroundColor:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <img src={url} alt={name||""} width={size} height={size} style={{objectFit:"contain",display:"block"}} onError={()=>setErr(true)}/>
     </div>
   );
   return(
-    <div style={{width:size,height:size,borderRadius:size*0.18,backgroundColor:acc+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+    <div style={{width:size,height:size,borderRadius:size*0.18,backgroundColor:acc+"18",border:`1px solid ${bdr}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
       <span style={{fontSize:size*0.34,fontWeight:700,color:acc,lineHeight:1}}>{init}</span>
     </div>
   );
