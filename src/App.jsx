@@ -5570,9 +5570,6 @@ export default function App(){
       <div style={{display:"none"}} className="mobile-header">
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`,position:"sticky",top:0,zIndex:50}}>
           <div onClick={()=>{setTab("home");const s=new Set();NAV.forEach((_,i)=>s.add('s'+i));setCollapsed(s);}} style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
-          <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:txt,padding:"4px 8px",lineHeight:1}}>
-            {menuOpen?"✕":"☰"}
-          </button>
         </div>
 
         {/* Full-screen overlay menu */}
@@ -5662,9 +5659,11 @@ export default function App(){
           aside{display:none!important;}
           .mobile-header{display:flex!important;flex-direction:column;}
           .mobile-bottom-nav{display:flex!important;}
-          main{padding:12px 14px 80px!important;overflow-x:hidden!important;}
+          main{padding:12px 14px 80px!important;overflow-x:hidden!important;max-width:100vw!important;}
           table{font-size:12px!important;}
-          .mobile-no-scroll{overflow-x:hidden!important;max-width:100vw!important;}
+          body,#root{overflow-x:hidden!important;max-width:100vw!important;}
+          .landing-grid{grid-template-columns:1fr!important;}
+          .mobile-header > div:first-child {display:none!important;}
         }
         .mobile-bottom-nav{
           position:fixed;bottom:0;left:0;right:0;
@@ -5676,10 +5675,8 @@ export default function App(){
         input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
         input[type=number]{-moz-appearance:textfield;}
         @media (max-width:700px){
-          * {max-width:100%;box-sizing:border-box;}
+          *{box-sizing:border-box;}
           img{max-width:100%;}
-          .grid-desktop{display:block!important;}
-          div[style*="display:grid"]{overflow-x:hidden;}
         }
       `}</style>
 
@@ -5770,11 +5767,11 @@ function LandingPage({onNavigate}){
   ];
 
   return(
-    <div style={{maxWidth:860,margin:"0 auto",padding:"48px 0"}}>
+    <div style={{maxWidth:860,margin:"0 auto",padding:"32px 0"}}>
       {/* Header */}
       <div style={{textAlign:"center",marginBottom:52}}>
         <div style={{fontSize:13,fontWeight:600,color:acc,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>PointsVault</div>
-        <div style={{fontSize:36,fontWeight:700,color:txt,letterSpacing:"-0.03em",lineHeight:1.15,marginBottom:12}}>
+        <div style={{fontSize:"clamp(24px,5vw,36px)",fontWeight:700,color:txt,letterSpacing:"-0.03em",lineHeight:1.15,marginBottom:12}}>
           Your rewards, organised.
         </div>
         <div style={{fontSize:15,color:mut,maxWidth:480,margin:"0 auto",lineHeight:1.6}}>
@@ -5783,7 +5780,7 @@ function LandingPage({onNavigate}){
       </div>
 
       {/* Module cards */}
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}} className="landing-grid">
         {cards.map(c=>(
           <div
             key={c.id}
