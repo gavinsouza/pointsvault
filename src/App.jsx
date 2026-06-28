@@ -6164,9 +6164,12 @@ function SpendCards({db,owners,onNavigate}){
             return(
               <Card key={card.id} style={{cursor:"pointer",position:"relative"}} onClick={()=>setSelCard(card)}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                  <div>
+                  <div style={{display:"flex",alignItems:"center",gap:12}}>
+                    <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
+                    <div>
                     <div style={{fontSize:14,fontWeight:700,color:txt,letterSpacing:"-0.02em"}}>{card.nickname||m?.name||"Card"}</div>
                     <div style={{fontSize:11,color:mut,marginTop:2}}>{o?.name||""}{m?.bank?" · "+m.bank:""}{card.last4?" · ····"+card.last4:""}</div>
+                  </div>
                   </div>
                   <button onClick={e=>{e.stopPropagation();toggleHide(card);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:mut,padding:"2px 6px"}}>Hide</button>
                 </div>
