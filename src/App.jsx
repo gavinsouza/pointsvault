@@ -344,13 +344,20 @@ const dbtn={...pbtn,background:surf,color:red,border:`1px solid ${bdr}`};
 const num={fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"};
 
 function lbl(t){return <div style={{fontSize:10,color:mut,fontWeight:500,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:6,fontFamily:"'Manrope',sans-serif"}}>{t}</div>;}
-function inrFmt(v){if(v>=100000)return"₹"+(v/100000).toFixed(1)+"L";if(v>=1000)return"₹"+(v/1000).toFixed(1)+"K";return"₹"+Math.round(v).toLocaleString("en-IN");}
-function fmtDate(d){
+function inrFmt(v){return"₹"+Math.round(v).toLocaleString("en-IN");}
+function fmtDate(d,mode="full"){
+  // mode: "full"=DD-Mon-YY, "noYear"=DD-Mon, "monthYear"=Mon-YY
   if(!d) return "—";
   const s=d.substring(0,10);
   const p=s.split("-");
   if(p.length!==3) return s;
-  return p[2]+"/"+p[1]+"/"+p[0].slice(2); // DD/MM/YY
+  const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const day=parseInt(p[2],10);
+  const mon=MONTHS[parseInt(p[1],10)-1]||p[1];
+  const yr="'"+p[0].slice(2);
+  if(mode==="noYear") return `${day}-${mon}`;
+  if(mode==="monthYear") return `${mon}-${yr}`;
+  return `${day}-${mon}-${yr}`;
 }
 
 function fmtMonth(ym){
@@ -557,7 +564,7 @@ function UnifiedChart({txns,cards,progs,mc,mp,owners}){
   const yTicks=4;
   const yVals=Array.from({length:yTicks+1},(_,i)=>minV+(range/yTicks)*i);
   const fmtTick=v=>metric==="inr"?inrFmt(v):Math.round(v).toLocaleString("en-IN");
-  const fmtD=d=>new Date(d).toLocaleDateString("en-IN",{day:"numeric",month:"short"});
+  const fmtD=d=>fmtDate(d,"noYear");
 
   // Use first series for x-axis labels
   const xSeries=series[0]||[];
@@ -937,7 +944,7 @@ function Overview({db,owners,onNavigate}){
               <tbody>
                 {transfers.slice(0,5).map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{new Date(t.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</td>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.transfer_date,"noYear")}</td>
                     <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.from_name||"--"}</td>
                     <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.to_name||"--"}</td>
                     <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:red}}>{(t.points_sent||0).toLocaleString()}</td>
@@ -991,7 +998,7 @@ function CardMilestones({masterId,db}){
         {ms.map(m=>(
           <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
             <div style={{flexShrink:0,textAlign:"center",minWidth:64}}>
-              {m.spend_threshold>0&&<div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{"Rs."+(m.spend_threshold>=100000?(m.spend_threshold/100000).toFixed(0)+"L":m.spend_threshold>=1000?(m.spend_threshold/1000).toFixed(0)+"K":m.spend_threshold)}</div>}
+              {m.spend_threshold>0&&<div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{"₹"+Number(m.spend_threshold).toLocaleString("en-IN")}</div>}
               <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.05em"}}>{cLbl[m.cycle_type]||m.cycle_type}</div>
             </div>
             <div style={{flex:1,minWidth:0}}>
@@ -1892,7 +1899,7 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
             {milestones.map(m=>(
               <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
                 <div style={{flexShrink:0,textAlign:"center",minWidth:64}}>
-                  {m.spend_threshold>0&&<div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{"₹"+(m.spend_threshold>=100000?(m.spend_threshold/100000).toFixed(0)+"L":m.spend_threshold>=1000?(m.spend_threshold/1000).toFixed(0)+"K":m.spend_threshold)}</div>}
+                  {m.spend_threshold>0&&<div className="pv-num" style={{fontSize:12,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{"₹"+Number(m.spend_threshold).toLocaleString("en-IN")}</div>}
                   <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.05em"}}>{cLbl[m.cycle_type]||m.cycle_type}</div>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
@@ -2955,7 +2962,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
               <tbody>
                 {disp.map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":fmtDate(t.txn_date)}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
@@ -3077,7 +3084,7 @@ function MyPrograms({db,owners}){
                 <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>points</div>
                 {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
                 <div style={{borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:exp?red:mut,fontWeight:400}}>
-                  {p.expiry_date?(exp?"⚠ ":"")+new Date(p.expiry_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})+(days!==null?" · "+days+"d":""):""}
+                  {p.expiry_date?(exp?"⚠ ":"")+fmtDate(p.expiry_date)+(days!==null?" · "+days+"d":""):""}
                 </div>
               </div>
             );
@@ -3238,7 +3245,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
               <tbody>
                 {disp.map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":new Date(t.txn_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</td>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":fmtDate(t.txn_date)}</td>
                     <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
@@ -3535,7 +3542,7 @@ function TransferHistory({db,owners}){
               <tbody>
                 {filtered.map(l=>(
                   <tr key={l.id} style={{borderBottom:`1px solid ${bdr}`,cursor:"pointer"}} onClick={()=>setDetail(detail?.id===l.id?null:l)}>
-                    <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{new Date(l.transfer_date).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}{l.cross_owner&&<span style={{marginLeft:6,fontSize:10,color:acc,fontWeight:600}}>cross</span>}</td>
+                    <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(l.transfer_date)}{l.cross_owner&&<span style={{marginLeft:6,fontSize:10,color:acc,fontWeight:600}}>cross</span>}</td>
                     <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.from_name||"--"}</td>
                     <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.to_name||"--"}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(l.points_sent||0).toLocaleString()}</td>
@@ -3551,7 +3558,7 @@ function TransferHistory({db,owners}){
           {detail&&(
             <div style={{background:surf2,borderTop:`1px solid ${bdr}`,padding:"12px 16px"}}>
               <div style={{display:"flex",gap:20,flexWrap:"wrap",fontSize:13}}>
-                <div><span style={{color:mut,fontSize:11}}>Date: </span>{new Date(detail.transfer_date).toLocaleDateString("en-IN",{weekday:"long",day:"numeric",month:"long",year:"numeric"})}</div>
+                <div><span style={{color:mut,fontSize:11}}>Date: </span>{fmtDate(detail.transfer_date)}</div>
                 {detail.notes&&<div><span style={{color:mut,fontSize:11}}>Notes: </span>{detail.notes}</div>}
                 <div><span style={{color:mut,fontSize:11}}>Total received: </span><strong style={{color:grn}}>{((detail.points_received||0)+(detail.bonus_miles||0)).toLocaleString()}</strong></div>
                 {detail.cross_owner&&<div style={{color:acc,fontWeight:600}}>Cross-owner transfer</div>}
@@ -3653,7 +3660,7 @@ function Vouchers({db,owners}){
               {v.code&&<div style={{fontSize:12,fontFamily:"monospace",background:surf2,padding:"4px 8px",borderRadius:6,color:txt,marginBottom:6,display:"inline-block"}}>{v.code}</div>}
               <div style={{fontSize:12,color:mut,marginBottom:2}}>{owners.find(o=>o.id===v.owner_id)?.name||"—"}</div>
               {v.value&&<div style={{fontSize:13,fontWeight:600,color:grn,marginBottom:2}}>{inrFmt(v.value)}</div>}
-              {v.expiry&&<div style={{fontSize:11,color:expired(v)?red:mut,marginBottom:2}}>Expires: {new Date(v.expiry).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>}
+              {v.expiry&&<div style={{fontSize:11,color:expired(v)?red:mut,marginBottom:2}}>Expires: {fmtDate(v.expiry)}</div>}
               {v.notes&&<div style={{fontSize:11,color:mut,marginTop:4}}>{v.notes}</div>}
               <div style={{display:"flex",gap:6,marginTop:12}}>
                 <button style={{...gbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>openEdit(v)}>Edit</button>
@@ -5127,7 +5134,7 @@ const NAV=[
 
 export default function App(){
   const [db,setDb]=useState(null);
-  const [tab,setTab]=useState("overview");
+  const [tab,setTab]=useState("home");
   const [menuOpen,setMenuOpen]=useState(false);
   const [owners,setOwners]=useState([]);
   const [collapsed,setCollapsed]=useState(()=>{const s=new Set();[0,1,2,3,4].forEach(i=>s.add('s'+i));return s;});
@@ -5140,6 +5147,17 @@ export default function App(){
   const loadOwners=async client=>{
     const {data}=await (client||db).from("owners").select();
     setOwners(data||[]);
+  };
+
+  // Navigate to a tab and expand only that section's menu
+  const navigate=(tabId,sectionIdx)=>{
+    setTab(tabId);
+    if(sectionIdx!==undefined){
+      const s=new Set();
+      NAV.forEach((_,i)=>{ if(i!==sectionIdx) s.add('s'+i); });
+      setCollapsed(s);
+    }
+    setMenuOpen(false);
   };
 
   if(!db) return(
@@ -5172,7 +5190,7 @@ export default function App(){
       {/* ── Desktop Sidebar ── */}
       <aside style={{width:220,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
         <div style={{padding:"22px 20px 12px"}}>
-          <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.04em"}}>PointsVault</div>
+          <div onClick={()=>setTab("home")} style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.04em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
           <div style={{fontSize:9,color:mut,marginTop:2,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:500}}>Wealth Tracker</div>
         </div>
 
@@ -5227,14 +5245,14 @@ export default function App(){
       {/* ── Mobile Header ── */}
       <div style={{display:"none"}} className="mobile-header">
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`}}>
-          <div style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>PointsVault</div>
+          <div onClick={()=>setTab("home")} style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
           <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:txt}}>☰</button>
         </div>
         {menuOpen&&(
           <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(0,0,0,0.3)"}} onClick={()=>setMenuOpen(false)}>
             <div style={{position:"absolute",left:0,top:0,bottom:0,width:280,background:surf,overflowY:"auto",boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${bdr}`}}>
-                <div style={{fontSize:18,fontWeight:700,color:txt}}>PointsVault</div>
+                <div onClick={()=>{setTab("home");setMenuOpen(false);}} style={{fontSize:18,fontWeight:700,color:txt,cursor:"pointer",userSelect:"none"}}>PointsVault</div>
               </div>
               {NAV.map((section,si)=>(
                 <div key={si}>
@@ -5288,6 +5306,7 @@ export default function App(){
             .ov-col{width:100%!important;}
           }
         `}</style>
+        {tab==="home"&&<LandingPage onNavigate={navigate}/>}
         {tab==="overview"          &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="my-cards"          &&<MyCards db={db} owners={owners}/>}
         {tab==="my-programs"       &&<MyPrograms db={db} owners={owners}/>}
@@ -5310,6 +5329,110 @@ export default function App(){
   );
 }
 
+
+// ── LandingPage ──────────────────────────────────────────────────────────────
+function LandingPage({onNavigate}){
+  const cards=[
+    {
+      id:"spend",
+      label:"Spend Tracker",
+      desc:"Track credit card spending, import statements, manage splits and reimbursements",
+      icon:"💳",
+      tabId:"spend-overview",
+      sectionIdx:0,
+      color:"#b07d3a",
+      bg:"#fdf6ed",
+      border:"#e8c98a",
+    },
+    {
+      id:"pm",
+      label:"Points & Miles",
+      desc:"Manage loyalty points, track balances, log transfers and redemptions",
+      icon:"✈️",
+      tabId:"overview",
+      sectionIdx:1,
+      color:"#2d6a4f",
+      bg:"#edf7f2",
+      border:"#8ecfb0",
+    },
+    {
+      id:"routes",
+      label:"Transfer Routes",
+      desc:"Find the best transfer paths to maximise your points value",
+      icon:"🗺️",
+      tabId:null,
+      sectionIdx:2,
+      color:"#8a8883",
+      bg:"#f5f5f3",
+      border:"#d0cfcc",
+      soon:true,
+    },
+    {
+      id:"doubledip",
+      label:"Double Dip",
+      desc:"Identify opportunities to earn points on the same spend twice",
+      icon:"🎯",
+      tabId:null,
+      sectionIdx:3,
+      color:"#8a8883",
+      bg:"#f5f5f3",
+      border:"#d0cfcc",
+      soon:true,
+    },
+  ];
+
+  return(
+    <div style={{maxWidth:860,margin:"0 auto",padding:"48px 0"}}>
+      {/* Header */}
+      <div style={{textAlign:"center",marginBottom:52}}>
+        <div style={{fontSize:13,fontWeight:600,color:acc,letterSpacing:"0.12em",textTransform:"uppercase",marginBottom:12}}>PointsVault</div>
+        <div style={{fontSize:36,fontWeight:700,color:txt,letterSpacing:"-0.03em",lineHeight:1.15,marginBottom:12}}>
+          Your rewards, organised.
+        </div>
+        <div style={{fontSize:15,color:mut,maxWidth:480,margin:"0 auto",lineHeight:1.6}}>
+          Track spending, manage loyalty points, and make every transaction count.
+        </div>
+      </div>
+
+      {/* Module cards */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:20}}>
+        {cards.map(c=>(
+          <div
+            key={c.id}
+            onClick={()=>!c.soon&&onNavigate(c.tabId,c.sectionIdx)}
+            style={{
+              background:c.bg,
+              border:`1.5px solid ${c.border}`,
+              borderRadius:16,
+              padding:"28px 28px 24px",
+              cursor:c.soon?"default":"pointer",
+              opacity:c.soon?0.6:1,
+              transition:"transform 0.15s, box-shadow 0.15s",
+              position:"relative",
+              userSelect:"none",
+            }}
+            onMouseEnter={e=>{if(!c.soon){e.currentTarget.style.transform="translateY(-2px)";e.currentTarget.style.boxShadow="0 8px 24px rgba(0,0,0,0.08)";}}}
+            onMouseLeave={e=>{e.currentTarget.style.transform="";e.currentTarget.style.boxShadow="";}}
+          >
+            {c.soon&&(
+              <div style={{position:"absolute",top:16,right:16,background:"#e9e8e5",color:"#5c5a57",fontSize:9,fontWeight:700,letterSpacing:"0.1em",textTransform:"uppercase",padding:"3px 8px",borderRadius:20}}>
+                Coming Soon
+              </div>
+            )}
+            <div style={{fontSize:32,marginBottom:14}}>{c.icon}</div>
+            <div style={{fontSize:17,fontWeight:700,color:c.soon?mut:c.color,marginBottom:8,letterSpacing:"-0.01em"}}>{c.label}</div>
+            <div style={{fontSize:13,color:mut,lineHeight:1.6}}>{c.desc}</div>
+            {!c.soon&&(
+              <div style={{marginTop:20,fontSize:12,fontWeight:600,color:c.color,display:"flex",alignItems:"center",gap:4}}>
+                Open <span style={{fontSize:14}}>→</span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 // ── SpendOverview ──────────────────────────────────────────────────────────────
 function SpendOverview({db,owners}){
@@ -5667,7 +5790,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                 <div style={{fontSize:11,color:mut,marginTop:2}}>
                   {s.transaction_count||0} transactions · ₹{Number(s.total_spend||0).toLocaleString("en-IN")}
                   {s.file_name&&<span style={{marginLeft:8,opacity:0.6}}>· {s.file_name}</span>}
-                  {s.uploaded_at&&<span style={{marginLeft:8,opacity:0.6}}>· Uploaded {new Date(s.uploaded_at).toLocaleDateString("en-IN",{day:"numeric",month:"short"})}</span>}
+                  {s.uploaded_at&&<span style={{marginLeft:8,opacity:0.6}}>· Uploaded {fmtDate(s.uploaded_at,"noYear")}</span>}
                 </div>
               </div>
               <div style={{display:"flex",gap:8}}>
