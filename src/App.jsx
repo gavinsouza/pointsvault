@@ -2131,7 +2131,27 @@ function Catalog({db,ownersData=[],reloadOwners}){
       await db.from("master_programs").update(editItem.id,{...p,logo_url});
     } else {
       const {data}=await db.from("master_programs").insert(p);
-      if(data&&data[0]&&logoFile){const u=await upLogo("programs",data[0].id);if(u) await db.from("master_programs").update(data[0].id,{logo_url:u});}
+      if(data&&data[0]){
+        const newProg=data[0];
+        if(logoFile){const u=await upLogo("programs",newProg.id);if(u) await db.from("master_programs").update(newProg.id,{logo_url:u});}
+        // Auto-import transfer partners from library by matching name
+        const libLp=LIBRARY.programs.find(l=>l.name.toLowerCase()===p.name.trim().toLowerCase());
+        if(libLp&&libLp.partners&&libLp.partners.length>0){
+          const {data:allProgs}=await db.from("master_programs").select();
+          const {data:allCards}=await db.from("master_cards").select();
+          for(const partner of libLp.partners){
+            const toLib=LIBRARY.programs.find(l=>l.lid===partner.to_lid);
+            if(!toLib) continue;
+            let toDbProg=allProgs?.find(q=>q.name.toLowerCase()===toLib.name.toLowerCase());
+            if(!toDbProg){
+              const {data:nd}=await db.from("master_programs").insert({name:toLib.name,category:toLib.category,points_currency:toLib.points_currency,inr_per_point:toLib.inr_per_point,expiry_rule:toLib.expiry_rule,logo_url:toLib.logo_url||null});
+              if(nd&&nd[0]) toDbProg=nd[0];
+            }
+            if(!toDbProg) continue;
+            await db.from("master_partners").insert({from_id:newProg.id,from_type:"program",to_id:toDbProg.id,to_type:"program",ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,min_transfer:partner.min_transfer||null,transfer_time:partner.transfer_time||null,notes:partner.notes||null,has_reverse:false});
+          }
+        }
+      }
     }
     setShowProg(false);setEditItem(null);setLogoFile(null);setLogoPrev(null);load();
   };
