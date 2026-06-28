@@ -2337,7 +2337,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
                 <button style={pbtn} onClick={()=>{setEditItem(null);setFC(eCard);setLogoFile(null);setLogoPrev(null);setShowCard(true);}}>+ Add</button>
               </div>
             </div>
-            {(()=>{const filtMC=mCards.filter(c=>!cardSearch||c.name.toLowerCase().includes(cardSearch.toLowerCase())||(c.bank||"").toLowerCase().includes(cardSearch.toLowerCase()));return filtMC.length===0?<Empty icon="CC" msg="No master cards yet"/>:(
+            {(()=>{const filtMC=mCards.filter(c=>!cardSearch||c.name.toLowerCase().includes(cardSearch.toLowerCase())||(c.bank||"").toLowerCase().includes(cardSearch.toLowerCase()));return filtMC.length===0?<Empty icon="💳" msg="No cards in your catalog yet — use Import from Library to add standard bank cards, or add a custom card manually"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {filtMC.map(c=>(
                   <Card key={c.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailCard(c)}>
@@ -2369,7 +2369,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
                 <button style={pbtn} onClick={()=>{setEditItem(null);setFP(eProg);setLogoFile(null);setLogoPrev(null);setShowProg(true);}}>+ Add</button>
               </div>
             </div>
-            {(()=>{const filtMP=mProgs.filter(p=>!progSearch||p.name.toLowerCase().includes(progSearch.toLowerCase())||(p.category||"").toLowerCase().includes(progSearch.toLowerCase()));return filtMP.length===0?<Empty icon="LP" msg="No master programs yet"/>:(
+            {(()=>{const filtMP=mProgs.filter(p=>!progSearch||p.name.toLowerCase().includes(progSearch.toLowerCase())||(p.category||"").toLowerCase().includes(progSearch.toLowerCase()));return filtMP.length===0?<Empty icon="✈️" msg="No loyalty programs in your catalog yet — use Import from Library to add airlines and hotels, or add one manually"/>:(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
                 {filtMP.map(p=>(
                   <Card key={p.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailProg(p)}>
@@ -2406,7 +2406,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
               </div>
               <button style={pbtn} onClick={()=>{setEditItem(null);setFPt(ePart);setShowPart(true);}}>+ Add Route</button>
             </div>
-            {mParts.length===0?<Empty icon="->-" msg="No transfer routes yet"/>:(
+            {mParts.length===0?<Empty icon="🗺️" msg="No transfer routes configured yet — add transfer partners to your master cards to map out routes"/>:(
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {mParts
                   .filter(p=>{
@@ -2617,7 +2617,7 @@ function MyCards({db,owners}){
 
   return(
     <div>
-      <Hdr title="My Cards" sub={`${filtered.length} cards · ${total.toLocaleString("en-IN")} pts${totalInr>0?" · "+inrFmt(totalInr):""}`}
+      <Hdr title="My Cards" sub="Your loyalty credit cards and their point balances" sub={`${filtered.length} cards · ${total.toLocaleString("en-IN")} pts${totalInr>0?" · "+inrFmt(totalInr):""}`}
         action={<button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Card</button>}/>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:1,minWidth:160}}>
@@ -2629,7 +2629,7 @@ function MyCards({db,owners}){
           {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </div>
-      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="CC" msg={search?"No cards match":"No cards yet"}/>:(
+      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="💳" msg={search?"No cards match your search":"No cards added yet — go to Setup → Master to add cards to your catalog, then add them here"}/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
           {filtered.map(c=>{
             const m=mCards.find(x=>x.id===c.master_id);
@@ -3158,7 +3158,7 @@ function MyPrograms({db,owners}){
 
   return(
     <div>
-      <Hdr title="My Programs" sub={`${filtered.length} programs${totalInr>0?" · "+inrFmt(totalInr)+" est. value":""}`}
+      <Hdr title="My Programs" sub="Your frequent flyer, hotel and loyalty program memberships" sub={`${filtered.length} programs${totalInr>0?" · "+inrFmt(totalInr)+" est. value":""}`}
         action={<button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Program</button>}/>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:1,minWidth:160}}>
@@ -3170,7 +3170,7 @@ function MyPrograms({db,owners}){
           {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
       </div>
-      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="LP" msg={search?"No programs match":"No programs yet"}/>:(
+      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="✈️" msg={search?"No programs match your search":"No programs added yet — go to Setup → Master to add programs to your catalog, then add them here"}/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
           {filtered.map(p=>{
             const m=mProgs.find(x=>x.id===p.master_id);
@@ -3484,7 +3484,7 @@ function TransferPoints({db,owners}){
 
   return(
     <div>
-      <Hdr title="Transfer Points" sub="Move points between your cards and programs"/>
+      <Hdr title="Transfer Points" sub="Move points from a credit card to a loyalty program or between programs"/>
       {done&&(
         <div style={{background:surf2,border:`1px solid ${bdr}`,borderRadius:10,padding:"14px 18px",marginBottom:20}}>
           <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
@@ -3620,7 +3620,7 @@ function TransferHistory({db,owners}){
 
   return(
     <div>
-      <Hdr title="Transfer History" sub="All point transfers"/>
+      <Hdr title="Transfer History" sub="A record of all points moved between cards and programs"/>
       {err&&<div style={{color:red,fontSize:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8,marginBottom:16}}>{err}</div>}
       {logs.length>0&&(
         <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
@@ -3641,7 +3641,7 @@ function TransferHistory({db,owners}){
           <option value="date">Date</option><option value="sent">Sent</option><option value="received">Received</option>
         </select>
       </div>
-      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="->" msg="No transfers yet"/>:(
+      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="↗️" msg="No transfers logged yet — use Transfer Points to move points between a card and a loyalty program"/>:(
         <Card>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
@@ -3801,9 +3801,9 @@ function Vouchers({db,owners}){
 
   return(
     <div>
-      <Hdr title="Vouchers" sub={`${rows.filter(v=>!expired(v)).length} active`}
+      <Hdr title="Vouchers" sub="Redeemed rewards — vouchers, gift cards and benefits earned" sub={`${rows.filter(v=>!expired(v)).length} active`}
         action={<button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>}/>
-      {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:rows.length===0?<Empty icon="V" msg="No vouchers yet"/>:(
+      {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:rows.length===0?<Empty icon="🎟️" msg="No vouchers yet — vouchers are created when you redeem points for a reward"/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
           {rows.map(v=>(
             <Card key={v.id} style={{opacity:expired(v)?0.5:1,position:"relative"}}>
@@ -3861,7 +3861,7 @@ function SetupOwners({db,owners,reloadOwners}){
 
   return(
     <div>
-      <Hdr title="Owners" sub="People whose points you track"/>
+      <Hdr title="Owners" sub="Add each person whose rewards points you want to track in this app"/>
       <div style={{maxWidth:520}}>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Add Owner</div>
@@ -3911,7 +3911,7 @@ function SettingsGeneral({onSignOut}){
   const signedIn=session&&session.access_token;
   return(
     <div>
-      <Hdr title="Account" sub="Your PointsVault account"/>
+      <Hdr title="Account" sub="Your login details and app information"/>
       <div style={{maxWidth:520,display:"flex",flexDirection:"column",gap:12}}>
         <Card>
           <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Signed In As</div>
@@ -4200,7 +4200,7 @@ function SetupMappings({db}){
 
   return(
     <div>
-      <Hdr title="CC Mappings" sub="Saved import configurations for your credit cards"
+      <Hdr title="CC Mappings" sub="Saved column layouts for reading different bank statement formats" sub="Saved import configurations for your credit cards"
         action={<button style={{...gbtn,fontSize:12}} onClick={()=>setShowLibrary(v=>!v)}>
           {showLibrary?"Hide Library":"✦ Import from Library"}
         </button>}
@@ -4234,7 +4234,7 @@ function SetupMappings({db}){
       )}
 
       {mappings.length===0?(
-        <Empty icon="M" msg="No saved mappings yet — create one during CC Statement Upload or import from Library above"/>
+        <Empty icon="🗂️" msg="No mappings saved yet — upload a statement and configure the column layout, then save it. Or import a preset from the Library above"/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:600}}>
           {mappings.map(m=>{
@@ -4322,7 +4322,7 @@ function SetupCategories({db}){
 
   return(
     <div>
-      <Hdr title="Categories & Rules" sub="Manage spend categories and auto-categorisation rules"/>
+      <Hdr title="Categories & Rules" sub="Define spend categories and set keywords to auto-categorise transactions on import"/>
       <div style={{display:"flex",gap:8,marginBottom:20}}>
         <button style={tabBtn(activeTab==="categories")} onClick={()=>setActiveTab("categories")}>Categories ({cats.length})</button>
         <button style={tabBtn(activeTab==="rules")} onClick={()=>setActiveTab("rules")}>Auto-rules ({rules.length})</button>
@@ -4440,7 +4440,7 @@ function SetupPeople({db}){
 
   return(
     <div>
-      <Hdr title="People" sub="Friends and family for split and reimbursement tracking"/>
+      <Hdr title="People" sub="Add family or friends to split expenses and track reimbursements"/>
       <div style={{maxWidth:520}}>
         {/* Add form inline like categories */}
         <Card style={{marginBottom:16}}>
@@ -4988,7 +4988,7 @@ function SpendUpload({db,owners=[]}){
 
   if(step===1) return(
     <div>
-      <Hdr title="CC Statement Upload" sub="Import credit card transactions from CSV"/>
+      <Hdr title="CC Statement Upload" sub="Import your bank statement to log credit card transactions automatically"/>
       <div style={{maxWidth:520}}>
         <Card>
           <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:16}}>Select your CSV file</div>
@@ -5798,7 +5798,7 @@ function SpendOverview({db,owners}){
 
   return(
     <div>
-      <Hdr title="Spend Overview" sub="All cards combined"/>
+      <Hdr title="Spend Overview" sub="A snapshot of your total credit card spending across all cards"/>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
         {[
           {label:"This Month",value:monthSpend},
@@ -6097,7 +6097,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         <button onClick={()=>setShowStmts(false)} style={{...gbtn,fontSize:12}}>← Back to card</button>
         <div style={{fontSize:18,fontWeight:700,color:txt}}>Statements — {card.nickname||mCard?.name}</div>
       </div>
-      {stmts.length===0?<Empty icon="S" msg="No statements uploaded yet"/>:(
+      {stmts.length===0?<Empty icon="📄" msg="No statements uploaded yet — use CC Statement Upload to import your first bank statement"/>:(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {stmts.map(s=>(
             <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
@@ -6371,7 +6371,7 @@ function SpendCards({db,owners,onNavigate}){
 
   return(
     <div>
-      <Hdr title="My Cards" sub="Spend tracker view"
+      <Hdr title="My Cards" sub="Your credit cards — tap a card to view its statements and transactions" sub="Spend tracker view"
         action={<button style={pbtn} onClick={()=>setShowAddCard(true)}>+ Add Card</button>}/>
 
 
@@ -6562,7 +6562,7 @@ function SpendTransactions({db,owners}){
           {categories.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
       </div>
-      {busy?<div style={{color:mut}}>Loading…</div>:filtered.length===0?<Empty icon="T" msg="No transactions found"/>:(
+      {busy?<div style={{color:mut}}>Loading…</div>:filtered.length===0?<Empty icon="📋" msg="No transactions found — import a statement or add transactions manually"/>:(
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
             <thead>
@@ -6831,7 +6831,7 @@ function SpendLedger({db,owners}){
         <div style={{fontSize:11,color:mut,marginBottom:10,padding:"6px 10px",background:surf2,borderRadius:8}}>
           Auto entries from CC splits — edit via the statement. Manual entries are editable here.
         </div>
-        {filtered.length===0?<Empty icon="L" msg="No entries match your filters"/>:(
+        {filtered.length===0?<Empty icon="📒" msg="No ledger entries match your filters"/>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
@@ -6905,8 +6905,8 @@ function SpendLedger({db,owners}){
 
   return(
     <div>
-      <Hdr title="Ledger" sub="Track who owes you and who you owe"/>
-      {people.length===0?<Empty icon="L" msg="Add people in Spend Tracker → Setup → People"/>:(
+      <Hdr title="Ledger" sub="Splits and reimbursements — track money owed between you and others"/>
+      {people.length===0?<Empty icon="👥" msg="No people added yet — go to Setup → Master → People to add family or friends for splitting expenses"/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
           {people.map(p=>{
             const bal=balance(p.id);
