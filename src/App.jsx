@@ -2725,7 +2725,7 @@ function EditCardModal({card, db, mCards, owners, onSave, onClose}){
     };
     await db.from("my_cards").update(card.id,p);
     setSaving(false);
-    onSave&&onSave();
+    onSave&&onSave({...card,...p});
     onClose&&onClose();
   };
 
@@ -2967,7 +2967,14 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         </label>}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
-      {showEdit&&<EditCardModal card={card} db={db} mCards={mCards} owners={owners} onSave={()=>{load();}} onClose={()=>setShowEdit(false)}/>}
+      {showEdit&&<EditCardModal card={card} db={db} mCards={mCards} owners={owners} onSave={updated=>{
+          if(updated){
+            const sum=txns.reduce((a,t)=>a+t.points,0);
+            const nBal=(updated.opening_balance||0)+sum;
+            setCard(c=>({...c,...updated,points_balance:nBal}));
+          }
+          load(); onUpdate&&onUpdate();
+        }} onClose={()=>setShowEdit(false)}/>}
     </div>
   );
 }
@@ -5841,7 +5848,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </div>}
       </Card>
       {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>
-      }{showAddCard&&<AddCardModal db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowAddCard(false)}/>}
+}
     </div>
   );
 }
