@@ -315,90 +315,39 @@ function createClient(url, key) {
     },
     auth: {
       signUp: async (email, password) => {
-        const r = await fetch(`${url}/auth/v1/signup`, {
-          method:"POST",
-          headers:{apikey:key, "Content-Type":"application/json"},
-          body:JSON.stringify({email,password})
-        });
-        const d = await r.json();
-        return r.ok ? {data:d, error:null} : {data:null, error:{message:d.msg||d.error_description||"Sign up failed"}};
+        const r = await fetch(`${url}/auth/v1/signup`, {method:"POST",headers:{apikey:key,"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+        const d=await r.json();
+        return r.ok?{data:d,error:null}:{data:null,error:{message:d.msg||d.error_description||"Sign up failed"}};
       },
       signIn: async (email, password) => {
-        const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {
-          method:"POST",
-          headers:{apikey:key, "Content-Type":"application/json"},
-          body:JSON.stringify({email,password})
-        });
-        const d = await r.json();
-        return r.ok ? {data:d, error:null} : {data:null, error:{message:d.msg||d.error_description||"Sign in failed"}};
+        const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {method:"POST",headers:{apikey:key,"Content-Type":"application/json"},body:JSON.stringify({email,password})});
+        const d=await r.json();
+        return r.ok?{data:d,error:null}:{data:null,error:{message:d.msg||d.error_description||"Sign in failed"}};
       },
       signOut: async (token) => {
-        await fetch(`${url}/auth/v1/logout`, {
-          method:"POST",
-          headers:{apikey:key, Authorization:`Bearer ${token}`, "Content-Type":"application/json"}
-        });
+        await fetch(`${url}/auth/v1/logout`, {method:"POST",headers:{apikey:key,Authorization:`Bearer ${token}`,"Content-Type":"application/json"}});
       },
       resetPassword: async (email) => {
-        const r = await fetch(`${url}/auth/v1/recover`, {
-          method:"POST",
-          headers:{apikey:key, "Content-Type":"application/json"},
-          body:JSON.stringify({email})
-        });
-        const d = await r.json();
-        return r.ok ? {error:null} : {error:{message:d.msg||"Reset failed"}};
-      },
-      getUser: async (token) => {
-        const r = await fetch(`${url}/auth/v1/user`, {
-          headers:{apikey:key, Authorization:`Bearer ${token}`}
-        });
-        const d = await r.json();
-        return r.ok ? {data:d, error:null} : {data:null, error:{message:"Session expired"}};
+        const r = await fetch(`${url}/auth/v1/recover`, {method:"POST",headers:{apikey:key,"Content-Type":"application/json"},body:JSON.stringify({email})});
+        const d=await r.json();
+        return r.ok?{error:null}:{error:{message:d.msg||"Reset failed"}};
       },
     },
   };
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
-function getStoredSession(url){
-  try{
-    const raw=localStorage.getItem("pv_session_"+url);
-    if(!raw) return null;
-    const s=JSON.parse(raw);
-    // Check expiry
-    if(s.expires_at && Date.now()/1000 > s.expires_at-60) return null;
-    return s;
-  }catch(_){return null;}
-}
-function storeSession(url,session){
-  localStorage.setItem("pv_session_"+url, JSON.stringify(session));
-}
-function clearSession(url){
-  localStorage.removeItem("pv_session_"+url);
-}
-// Create an auth-aware client that injects the user's JWT
-function createAuthedClient(url, anonKey, accessToken){
-  const base = createClient(url, anonKey);
-  // Override headers to use user's JWT instead of anon key
-  const authH = { apikey:anonKey, Authorization:`Bearer ${accessToken}`, "Content-Type":"application/json", Prefer:"return=representation" };
-  const baseUrl = `${url}/rest/v1`;
-  const req = async (path, opts={}) => {
-    try {
-      const r = await fetch(`${baseUrl}${path}`, {...opts, headers:authH});
-      let data = null;
-      try { data = await r.json(); } catch(_) {}
-      return { data: Array.isArray(data)?data:data?[data]:[], error: r.ok?null:data };
-    } catch(e) { return { data:[], error:{message:e.message} }; }
-  };
-  return {
-    ...base,
-    from: t => ({
-      select: (q="") => req(`/${t}?select=*${q}`),
-      insert: row => req(`/${t}`, {method:"POST", body:JSON.stringify(row)}),
-      update: (id,row) => req(`/${t}?id=eq.${id}`, {method:"PATCH", body:JSON.stringify(row)}),
-      delete: id => req(`/${t}?id=eq.${id}`, {method:"DELETE"}),
-      filter: (col,val) => req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`),
-    }),
-  };
+const SUPA_URL="https://gmrpweqrclfiaxnzqvtn.supabase.co";
+const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
+function getStoredSession(){try{const r=localStorage.getItem("pv_session");if(!r)return null;const s=JSON.parse(r);if(s.expires_at&&Date.now()/1000>s.expires_at-60)return null;return s;}catch(_){return null;}}
+function storeSession(s){localStorage.setItem("pv_session",JSON.stringify(s));}
+function clearSession(){localStorage.removeItem("pv_session");}
+function createAuthedClient(token){
+  const authH={apikey:SUPA_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json",Prefer:"return=representation"};
+  const base=`${SUPA_URL}/rest/v1`;
+  const req=async(path,opts={})=>{try{const r=await fetch(`${base}${path}`,{...opts,headers:authH});let d=null;try{d=await r.json();}catch(_){}return{data:Array.isArray(d)?d:d?[d]:[],error:r.ok?null:d};}catch(e){return{data:[],error:{message:e.message}};}};
+  const storage=createClient(SUPA_URL,SUPA_KEY).storage;
+  return{from:t=>({select:(q="")=>req(`/${t}?select=*${q}`),insert:row=>req(`/${t}`,{method:"POST",body:JSON.stringify(row)}),update:(id,row)=>req(`/${t}?id=eq.${id}`,{method:"PATCH",body:JSON.stringify(row)}),delete:id=>req(`/${t}?id=eq.${id}`,{method:"DELETE"}),filter:(col,val)=>req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`)}),storage};
 }
 
 // ── Design tokens: private-banking premium ────────────────────────────────────
@@ -485,21 +434,6 @@ function Hdr({title,sub,action}){
     </div>
   );
 }
-
-// ── CC Mapping Library ────────────────────────────────────────────────────────
-const MAPPING_LIBRARY=[
-  {lid:"ml_hdfc_csv",name:"HDFC Bank CSV",bank:"HDFC Bank",
-   description:"HDFC Bank credit card statement (pipe-delimited CSV)",
-   delimiter:"|",skip_rows:0,date_col:0,desc_col:2,amount_type:"single",
-   amount_col:4,debit_col:-1,credit_col:-1,date_format:"DD/MM/YYYY",
-   credit_ind_col:-1,total_due_row:6,total_due_col:1,opening_bal_row:13,opening_bal_col:0},
-  {lid:"ml_axis_xlsx",name:"Axis Bank XLSX",bank:"Axis Bank",
-   description:"Axis Bank credit card statement (Excel XLSX format)",
-   delimiter:"auto",skip_rows:8,date_col:0,desc_col:1,amount_type:"debit_credit",
-   amount_col:-1,debit_col:3,credit_col:4,date_format:"DD/MM/YYYY",
-   credit_ind_col:-1,total_due_row:4,total_due_col:1,opening_bal_row:0,opening_bal_col:-1},
-];
-
 
 function LogoCircle({url,name,size=56}){
   const [err,setErr]=useState(false);
@@ -3714,112 +3648,1637 @@ function TransferHistory({db,owners}){
 
 // Vouchers
 
-function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
-  const [step,setStep]=useState("login"); // login|signup|forgot
-  const [url,setUrl]=useState(supaUrl||"");
-  const [key,setKey]=useState(supaKey||"");
+function AuthScreen({onAuth}){
+  const [step,setStep]=useState("login");
   const [email,setEmail]=useState("");
-  const [password,setPassword]=useState("");
-  const [confirmPw,setConfirmPw]=useState("");
+  const [pw,setPw]=useState("");
+  const [pw2,setPw2]=useState("");
   const [err,setErr]=useState("");
   const [msg,setMsg]=useState("");
   const [busy,setBusy]=useState(false);
+  const si={width:"100%",padding:"10px 14px",borderRadius:10,border:`1px solid ${bdr}`,fontSize:13,fontFamily:"'Manrope',sans-serif",background:surf,color:txt,outline:"none",boxSizing:"border-box",marginBottom:12};
+  const base=createClient(SUPA_URL,SUPA_KEY);
+  const L=(t)=><div style={{fontSize:11,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:5}}>{t}</div>;
 
-  const inputStyle={width:"100%",padding:"10px 14px",borderRadius:10,border:`1px solid ${bdr}`,fontSize:13,fontFamily:"'Manrope',sans-serif",background:surf,color:txt,outline:"none",boxSizing:"border-box",marginBottom:12};
-
-  const saveSetup=()=>{
-    if(!url.trim()||!key.trim()) return setErr("Both fields required");
-    localStorage.setItem("pv_u",url.trim());
-    localStorage.setItem("pv_k",key.trim());
-    onSetCredentials(url.trim(),key.trim());
-    setErr(""); setStep("login");
-  };
-
-  const signIn=async()=>{
-    if(!email.trim()||!password) return setErr("Email and password required");
-    setBusy(true); setErr("");
-    const base=createClient(url.trim(),key.trim());
-    const {data,error}=await base.auth.signIn(email.trim(),password);
-    if(error){ setErr(error.message); setBusy(false); return; }
-    // data contains access_token, user object is in data.user
-    const usr=data.user||data;
-    onAuth(url.trim(),key.trim(),data,usr);
+  const doSignIn=async()=>{
+    if(!email.trim()||!pw) return setErr("Email and password required");
+    setBusy(true);setErr("");
+    const {data,error}=await base.auth.signIn(email.trim(),pw);
+    if(error){setErr(error.message);setBusy(false);return;}
+    const usr=data.user||{email:email.trim()};
+    storeSession({...data,user:usr});
+    onAuth(createAuthedClient(data.access_token),usr);
     setBusy(false);
   };
 
-  const signUp=async()=>{
-    if(!email.trim()||!password) return setErr("Email and password required");
-    if(password!==confirmPw) return setErr("Passwords do not match");
-    if(password.length<8) return setErr("Password must be at least 8 characters");
-    setBusy(true); setErr("");
-    const base=createClient(url.trim(),key.trim());
-    const {data,error}=await base.auth.signUp(email.trim(),password);
-    if(error){ setErr(error.message); setBusy(false); return; }
+  const doSignUp=async()=>{
+    if(!email.trim()||!pw) return setErr("Email and password required");
+    if(pw!==pw2) return setErr("Passwords do not match");
+    if(pw.length<8) return setErr("Password must be at least 8 characters");
+    setBusy(true);setErr("");
+    const {error}=await base.auth.signUp(email.trim(),pw);
+    if(error){setErr(error.message);setBusy(false);return;}
     setMsg("Account created! Check your email to confirm, then sign in.");
-    setStep("login"); setPassword(""); setConfirmPw("");
-    setBusy(false);
+    setStep("login");setPw("");setPw2("");setBusy(false);
   };
 
-  const resetPw=async()=>{
-    if(!email.trim()) return setErr("Enter your email address");
-    setBusy(true); setErr("");
-    const base=createClient(url.trim(),key.trim());
+  const doReset=async()=>{
+    if(!email.trim()) return setErr("Enter your email");
+    setBusy(true);setErr("");
     const {error}=await base.auth.resetPassword(email.trim());
-    if(error){ setErr(error.message); }
-    else{ setMsg("Password reset email sent — check your inbox."); setStep("login"); }
+    if(error)setErr(error.message);
+    else{setMsg("Reset link sent — check your inbox.");setStep("login");}
     setBusy(false);
   };
 
-  const lbl=(t)=><div style={{fontSize:11,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:5}}>{t}</div>;
+  const Btn=({onClick,disabled,children})=>(
+    <button onClick={onClick} disabled={disabled} style={{width:"100%",padding:"11px",borderRadius:10,background:txt,color:"#fff",border:"none",cursor:disabled?"not-allowed":"pointer",fontSize:13,fontWeight:600,fontFamily:"'Manrope',sans-serif",opacity:disabled?0.7:1,marginBottom:12}}>
+      {children}
+    </button>
+  );
 
   if(step==="login") return(
     <div>
       <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:20}}>Sign in to PointsVault</div>
       {msg&&<div style={{fontSize:12,color:grn,marginBottom:12,padding:"8px 12px",background:grn+"12",borderRadius:8}}>{msg}</div>}
-      {lbl("Email")}
-      <input style={inputStyle} type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/>
-      {lbl("Password")}
-      <input style={inputStyle} type="password" placeholder="••••••••" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&signIn()}/>
+      {L("Email")}<input style={si} type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/>
+      {L("Password")}<input style={si} type="password" placeholder="••••••••" value={pw} onChange={e=>setPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSignIn()}/>
       {err&&<div style={{fontSize:12,color:red,marginBottom:10}}>{err}</div>}
-      <button onClick={signIn} disabled={busy} style={{width:"100%",padding:"11px",borderRadius:10,background:txt,color:"#fff",border:"none",cursor:busy?"not-allowed":"pointer",fontSize:13,fontWeight:600,fontFamily:"'Manrope',sans-serif",opacity:busy?0.7:1,marginBottom:12}}>
-        {busy?"Signing in…":"Sign In"}
-      </button>
+      <Btn onClick={doSignIn} disabled={busy}>{busy?"Signing in…":"Sign In"}</Btn>
       <div style={{display:"flex",justifyContent:"space-between",fontSize:12}}>
         <button onClick={()=>{setStep("signup");setErr("");setMsg("");}} style={{background:"none",border:"none",cursor:"pointer",color:acc,fontFamily:"'Manrope',sans-serif",fontWeight:500}}>Create account</button>
-        <button onClick={()=>{setStep("forgot");setErr("");setMsg("");}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>Forgot password?</button>
+        <button onClick={()=>{setStep("forgot");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>Forgot password?</button>
       </div>
-
     </div>
   );
-
   if(step==="signup") return(
     <div>
       <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:20}}>Create account</div>
-      {lbl("Email")}
-      <input style={inputStyle} type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/>
-      {lbl("Password")}
-      <input style={inputStyle} type="password" placeholder="Min 8 characters" value={password} onChange={e=>setPassword(e.target.value)}/>
-      {lbl("Confirm Password")}
-      <input style={inputStyle} type="password" placeholder="••••••••" value={confirmPw} onChange={e=>setConfirmPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&signUp()}/>
+      {L("Email")}<input style={si} type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)}/>
+      {L("Password")}<input style={si} type="password" placeholder="Min 8 characters" value={pw} onChange={e=>setPw(e.target.value)}/>
+      {L("Confirm Password")}<input style={si} type="password" placeholder="••••••••" value={pw2} onChange={e=>setPw2(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doSignUp()}/>
       {err&&<div style={{fontSize:12,color:red,marginBottom:10}}>{err}</div>}
-      <button onClick={signUp} disabled={busy} style={{width:"100%",padding:"11px",borderRadius:10,background:txt,color:"#fff",border:"none",cursor:busy?"not-allowed":"pointer",fontSize:13,fontWeight:600,fontFamily:"'Manrope',sans-serif",opacity:busy?0.7:1,marginBottom:12}}>
-        {busy?"Creating…":"Create Account"}
-      </button>
+      <Btn onClick={doSignUp} disabled={busy}>{busy?"Creating…":"Create Account"}</Btn>
       <button onClick={()=>{setStep("login");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontFamily:"'Manrope',sans-serif",display:"block",margin:"0 auto"}}>Back to sign in</button>
     </div>
   );
-
-  if(step==="forgot") return(
+  return(
     <div>
       <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:8}}>Reset password</div>
       <div style={{fontSize:12,color:mut,marginBottom:20}}>We'll send a reset link to your email.</div>
-      {lbl("Email")}
-      <input style={inputStyle} type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&resetPw()}/>
+      {L("Email")}<input style={si} type="email" placeholder="you@example.com" value={email} onChange={e=>setEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doReset()}/>
       {err&&<div style={{fontSize:12,color:red,marginBottom:10}}>{err}</div>}
-      <button onClick={resetPw} disabled={busy} style={{width:"100%",padding:"11px",borderRadius:10,background:txt,color:"#fff",border:"none",cursor:busy?"not-allowed":"pointer",fontSize:13,fontWeight:600,fontFamily:"'Manrope',sans-serif",opacity:busy?0.7:1,marginBottom:12}}>
-        {busy?"Sending…":"Send Reset Link"}
-      </button>
+      <Btn onClick={doReset} disabled={busy}>{busy?"Sending…":"Send Reset Link"}</Btn>
       <button onClick={()=>{setStep("login");setErr("");}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontFamily:"'Manrope',sans-serif",display:"block",margin:"0 auto"}}>Back to sign in</button>
+    </div>
+  );
+}
+
+
+function Vouchers({db,owners}){
+  const [rows,setRows]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [show,setShow]=useState(false);
+  const [edit,setEdit]=useState(null);
+  const eF={owner_id:"",title:"",code:"",expiry:"",value:"",notes:""};
+  const [f,setF]=useState(eF);
+  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const {data}=await db.from("vouchers").select();
+    setRows((data||[]).sort((a,b)=>new Date(a.expiry||"2099")-new Date(b.expiry||"2099")));
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const save=async()=>{
+    if(!f.title.trim()) return alert("Title required");
+    const p={owner_id:f.owner_id||null,title:f.title.trim(),code:f.code.trim(),expiry:f.expiry||null,value:parseFloat(f.value)||null,notes:f.notes.trim()};
+    if(edit){await db.from("vouchers").update(edit.id,p);}
+    else{await db.from("vouchers").insert(p);}
+    setShow(false);setEdit(null);setF(eF);load();
+  };
+  const del=async id=>{if(!confirm("Delete voucher?")) return;await db.from("vouchers").delete(id);load();};
+  const openEdit=v=>{setEdit(v);setF({owner_id:v.owner_id||"",title:v.title||"",code:v.code||"",expiry:v.expiry||"",value:String(v.value||""),notes:v.notes||""});setShow(true);};
+
+  const today=new Date().toISOString().split("T")[0];
+  const expired=v=>v.expiry&&v.expiry<today;
+
+  return(
+    <div>
+      <Hdr title="Vouchers" sub={`${rows.filter(v=>!expired(v)).length} active`}
+        action={<button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>}/>
+      {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:rows.length===0?<Empty icon="V" msg="No vouchers yet"/>:(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+          {rows.map(v=>(
+            <Card key={v.id} style={{opacity:expired(v)?0.5:1,position:"relative"}}>
+              {expired(v)&&<div style={{position:"absolute",top:12,right:12,fontSize:9,fontWeight:600,color:red,textTransform:"uppercase",letterSpacing:"0.07em",background:red+"15",padding:"2px 8px",borderRadius:10}}>Expired</div>}
+              <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:4,letterSpacing:"-0.01em"}}>{v.title}</div>
+              {v.code&&<div style={{fontSize:12,fontFamily:"monospace",background:surf2,padding:"4px 8px",borderRadius:6,color:txt,marginBottom:6,display:"inline-block"}}>{v.code}</div>}
+              <div style={{fontSize:12,color:mut,marginBottom:2}}>{owners.find(o=>o.id===v.owner_id)?.name||"—"}</div>
+              {v.value&&<div style={{fontSize:13,fontWeight:600,color:grn,marginBottom:2}}>{inrFmt(v.value)}</div>}
+              {v.expiry&&<div style={{fontSize:11,color:expired(v)?red:mut,marginBottom:2}}>Expires: {fmtDate(v.expiry)}</div>}
+              {v.notes&&<div style={{fontSize:11,color:mut,marginTop:4}}>{v.notes}</div>}
+              <div style={{display:"flex",gap:6,marginTop:12}}>
+                <button style={{...gbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>openEdit(v)}>Edit</button>
+                <button style={{...dbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>del(v.id)}>Delete</button>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
+      <Modal show={show} onClose={()=>{setShow(false);setEdit(null);setF(eF);}} title={edit?"Edit Voucher":"Add Voucher"}>
+        {lbl("Title *")}<input style={inp} placeholder="Amazon Gift Card" value={f.title} onChange={up("title")}/>
+        {lbl("Owner")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}><option value="">—</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
+        {lbl("Code")}<input style={inp} placeholder="XXXX-XXXX-XXXX" value={f.code} onChange={up("code")}/>
+        {lbl("Value (₹)")}<input style={inp} type="number" placeholder="500" value={f.value} onChange={up("value")}/>
+        {lbl("Expiry date")}<input style={inp} type="date" value={f.expiry} onChange={up("expiry")}/>
+        {lbl("Notes")}<input style={inp} placeholder="Any notes" value={f.notes} onChange={up("notes")}/>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>{edit?"Save Changes":"Add Voucher"}</button>
+      </Modal>
+    </div>
+  );
+}
+
+// ── SetupOwners ───────────────────────────────────────────────────────────────
+function SetupOwners({db,owners,reloadOwners}){
+  const [newOwner,setNewOwner]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
+
+  const addOwner=async()=>{
+    if(!newOwner.trim()) return;
+    await db.from("owners").insert({name:newOwner.trim()});
+    setNewOwner(""); reloadOwners();
+  };
+  const delOwner=async owner=>{
+    const [c,p,v]=await Promise.all([db.from("my_cards").filter("owner_id",owner.id),db.from("my_programs").filter("owner_id",owner.id),db.from("vouchers").filter("owner_id",owner.id)]);
+    const n=(c.data||[]).length+(p.data||[]).length+(v.data||[]).length;
+    if(n>0) return alert("Cannot delete \""+owner.name+"\" — they have "+n+" linked cards, programs or vouchers. Reassign or delete those first.");
+    if(!confirm("Delete owner \""+owner.name+"\"?")) return;
+    await db.from("owners").delete(owner.id); reloadOwners();
+  };
+  const saveEdit=async()=>{
+    if(!editName.trim()) return;
+    await db.from("owners").update(editId,{name:editName.trim()});
+    setEditId(null); setEditName(""); reloadOwners();
+  };
+
+  return(
+    <div>
+      <Hdr title="Owners" sub="People whose points you track"/>
+      <div style={{maxWidth:520}}>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Add Owner</div>
+          <div style={{display:"flex",gap:8}}>
+            <input
+              style={{...inp,flex:1,marginBottom:0}}
+              placeholder="e.g. Gavin"
+              value={newOwner}
+              onChange={e=>setNewOwner(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addOwner()}
+            />
+            <button style={{...pbtn,whiteSpace:"nowrap"}} onClick={addOwner}>+ Add</button>
+          </div>
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Owners ({owners.length})</div>
+          {owners.length===0?(
+            <div style={{color:mut,fontSize:13,padding:"8px 0"}}>No owners yet</div>
+          ):owners.map(o=>(
+            <div key={o.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+              {editId===o.id?(
+                <>
+                  <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                  <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+                </>
+              ):(
+                <>
+                  <div style={{flex:1,fontSize:14,fontWeight:600,color:txt}}>{o.name}</div>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>{setEditId(o.id);setEditName(o.name);}}>Edit</button>
+                  <button style={{...dbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>delOwner(o)}>Delete</button>
+                </>
+              )}
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── SettingsGeneral ───────────────────────────────────────────────────────────
+function SettingsGeneral({db,onDisconnect}){
+  return(
+    <div>
+      <Hdr title="General" sub="Database connection"/>
+      <div style={{maxWidth:520}}>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Database Connection</div>
+          <div style={{fontSize:12,color:mut,marginBottom:4}}>Connected to</div>
+          <div style={{fontSize:12,color:txt,fontFamily:"monospace",background:surf2,padding:"8px 12px",borderRadius:8,marginBottom:16,wordBreak:"break-all",border:`1px solid ${bdr}`}}>{localStorage.getItem("pv_u")}</div>
+          <button style={dbtn} onClick={()=>{localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");onDisconnect();}}>Disconnect</button>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── SettingsDanger ────────────────────────────────────────────────────────────
+function SettingsDanger({db,owners,onReset}){
+  const [modal,setModal]=useState(null); // which action is open
+  const [typed,setTyped]=useState("");
+  const [checked,setChecked]=useState(false);
+  const [busy,setBusy]=useState(false);
+
+  const openModal=(id)=>{setModal(id);setTyped("");setChecked(false);};
+  const closeModal=()=>{setModal(null);setTyped("");setChecked(false);};
+
+  const run=async(action)=>{
+    setBusy(true);
+    try{ await action(); }catch(e){ alert("Error: "+JSON.stringify(e)); }
+    setBusy(false);
+    closeModal();
+  };
+
+  // ── Delete helpers ──────────────────────────────────────────────────────────
+  const delAll=async(table)=>{
+    // Before deleting master_programs, clean up orphaned master_partners
+    if(table==="master_programs"){
+      const {data:progs}=await db.from("master_programs").select();
+      const progIds=new Set((progs||[]).map(p=>p.id));
+      const {data:partners}=await db.from("master_partners").select();
+      for(const p of(partners||[])){
+        if(!progIds.has(p.to_id)||!progIds.has(p.from_id)){
+          await db.from("master_partners").delete(p.id);
+        }
+      }
+    }
+    const {data}=await db.from(table).select();
+    for(const r of(data||[]))await db.from(table).delete(r.id);
+  };
+
+  const clearActivity=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries"])await delAll(t);
+    // Reset balances
+    const {data:cards}=await db.from("my_cards").select();
+    for(const c of(cards||[]))await db.from("my_cards").update(c.id,{points_balance:0});
+    const {data:progs}=await db.from("my_programs").select();
+    for(const p of(progs||[]))await db.from("my_programs").update(p.id,{points_balance:0});
+    alert("All activity cleared.");
+  });
+
+  const clearSpend=async()=>run(async()=>{
+    for(const t of["statements","spend_transactions","transaction_splits","ledger_entries","people","csv_mappings"])await delAll(t);
+    alert("Spend Tracker data cleared.");
+  });
+
+  const clearMiles=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers"])await delAll(t);
+    const {data:cards}=await db.from("my_cards").select();
+    for(const c of(cards||[]))await db.from("my_cards").update(c.id,{points_balance:0});
+    const {data:progs}=await db.from("my_programs").select();
+    for(const p of(progs||[]))await db.from("my_programs").update(p.id,{points_balance:0});
+    alert("Points & Miles data cleared.");
+  });
+
+  const fullReset=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings"])await delAll(t);
+    alert("Full reset complete. Master catalog preserved.");
+    onReset&&onReset();
+  });
+
+  const completeWipe=async()=>run(async()=>{
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","master_partners","master_milestones","master_programs","master_cards","spend_categories"])await delAll(t);
+    alert("Complete wipe done. App is factory fresh.");
+    onReset&&onReset();
+  });
+
+  // ── Actions config ──────────────────────────────────────────────────────────
+  const ACTIONS=[
+    {
+      id:"clear-activity",
+      label:"Clear Activity",
+      desc:"Deletes all transactions, statements, transfers and balances. Keeps all cards, programs, people and settings.",
+      color:"#c67c1a",
+      confirm:"checkbox",
+      checkLabel:"I understand this will delete all transaction history and reset all balances to zero",
+      action:clearActivity,
+    },
+    {
+      id:"clear-spend",
+      label:"Clear Spend Tracker",
+      desc:"Deletes all CC statements, spend transactions, splits, ledger entries, people and CC mappings. Points & Miles untouched.",
+      color:"#c67c1a",
+      confirm:"type",
+      word:"SPEND",
+      action:clearSpend,
+    },
+    {
+      id:"clear-miles",
+      label:"Clear Points & Miles",
+      desc:"Deletes all point transactions, transfers and vouchers. Resets card and program balances to zero. Spend Tracker untouched.",
+      color:"#c67c1a",
+      confirm:"type",
+      word:"MILES",
+      action:clearMiles,
+    },
+    {
+      id:"full-reset",
+      label:"Full Reset",
+      desc:"Deletes all personal data — owners, cards, programs, people, all transactions and activity. Master catalog (HDFC Infinia, Amex etc.) is preserved.",
+      color:"#9b2335",
+      confirm:"type",
+      word:"RESET",
+      action:fullReset,
+    },
+    {
+      id:"complete-wipe",
+      label:"Complete Wipe",
+      desc:"Deletes absolutely everything including the master catalog. Returns the app to factory fresh as if just installed.",
+      color:"#9b2335",
+      confirm:"two-step",
+      word:"COMPLETE WIPE",
+      checkLabel:"I understand everything including the master catalog will be permanently and irreversibly deleted",
+      action:completeWipe,
+    },
+  ];
+
+  const activeAction=ACTIONS.find(a=>a.id===modal);
+  const canConfirm=activeAction&&(
+    activeAction.confirm==="checkbox"?checked:
+    activeAction.confirm==="type"?typed===activeAction.word:
+    activeAction.confirm==="two-step"?checked&&typed===activeAction.word:
+    false
+  );
+
+  return(
+    <div>
+      <Hdr title="Danger Zone" sub="Irreversible actions — read carefully before proceeding"/>
+      <div style={{display:"flex",flexDirection:"column",gap:12,maxWidth:600}}>
+        {ACTIONS.map((a,i)=>(
+          <Card key={a.id} style={{border:`1.5px solid ${a.color}22`}}>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:12}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:700,color:a.color,marginBottom:4}}>{a.label}</div>
+                <div style={{fontSize:12,color:mut,lineHeight:1.6}}>{a.desc}</div>
+              </div>
+              <button
+                style={{...dbtn,background:a.color,border:"none",color:"#fff",fontSize:12,padding:"6px 16px",flexShrink:0,opacity:busy?0.5:1,whiteSpace:"nowrap"}}
+                onClick={()=>openModal(a.id)}
+                disabled={busy}
+              >{busy?"Working…":a.label}</button>
+            </div>
+          </Card>
+        ))}
+      </div>
+
+      {/* Confirmation Modal */}
+      <Modal show={!!modal} onClose={closeModal} title={activeAction?.label||""}>
+        <div style={{background:activeAction?.color+"11",border:`1px solid ${activeAction?.color}44`,borderRadius:10,padding:"12px 16px",marginBottom:16}}>
+          <div style={{fontSize:13,fontWeight:600,color:activeAction?.color,marginBottom:4}}>⚠ Warning</div>
+          <div style={{fontSize:13,color:txt,lineHeight:1.6}}>{activeAction?.desc}</div>
+          <div style={{fontSize:12,color:mut,marginTop:8,fontWeight:500}}>This action cannot be undone.</div>
+        </div>
+
+        {/* Checkbox step */}
+        {(activeAction?.confirm==="checkbox"||activeAction?.confirm==="two-step")&&(
+          <label style={{display:"flex",alignItems:"flex-start",gap:10,cursor:"pointer",marginBottom:16,fontSize:13,color:txt,lineHeight:1.5}}>
+            <input type="checkbox" checked={checked} onChange={e=>setChecked(e.target.checked)} style={{marginTop:3,accentColor:activeAction?.color,flexShrink:0,width:16,height:16}}/>
+            {activeAction?.checkLabel}
+          </label>
+        )}
+
+        {/* Type confirmation */}
+        {(activeAction?.confirm==="type"||(activeAction?.confirm==="two-step"&&checked))&&(
+          <div style={{marginBottom:16}}>
+            <div style={{fontSize:12,color:mut,marginBottom:6}}>
+              Type <strong style={{color:activeAction?.color,fontFamily:"monospace",letterSpacing:"0.05em"}}>{activeAction?.word}</strong> to confirm:
+            </div>
+            <input
+              style={{...inp,fontFamily:"monospace",letterSpacing:"0.05em",borderColor:typed===activeAction?.word?activeAction?.color:bdr}}
+              value={typed}
+              onChange={e=>setTyped(e.target.value)}
+              placeholder={activeAction?.word}
+              autoFocus
+            />
+          </div>
+        )}
+
+        <button
+          style={{...dbtn,width:"100%",justifyContent:"center",background:canConfirm?activeAction?.color:"#ccc",border:"none",color:"#fff",opacity:busy?0.6:1,cursor:canConfirm?"pointer":"not-allowed"}}
+          onClick={()=>canConfirm&&!busy&&activeAction?.action()}
+          disabled={!canConfirm||busy}
+        >{busy?"Working…":"Confirm — "+activeAction?.label}</button>
+      </Modal>
+    </div>
+  );
+}
+
+
+function SetupMappings({db}){
+  const [mappings,setMappings]=useState([]);
+  const [cards,setCards]=useState([]);
+  const [mCards,setMCards]=useState([]);
+  const [owners,setOwners]=useState([]);
+  const [busy,setBusy]=useState(true);
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const [m,c,mc,o]=await Promise.all([
+      db.from("csv_mappings").select(),
+      db.from("my_cards").select(),
+      db.from("master_cards").select(),
+      db.from("owners").select(),
+    ]);
+    setMappings(m.data||[]);
+    setCards(c.data||[]);
+    setMCards(mc.data||[]);
+    setOwners(o.data||[]);
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const del=async id=>{
+    if(!confirm("Delete this mapping? This cannot be undone.")) return;
+    await db.from("csv_mappings").delete(id);
+    load();
+  };
+
+  if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
+
+  return(
+    <div>
+      <Hdr title="CC Mappings" sub="Saved import configurations for your credit cards"/>
+      {mappings.length===0?(
+        <Empty icon="M" msg="No saved mappings yet — create one during CC Statement Upload"/>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:600}}>
+          {mappings.map(m=>{
+            const card=cards.find(c=>c.id===m.card_id);
+            const mc=card&&mCards.find(x=>x.id===card.master_id);
+            const owner=card&&owners.find(o=>o.id===card.owner_id);
+            return(
+              <Card key={m.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:3}}>{m.name}</div>
+                  <div style={{fontSize:11,color:mut}}>
+                    {mc?.name&&<span>{mc.name}{owner?" · "+owner.name:""} · </span>}
+                    {m.delimiter==="auto"?"Auto":m.delimiter==="	"?"Tab":m.delimiter||"Auto"} delimiter · Skip {m.skip_rows||0} rows · Date col {(m.date_col||0)+1} · Desc col {(m.desc_col||0)+1}
+                  </div>
+                </div>
+                <button onClick={()=>del(m.id)} style={{...dbtn,fontSize:12,padding:"4px 12px",flexShrink:0}}>Delete</button>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SetupCategories ───────────────────────────────────────────────────────────
+const DEFAULT_CATEGORIES=[
+  "Dining","Travel","Fuel","Groceries","Shopping","Utilities",
+  "Entertainment","Healthcare","Education","Rent","Insurance",
+  "Vouchers / Wallet","Reimbursable","Other"
+];
+
+async function seedCategories(db){
+  for(const name of DEFAULT_CATEGORIES){
+    await db.from("spend_categories").insert({name,is_default:true});
+  }
+}
+
+function SetupCategories({db}){
+  const [cats,setCats]=useState([]);
+  const [rules,setRules]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [activeTab,setActiveTab]=useState("categories"); // "categories" | "rules"
+  // Category state
+  const [newName,setNewName]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
+  // Rule state
+  const [newKeyword,setNewKeyword]=useState("");
+  const [newRuleCat,setNewRuleCat]=useState("");
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const [c,r]=await Promise.all([
+      db.from("spend_categories").select(),
+      db.from("merchant_rules").select(),
+    ]);
+    let rows=c.data||[];
+    if(rows.length===0){await seedCategories(db);const {data:d2}=await db.from("spend_categories").select();rows=d2||[];}
+    setCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
+    setRules((r.data||[]).sort((a,b)=>a.keyword.localeCompare(b.keyword)));
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  // Category CRUD
+  const addCat=async()=>{
+    if(!newName.trim()) return;
+    await db.from("spend_categories").insert({name:newName.trim(),is_default:false});
+    setNewName(""); load();
+  };
+  const delCat=async id=>{if(!confirm("Delete this category?")) return;await db.from("spend_categories").delete(id);load();};
+  const startEdit=(c)=>{setEditId(c.id);setEditName(c.name);};
+  const saveEdit=async()=>{if(!editName.trim()) return;await db.from("spend_categories").update(editId,{name:editName.trim()});setEditId(null);load();};
+
+  // Rule CRUD
+  const addRule=async()=>{
+    if(!newKeyword.trim()||!newRuleCat) return alert("Enter both keyword and category");
+    await db.from("merchant_rules").insert({keyword:newKeyword.trim().toLowerCase(),category:newRuleCat});
+    setNewKeyword(""); setNewRuleCat(""); load();
+  };
+  const delRule=async id=>{if(!confirm("Delete this rule?")) return;await db.from("merchant_rules").delete(id);load();};
+
+  const tabBtn=active=>({padding:"7px 18px",borderRadius:20,border:`1px solid ${active?txt:bdr}`,cursor:"pointer",fontSize:12,fontWeight:active?600:400,background:active?txt:"transparent",color:active?"#fff":mut,fontFamily:"'Manrope',sans-serif"});
+
+  return(
+    <div>
+      <Hdr title="Categories & Rules" sub="Manage spend categories and auto-categorisation rules"/>
+      <div style={{display:"flex",gap:8,marginBottom:20}}>
+        <button style={tabBtn(activeTab==="categories")} onClick={()=>setActiveTab("categories")}>Categories ({cats.length})</button>
+        <button style={tabBtn(activeTab==="rules")} onClick={()=>setActiveTab("rules")}>Auto-rules ({rules.length})</button>
+      </div>
+
+      {activeTab==="categories"&&<div style={{maxWidth:520}}>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Add Category</div>
+          <div style={{display:"flex",gap:8}}>
+            <input style={{...inp,marginBottom:0,flex:1}} placeholder="e.g. Investments" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCat()}/>
+            <button style={pbtn} onClick={addCat}>Add</button>
+          </div>
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Categories ({cats.length})</div>
+          {busy?<div style={{color:mut,fontSize:12}}>Loading…</div>:cats.map(c=>(
+            <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
+              {editId===c.id?(
+                <div style={{display:"flex",gap:6,flex:1}}>
+                  <input style={{...inp,marginBottom:0,flex:1,fontSize:12,padding:"4px 8px"}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                  <button style={{...pbtn,padding:"4px 12px",fontSize:12}} onClick={saveEdit}>Save</button>
+                  <button style={{...gbtn,padding:"4px 10px",fontSize:12}} onClick={()=>setEditId(null)}>×</button>
+                </div>
+              ):(
+                <>
+                  <div style={{flex:1}}>
+                    <span style={{fontSize:13,fontWeight:500,color:txt}}>{c.name}</span>
+                    {c.is_default&&<span style={{fontSize:9,color:mut,marginLeft:8,textTransform:"uppercase",letterSpacing:"0.07em"}}>default</span>}
+                  </div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button style={{...gbtn,padding:"3px 10px",fontSize:11}} onClick={()=>startEdit(c)}>Edit</button>
+                    <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>delCat(c.id)}>Delete</button>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+          <div style={{fontSize:11,color:mut,marginTop:12}}>Reset to defaults in Settings → Danger Zone</div>
+        </Card>
+      </div>}
+
+      {activeTab==="rules"&&<div style={{maxWidth:600}}>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Add Rule</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:8,alignItems:"end"}}>
+            <div>
+              {lbl("Keyword (case insensitive)")}
+              <input style={{...inp,marginBottom:0}} placeholder="e.g. swiggy, zomato" value={newKeyword} onChange={e=>setNewKeyword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addRule()}/>
+            </div>
+            <div>
+              {lbl("Category")}
+              <select style={{...inp,marginBottom:0}} value={newRuleCat} onChange={e=>setNewRuleCat(e.target.value)}>
+                <option value="">Select category…</option>
+                {cats.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+              </select>
+            </div>
+            <button style={{...pbtn,alignSelf:"flex-end"}} onClick={addRule}>Add</button>
+          </div>
+          <div style={{fontSize:11,color:mut,marginTop:8}}>
+            If the keyword appears anywhere in a transaction description, that category is applied. First matching rule wins.
+          </div>
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Rules ({rules.length})</div>
+          {rules.length===0?<div style={{color:mut,fontSize:12}}>No rules yet — add one above</div>:rules.map(r=>(
+            <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
+              <div style={{flex:1,display:"flex",alignItems:"center",gap:12}}>
+                <code style={{fontSize:12,background:surf2,padding:"2px 8px",borderRadius:6,color:txt,fontFamily:"monospace"}}>{r.keyword}</code>
+                <span style={{fontSize:11,color:mut}}>→</span>
+                <span style={{fontSize:12,color:txt,fontWeight:500}}>{r.category}</span>
+              </div>
+              <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>delRule(r.id)}>Delete</button>
+            </div>
+          ))}
+        </Card>
+      </div>}
+    </div>
+  );
+}
+
+
+// ── SetupPeople ───────────────────────────────────────────────────────────────
+function SetupPeople({db}){
+  const [people,setPeople]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [newName,setNewName]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const {data}=await db.from("people").select();
+    setPeople((data||[]).sort((a,b)=>a.name.localeCompare(b.name)));
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  const add=async()=>{
+    if(!newName.trim()) return;
+    await db.from("people").insert({name:newName.trim()});
+    setNewName(""); load();
+  };
+  const del=async id=>{
+    if(!confirm("Delete this person? This may affect split records.")) return;
+    await db.from("people").delete(id); load();
+  };
+  const startEdit=p=>{setEditId(p.id);setEditName(p.name);};
+  const saveEdit=async()=>{
+    if(!editName.trim()) return;
+    await db.from("people").update(editId,{name:editName.trim()});
+    setEditId(null); setEditName(""); load();
+  };
+
+  if(busy) return <div style={{color:mut,padding:32,fontSize:13}}>Loading…</div>;
+
+  return(
+    <div>
+      <Hdr title="People" sub="Friends and family for split and reimbursement tracking"/>
+      <div style={{maxWidth:520}}>
+        {/* Add form inline like categories */}
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Add Person</div>
+          <div style={{display:"flex",gap:8}}>
+            <input
+              style={{...inp,flex:1,marginBottom:0}}
+              placeholder="e.g. Priya"
+              value={newName}
+              onChange={e=>setNewName(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&add()}
+            />
+            <button style={{...pbtn,whiteSpace:"nowrap"}} onClick={add}>+ Add</button>
+          </div>
+        </Card>
+        {/* People list */}
+        <Card>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>People ({people.length})</div>
+          {people.length===0?(
+            <div style={{color:mut,fontSize:13,padding:"8px 0"}}>No people added yet</div>
+          ):people.map(p=>(
+            <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+              {editId===p.id?(
+                <>
+                  <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                  <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+                </>
+              ):(
+                <>
+                  <div style={{flex:1,fontSize:14,fontWeight:600,color:txt}}>{p.name}</div>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>startEdit(p)}>Edit</button>
+                  <button style={{...dbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>del(p.id)}>Delete</button>
+                </>
+              )}
+            </div>
+          ))}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+// ── SpendUpload ───────────────────────────────────────────────────────────────
+const CATEGORIES=["Dining","Travel","Fuel","Groceries","Shopping","Utilities","Entertainment","Healthcare","Education","Rent","Insurance","Vouchers / Wallet","Reimbursable","Other"];
+
+const DEFAULT_RULES=[
+  {keyword:"swiggy",category:"Dining"},{keyword:"zomato",category:"Dining"},{keyword:"eazydiner",category:"Dining"},
+  {keyword:"irctc",category:"Travel"},{keyword:"makemytrip",category:"Travel"},{keyword:"goibibo",category:"Travel"},
+  {keyword:"cleartrip",category:"Travel"},{keyword:"indigo",category:"Travel"},{keyword:"airindia",category:"Travel"},
+  {keyword:"uber",category:"Travel"},{keyword:"ola ",category:"Travel"},{keyword:"rapido",category:"Travel"},
+  {keyword:"bpcl",category:"Fuel"},{keyword:"hpcl",category:"Fuel"},{keyword:"iocl",category:"Fuel"},
+  {keyword:"petrol",category:"Fuel"},{keyword:"fuel",category:"Fuel"},
+  {keyword:"bigbasket",category:"Groceries"},{keyword:"grofer",category:"Groceries"},{keyword:"blinkit",category:"Groceries"},
+  {keyword:"zepto",category:"Groceries"},{keyword:"dmart",category:"Groceries"},{keyword:"reliance fresh",category:"Groceries"},
+  {keyword:"amazon",category:"Shopping"},{keyword:"flipkart",category:"Shopping"},{keyword:"myntra",category:"Shopping"},
+  {keyword:"ajio",category:"Shopping"},{keyword:"nykaa",category:"Shopping"},{keyword:"meesho",category:"Shopping"},
+  {keyword:"electricity",category:"Utilities"},{keyword:"bescom",category:"Utilities"},{keyword:"tata power",category:"Utilities"},
+  {keyword:"jio",category:"Utilities"},{keyword:"airtel",category:"Utilities"},{keyword:"vi ",category:"Utilities"},
+  {keyword:"bookmyshow",category:"Entertainment"},{keyword:"pvr",category:"Entertainment"},{keyword:"netflix",category:"Entertainment"},
+  {keyword:"spotify",category:"Entertainment"},{keyword:"hotstar",category:"Entertainment"},
+  {keyword:"apollo",category:"Healthcare"},{keyword:"medplus",category:"Healthcare"},{keyword:"practo",category:"Healthcare"},
+  {keyword:"1mg",category:"Healthcare"},{keyword:"pharmeasy",category:"Healthcare"},
+  {keyword:"lici",category:"Insurance"},{keyword:"hdfc life",category:"Insurance"},{keyword:"icici pru",category:"Insurance"},
+  {keyword:"voucher",category:"Vouchers / Wallet"},{keyword:"giftcard",category:"Vouchers / Wallet"},
+  {keyword:"paytm",category:"Vouchers / Wallet"},{keyword:"phonepe",category:"Vouchers / Wallet"},
+];
+
+function applyRules(desc, rules){
+  const d=(desc||"").toLowerCase();
+  const dNoSpace=d.replace(/\s+/g,""); // also try matching without spaces
+  for(const r of rules){
+    const k=r.keyword.toLowerCase();
+    const kNoSpace=k.replace(/\s+/g,"");
+    if(d.includes(k)||dNoSpace.includes(kNoSpace)) return r.category;
+  }
+  return "Other";
+}
+
+function parseCSV(text, forcedDelim){
+  const allLines=text.replace(/\r/g,"").split("\n").filter(l=>l.trim());
+  // Use forced delimiter if specified, otherwise auto-detect
+  let delim=",";
+  if(forcedDelim&&forcedDelim!=="auto"){
+    delim=forcedDelim;
+  } else {
+    const sample=allLines.slice(0,5).join("\n");
+    if(/~[Ii]~/.test(sample)) delim=sample.match(/~([Ii])~/)[0];
+    else if(sample.includes("\t")) delim="\t";
+    else if(sample.includes(";")) delim=";";
+    else {
+      const firstLine=allLines.find(l=>l.length>10)||"";
+      if((firstLine.match(/,/g)||[]).length<2&&(firstLine.match(/\|/g)||[]).length>2) delim="|";
+    }
+  }
+  return allLines.map(line=>{
+    if(delim===","){
+      const cols=[]; let cur=""; let inQ=false;
+      for(let i=0;i<line.length;i++){
+        const ch=line[i];
+        if(ch==='"'){inQ=!inQ;}
+        else if(ch===","&&!inQ){cols.push(cur.trim());cur="";}
+        else cur+=ch;
+      }
+      cols.push(cur.trim());
+      return cols;
+    }
+    return line.split(delim).map(c=>c.replace(/^"|"$/g,"").replace(/~/g,"").trim());
+  });
+}
+
+async function parseXLSXFile(file){
+  // Use SheetJS (xlsx) to parse Excel files
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=e=>{
+      try{
+        const data=new Uint8Array(e.target.result);
+        const XLSX=window.XLSX;
+        if(!XLSX) return reject(new Error("SheetJS not loaded"));
+        const wb=XLSX.read(data,{type:"array",raw:false,cellText:true,cellDates:false});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const rows=XLSX.utils.sheet_to_json(ws,{header:1,defval:"",raw:false});
+        // Convert all cells to strings, trim whitespace
+        const cleaned=rows.map(row=>row.map(cell=>String(cell===null||cell===undefined?"":cell).trim()));
+        resolve(cleaned);
+      }catch(err){reject(err);}
+    };
+    reader.onerror=()=>reject(new Error("Failed to read file"));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function SpendUpload({db,owners}){
+  const [step,setStep]=useState(1); // 1=upload 2=map 3=preview 4=done
+  const [rawRows,setRawRows]=useState([]);
+  const [fileName,setFileName]=useState("");
+  const [mappings,setMappings]=useState([]);
+  const [cards,setCards]=useState([]);
+  const [mCards,setMCards]=useState([]);
+  const [people,setPeople]=useState([]);
+  const [rules,setRules]=useState([]);
+  const [parsed,setParsed]=useState([]); // [{date,desc,amount,category,reimbursable,person_id,skip}]
+  const [importing,setImporting]=useState(false);
+  const [importResult,setImportResult]=useState(null);
+  const [categories,setCategories]=useState(DEFAULT_CATEGORIES);
+  const [stmtMonthSel,setStmtMonthSel]=useState("");
+  const [ruleSuggestions,setRuleSuggestions]=useState([]); // [{keyword,category,checked}]
+  const [showRuleSuggestions,setShowRuleSuggestions]=useState(false);
+  const [totalDue,setTotalDue]=useState("");
+  const [openingBal,setOpeningBal]=useState("");
+  const [totalDueRow,setTotalDueRow]=useState("6");
+  const [totalDueCol,setTotalDueCol]=useState("2"); // 1-based: col 2 in HDFC
+  const [openingBalRow,setOpeningBalRow]=useState("13");
+  const [openingBalCol,setOpeningBalCol]=useState("1"); // 1-based: col 1 in HDFC
+  const [rawText,setRawText]=useState("");
+  const [colWidths,setColWidths]=useState([]);
+  const [uploadError,setUploadError]=useState("");
+
+  // Mapping form state
+  const [mapName,setMapName]=useState("");
+  const [selCard,setSelCard]=useState("");
+  const [dateCol,setDateCol]=useState(0);
+  const [descCol,setDescCol]=useState(1);
+  const [amtType,setAmtType]=useState("single"); // single | split
+  const [amtCol,setAmtCol]=useState(2);
+  const [debitCol,setDebitCol]=useState(2);
+  const [creditCol,setCreditCol]=useState(3);
+  const [creditIndCol,setCreditIndCol]=useState(-1); // col that indicates credit when non-empty (-1 = none)
+  const [dateFormat,setDateFormat]=useState("DD/MM/YYYY");
+  const [skipRows,setSkipRows]=useState(1);
+  const [manualDelim,setManualDelim]=useState("auto");
+  const [selMapping,setSelMapping]=useState("");
+  const [mappingExpanded,setMappingExpanded]=useState(false);
+
+  useEffect(()=>{
+    (async()=>{
+      const [c,mc,p,r,dbRules,dbCats]=await Promise.all([
+        db.from("my_cards").select(),
+        db.from("master_cards").select(),
+        db.from("people").select(),
+        db.from("csv_mappings").select(),
+        db.from("merchant_rules").select(),
+        db.from("spend_categories").select(),
+      ]);
+      setCards(c.data||[]);
+      setMCards(mc.data||[]);
+      setPeople(p.data||[]);
+      setMappings(r.data||[]);
+      setRules([...DEFAULT_RULES,...(dbRules.data||[])]);
+      // Use DB categories if available, else defaults
+      const dbCatList=(dbCats.data||[]).map(x=>x.name);
+      if(dbCatList.length>0) setCategories(dbCatList);
+    })();
+  },[db]);
+
+  const parseDate=(str,fmt)=>{
+    str=(str||"").trim().replace(/^["']+|["']+$/g,"");
+    str=str.split("T")[0]; // strip ISO time
+    str=str.split(" ")[0]; // strip space-separated time e.g. "04/05/2026 16:25:36"
+    // Axis Bank format: "19 Jun '26" or "19 Jun 2026"
+    const MONTHS={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+    const axisMatch=str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2,4})$/);
+    if(axisMatch){
+      const d=axisMatch[1].padStart(2,"0");
+      const m=MONTHS[axisMatch[2].toLowerCase()]||"01";
+      const y=axisMatch[3].length===2?"20"+axisMatch[3]:axisMatch[3];
+      return `${y}-${m}-${d}`;
+    }
+    if(fmt==="DD/MM/YYYY"||fmt==="auto"){
+      const p=str.split(/[\/\-\.]/);
+      if(p.length===3){
+        if(p[0].length===4) return `${p[0]}-${p[1].padStart(2,"0")}-${p[2].padStart(2,"0")}`;
+        return `${p[2]}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;
+      }
+    }
+    if(fmt==="MM/DD/YYYY"){
+      const p=str.split(/[\/\-\.]/);
+      if(p.length===3) return `${p[2]}-${p[0].padStart(2,"0")}-${p[1].padStart(2,"0")}`;
+    }
+    if(fmt==="YYYY-MM-DD") return str.substring(0,10);
+    return str;
+  };
+
+
+
+  const applyMapping=m=>{
+    setMapName(m.name); setSelCard(m.card_id||"");
+    setDateCol(Number(m.date_col)||0); setDescCol(Number(m.desc_col)||1);
+    setAmtType(m.amount_type||"single"); setAmtCol(Number(m.amount_col)||2);
+    setDebitCol(Number(m.debit_col)||2); setCreditCol(Number(m.credit_col)||3);
+    setDateFormat(m.date_format||"DD/MM/YYYY"); setSkipRows(Number(m.skip_rows)||1);
+    setCreditIndCol(m.credit_ind_col!==undefined&&m.credit_ind_col!==null?Number(m.credit_ind_col):-1);
+    if(m.total_due_row!=null) setTotalDueRow(String(m.total_due_row));
+    if(m.total_due_col!=null) setTotalDueCol(String(m.total_due_col));
+    if(m.opening_bal_row!=null) setOpeningBalRow(String(m.opening_bal_row));
+    if(m.opening_bal_col!=null) setOpeningBalCol(String(m.opening_bal_col));
+    const delim=m.delimiter||"auto";
+    setManualDelim(delim);
+    setSelMapping(m.id);
+    // Re-parse with restored delimiter if we have raw text
+    if(rawText){
+      const rows=parseCSV(rawText, delim==="auto"?undefined:delim);
+      setRawRows(rows);
+      setColWidths([]);
+    }
+  };
+
+  const autoDetectXLSX=rows=>{
+    // Try to detect Axis Bank format: header row at row 7, data from row 8
+    // Row 4: Total Payment Due in col 0, Opening Balance in col 4
+    // Row 7: Date | Transaction Details | | Amount (INR) | Debit/Credit
+    const cleanNum=s=>(s||"").replace(/[₹,\s]/g,"").trim();
+    if(rows.length>7){
+      const r7=rows[6]||[]; // 0-indexed row 7
+      if(r7[0]&&r7[0].toString().toLowerCase().includes("date")){
+        // Axis format detected
+        setSkipRows(8);
+        setDateCol(0);
+        setDescCol(1);
+        setAmtCol(3);
+        setAmtType("single");
+        setCreditIndCol(4); // "Debit" or "Credit"
+        setDateFormat("DD MMM 'YY");
+        setManualDelim("auto");
+        // Read billing fields from row 4 (index 3)
+        const r4=rows[3]||[];
+        const totalDueStr=cleanNum(r4[0]);
+        const openingBalStr=cleanNum(r4[4]);
+        if(totalDueStr) setTotalDue(totalDueStr);
+        if(openingBalStr) setOpeningBal(openingBalStr);
+        setMappingExpanded(false); // keep collapsed, settings auto-set
+      }
+    }
+  };
+
+  const buildParsed=(opts={})=>{
+    const sk=opts.skipRows!==undefined?opts.skipRows:skipRows;
+    const dc=opts.dateCol!==undefined?opts.dateCol:dateCol;
+    const dsc=opts.descCol!==undefined?opts.descCol:descCol;
+    const ac=opts.amtCol!==undefined?opts.amtCol:amtCol;
+    const at=opts.amtType||amtType;
+    const dbc=opts.debitCol!==undefined?opts.debitCol:debitCol;
+    const crc=opts.creditCol!==undefined?opts.creditCol:creditCol;
+    const cic=opts.creditIndCol!==undefined?opts.creditIndCol:creditIndCol;
+    const df=opts.dateFormat||dateFormat;
+    const rows=opts.rawRows||rawRows;
+    const dataRows=rows.slice(sk);
+    return dataRows.filter(r=>r.length>1).map(row=>{
+      const desc=(row[dsc]||"").replace(/"/g,"").trim();
+      const dateStr=parseDate(row[dc]||"",df);
+      let amount=0;
+      if(at==="single"){
+        const raw=(row[ac]||"").replace(/[,'"₹Rs\s₹]/g,"").trim();
+        const absAmt=Math.abs(parseFloat(raw)||0);
+        // If a credit indicator column is set and non-empty, it's a credit/refund
+        const creditCell=(row[cic]||"").trim().toLowerCase();
+        const isCredit=cic>=0&&(creditCell==="credit"||creditCell==="cr"||(creditCell.length>0&&creditCell!=="debit"&&creditCell!=="dr"&&isNaN(parseFloat(creditCell))));
+        amount=isCredit?-absAmt:absAmt;
+      } else {
+        const dRaw=(row[dbc]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const cRaw=(row[crc]||"").replace(/[,'"₹Rs]/g,"").trim();
+        const d=parseFloat(dRaw)||0;
+        const c=parseFloat(cRaw)||0;
+        amount=d>0?d:-c;
+      }
+      const category=applyRules(desc,rules);
+      // Validate dateStr is a proper YYYY-MM-DD format
+      const validDate=dateStr&&/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(dateStr);
+      return{date:validDate?dateStr:null,desc,amount,category,skip:!validDate};
+    }).filter(r=>r.date);
+  };
+
+  const saveMapping=async()=>{
+    const name=mapName.trim();
+    if(!name) return alert("Please enter a mapping name.");
+    const p={name,card_id:null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
+    // Only rule: does a mapping with this name already exist?
+    const existing=mappings.find(m=>m.name.trim().toLowerCase()===name.toLowerCase());
+    try{
+      if(existing){
+        const replace=confirm(`"${existing.name}" already exists. Are you sure you want to replace it?`);
+        if(!replace) return; // No — go back, do nothing
+        // Yes — delete old, insert new
+        const {error:delErr}=await db.from("csv_mappings").delete(existing.id);
+        if(delErr) throw delErr;
+        const {error:insErr}=await db.from("csv_mappings").insert(p);
+        if(insErr) throw insErr;
+      } else {
+        // Name doesn't exist — insert new
+        const {error}=await db.from("csv_mappings").insert(p);
+        if(error) throw error;
+      }
+      const {data}=await db.from("csv_mappings").select();
+      setMappings(data||[]);
+      setSelMapping(data?.find(m=>m.name===name)?.id||"");
+      alert(`"${name}" saved.`);
+    }catch(e){
+      alert("Save failed: "+JSON.stringify(e));
+    }
+  };
+
+  const goToPreview=()=>{
+
+    // Read billing fields synchronously before state update
+    const tdr=parseInt(totalDueRow)||0;
+    const tdc=parseInt(totalDueCol)||1;
+    const obr=parseInt(openingBalRow)||0;
+    const obc=parseInt(openingBalCol)||1;
+    const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+    const readCell=(rowIdx,colIdx1based)=>{
+      const row=(rawRows[rowIdx]||[]);
+      const ci=colIdx1based-1; // convert 1-based to 0-based
+      return cn(row[ci]||"");
+    };
+    // Compute values synchronously
+    let newTotalDue="";
+    let newOpeningBal="";
+    if(rawRows.length>tdr){
+      const due=parseFloat(readCell(tdr,tdc));
+      if(!isNaN(due)&&due>0) newTotalDue=String(due);
+    }
+    if(rawRows.length>obr){
+      const ob=parseFloat(readCell(obr,obc));
+      if(!isNaN(ob)&&ob!==0) newOpeningBal=String(ob);
+    }
+    // Set all state at once then move to step 3
+    setTotalDue(newTotalDue);
+    setOpeningBal(newOpeningBal);
+    setParsed(buildParsed());
+    setStep(3);
+  };
+
+  const [showMonthModal,setShowMonthModal]=useState(false);
+  const [modalMonth,setModalMonth]=useState("");
+  const [modalYear,setModalYear]=useState("");
+
+  const doImport=async()=>{
+
+    // Always show month modal — reset fields each time
+    setModalMonth("");
+    setModalYear("");
+    setShowMonthModal(true);
+  };
+
+  const runImport=async(chosenMonth)=>{
+    setShowMonthModal(false);
+    setImporting(true);
+    let added=0,skipped=0;
+    const stmtMonth=chosenMonth;
+    // Check for duplicate statement (same card + same month)
+    if(selCard){
+      const {data:existingStmts}=await db.from("statements").filter("card_id",selCard);
+      const dup=(existingStmts||[]).find(s=>s.statement_month===stmtMonth);
+      if(dup){
+        setImporting(false);
+        alert("A statement for "+stmtMonth+" already exists for this card. Delete it first or choose a different month.");
+        return;
+      }
+    }
+    let stmtId=null;
+    try{
+      // Check for duplicate file name on same card
+      if(fileName){
+        const {data:existingByName}=await db.from("statements").filter("card_id",selCard);
+        const dupName=(existingByName||[]).find(s=>s.file_name===fileName&&s.statement_month!==stmtMonth);
+        if(dupName){
+          setImporting(false);
+          const msg=`A statement with the file name "${fileName}" was already imported for ${fmtMonth(dupName.statement_month)}. Are you importing the same file for a different month?`;
+          if(!confirm(msg+" Click OK to continue anyway, or Cancel to go back.")) return;
+        }
+      }
+      const {data:stmtData}=await db.from("statements").insert({
+        card_id:selCard||null,
+        statement_month:stmtMonth,
+        transaction_count:parsed.filter(r=>!r.skip).length,
+        total_spend:parsed.filter(r=>!r.skip&&r.amount>0).reduce((a,r)=>a+r.amount,0),
+        file_name:fileName,
+        total_due:parseFloat(totalDue)||0,
+        opening_balance:parseFloat(openingBal)||0,
+      });
+      stmtId=stmtData?.[0]?.id||null;
+    }catch(e){
+      console.error("Statement insert failed:",e);
+      setImporting(false);
+      alert("Failed to create statement record: "+JSON.stringify(e));
+      return;
+    }
+
+    console.log("runImport: parsed rows=",parsed.length,"selCard=",selCard,"stmtMonth=",stmtMonth);
+    for(const row of parsed){
+      if(row.skip) continue;
+      const txnData={
+        card_id:selCard||null,
+        txn_date:row.date,
+        description:row.desc,
+        amount:row.amount,
+        category:row.category,
+        is_reimbursable:false,
+        raw_description:row.desc,
+        imported_from:fileName,
+        statement_month:stmtMonth,
+      };
+      if(stmtId) txnData.statement_id=stmtId;
+      const {error}=await db.from("spend_transactions").insert(txnData);
+      if(error){console.error("Txn insert error:",error,txnData);skipped++;}
+      else added++;
+    }
+    setImporting(false);
+
+    // Compute rule suggestions: transactions where user changed category from default
+    const existingRules=rules.map(r=>r.keyword.toLowerCase());
+    const suggestions=[];
+    const seen=new Set();
+    for(const row of parsed){
+      if(row.skip) continue;
+      const autocat=applyRules(row.desc,rules);
+      if(row.category!==autocat&&row.category!=="Other"){
+        // User explicitly set a different category — suggest a rule
+        const words=row.desc.trim().split(/\s+/);
+        // Find first word that's long enough and not already a rule
+        const keyword=words.find(w=>w.length>=4&&!existingRules.includes(w.toLowerCase()));
+        if(keyword&&!seen.has(keyword.toLowerCase())){
+          seen.add(keyword.toLowerCase());
+          suggestions.push({keyword:keyword.toLowerCase(),category:row.category,checked:true,desc:row.desc});
+        }
+      }
+    }
+    if(suggestions.length>0){
+      setRuleSuggestions(suggestions);
+      setShowRuleSuggestions(true);
+    }
+
+    setImportResult({added,skipped});
+    setStmtMonthSel("");
+    setStep(4);
+  };
+
+  const upd=(i,field,val)=>setParsed(prev=>prev.map((r,ri)=>ri===i?{...r,[field]:val}:r));
+
+  // Use max columns across all rows for column options
+  const maxCols=rawRows.length>0?Math.max(...rawRows.map(r=>r.length),1):20;
+  // Show transaction header row labels (skipRows-1 is usually the header)
+  const headerRow=rawRows[skipRows>0?skipRows-1:0]||[];
+  const colLbl=i=>`Col ${i+1}${headerRow[i]?` (${headerRow[i].substring(0,14)})`:""}`;
+  const colOpts=Array.from({length:maxCols},(_,i)=>colLbl(i));
+
+  const ss={...{fontSize:12,border:`1px solid ${bdr}`,borderRadius:8,padding:"7px 10px",background:surf,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",width:"100%"}};
+  const total=parsed.filter(r=>!r.skip).length;
+  const totalAmt=parsed.filter(r=>!r.skip).reduce((a,r)=>a+r.amount,0);
+
+
+  // ── Step 1: Upload ──────────────────────────────────────────────────────────
+  const processFile=async file=>{
+    if(!file) return;
+    setUploadError("");
+    setFileName(file.name);
+    const isExcel=file.name.match(/\.xlsx?$/i);
+    if(isExcel){
+      try{
+        const rows=await parseXLSXFile(file);
+        if(!rows||rows.length===0){setUploadError("Could not parse any rows from Excel file");return;}
+        setRawRows(rows);
+        setRawText("");
+        setColWidths([]);
+        autoDetectXLSX(rows);
+        setStep(2);
+      }catch(err){
+        setUploadError("Error reading Excel file: "+err.message);
+      }
+      return;
+    }
+    // CSV path
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const text=ev.target.result;
+        if(!text||text.length===0){setUploadError("File appears to be empty");return;}
+        const rows=parseCSV(text,manualDelim==="auto"?undefined:manualDelim);
+        if(!rows||rows.length===0){setUploadError("Could not parse any rows from file");return;}
+        setRawRows(rows);
+        setRawText(text);
+        setColWidths([]);
+        const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+        const readCell=(rowIdx,colIdx1based)=>{
+          const row=(rows[rowIdx]||[]);
+          const ci=colIdx1based-1;
+          return cn(row[ci]||"");
+        };
+        if(rows.length>parseInt(totalDueRow)||0){
+          const due=parseFloat(readCell(parseInt(totalDueRow)||0,parseInt(totalDueCol)||1));
+          if(!isNaN(due)&&due>0) setTotalDue(String(due));
+        }
+        if(rows.length>parseInt(openingBalRow)||0){
+          const ob=parseFloat(readCell(parseInt(openingBalRow)||0,parseInt(openingBalCol)||1));
+          if(!isNaN(ob)&&ob!==0) setOpeningBal(String(ob));
+        }
+        setStep(2);
+      }catch(err){
+        setUploadError("Error reading file: "+err.message);
+      }
+    };
+    reader.onerror=()=>setUploadError("Could not read file");
+    reader.readAsText(file);
+  };
+
+  if(step===1) return(
+    <div>
+      <Hdr title="CC Statement Upload" sub="Import credit card transactions from CSV"/>
+      <div style={{maxWidth:520}}>
+        <Card>
+          <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:16}}>Select your CSV file</div>
+          <input
+            type="file"
+            accept=".csv,.txt,.xlsx,.xls,text/csv,text/plain"
+            style={{display:"block",width:"100%",padding:"12px",border:`2px solid ${bdr}`,borderRadius:10,fontSize:13,background:surf2,cursor:"pointer",color:txt,fontFamily:"'Manrope',sans-serif"}}
+            onChange={e=>{
+              const file=e.target.files&&e.target.files[0];
+              if(file) processFile(file);
+            }}
+          />
+          {fileName&&!uploadError&&<div style={{fontSize:12,color:grn,marginTop:8,fontWeight:500}}>✓ {fileName} — processing…</div>}
+          {uploadError&&<div style={{fontSize:12,color:red,marginTop:8,fontWeight:500}}>✗ {uploadError}</div>}
+          <div style={{fontSize:11,color:mut,marginTop:10}}>Supported: CSV files from HDFC, Axis, Amex etc.</div>
+
+        </Card>
+      </div>
+    </div>
+  );
+
+  // ── Step 2: Map columns ─────────────────────────────────────────────────────
+  if(step===2) return(
+    <div>
+      <Hdr title="Map Columns" sub={fileName}/>
+      <div style={{width:"100%"}}>
+        {mappings.length>0&&<Card style={{marginBottom:16}}>
+          <div style={{fontSize:11,color:mut,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Load a saved mapping</div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {mappings.map(m=><button key={m.id} onClick={()=>applyMapping(m)} style={{...gbtn,fontSize:12,background:selMapping===m.id?surf3:surf}}>{m.name}</button>)}
+          </div>
+        </Card>}
+
+        {/* Preview of raw CSV */}
+        <Card style={{marginBottom:16,maxWidth:"100%"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+            <div style={{fontSize:11,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>CSV Preview — drag ↔ to resize columns</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <span style={{fontSize:10,color:mut}}>Detected delimiter: <strong style={{color:txt}}>{(()=>{const s=rawRows.slice(0,5).map(r=>r.join("~I~")).join("\n");return s.includes("~I~")||s.includes("~i~")?"~I~":rawRows[0]?.length>1?"auto-detected":"comma";})()} </strong></span>
+              <button style={{...gbtn,fontSize:11,padding:"4px 12px"}} onClick={()=>{
+                const text=rawRows.slice(0,30).map((row,ri)=>ri+"\t"+row.join("\t")).join("\n");
+                navigator.clipboard.writeText(text).then(()=>alert("Copied!"));
+              }}>Copy preview</button>
+            </div>
+          </div>
+          {(()=>{
+            const numCols=rawRows.length>0?Math.max(...rawRows.slice(0,30).map(r=>r.length),1):1;
+            const widths=colWidths.length===numCols?colWidths:Array(numCols).fill(160);
+
+            const onResizeStart=(e,ci)=>{
+              e.preventDefault();
+              const startX=e.clientX;
+              const startW=widths[ci];
+              const move=ev=>{
+                const nw=Math.max(50,startW+(ev.clientX-startX));
+                setColWidths(prev=>{
+                  const arr=[...(prev.length===numCols?prev:Array(numCols).fill(160))];
+                  arr[ci]=nw;
+                  return arr;
+                });
+              };
+              const up=()=>{
+                document.removeEventListener("mousemove",move);
+                document.removeEventListener("mouseup",up);
+              };
+              document.addEventListener("mousemove",move);
+              document.addEventListener("mouseup",up);
+            };
+
+            return(
+              <div style={{overflowX:"auto",maxHeight:360,overflowY:"auto",border:`1px solid ${bdr}`,borderRadius:8}}>
+                <table style={{borderCollapse:"collapse",fontSize:11,tableLayout:"fixed",width:"max-content",minWidth:"100%"}}>
+                  <colgroup>
+                    <col style={{width:36}}/>
+                    {widths.map((w,i)=><col key={i} style={{width:w}}/>)}
+                  </colgroup>
+                  <thead style={{position:"sticky",top:0,zIndex:2}}>
+                    <tr style={{background:surf3,borderBottom:`2px solid ${bdr}`}}>
+                      <th style={{padding:"6px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left",background:surf3}}>#</th>
+                      {widths.map((w,ci)=>(
+                        <th key={ci} style={{padding:"6px 8px",color:mut,fontSize:10,fontWeight:600,textAlign:"left",position:"relative",background:surf3,userSelect:"none"}}>
+                          <span>Col {ci+1}</span>
+                          <span
+                            onMouseDown={e=>onResizeStart(e,ci)}
+                            style={{position:"absolute",right:0,top:0,bottom:0,width:12,cursor:"col-resize",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:acc,fontWeight:700,background:surf2}}
+                            title="Drag to resize"
+                          >↔</span>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rawRows.slice(0,30).map((row,ri)=>(
+                      <tr key={ri} style={{background:ri===skipRows?acc+"15":ri%2===0?surf:surf2,borderBottom:`1px solid ${bdr}`}}>
+                        <td style={{padding:"5px 8px",color:ri===skipRows?acc:mut,fontWeight:ri===skipRows?700:400,whiteSpace:"nowrap",verticalAlign:"top"}}>{ri}</td>
+                        {widths.map((_,ci)=>(
+                          <td key={ci} style={{padding:"5px 8px",color:ri===skipRows?acc:txt,wordBreak:"break-word",whiteSpace:"normal",verticalAlign:"top",maxWidth:widths[ci]}}>
+                            {row[ci]||""}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })()}
+          <div style={{fontSize:11,color:acc,marginTop:6,display:"flex",alignItems:"center",gap:10}}>
+            <span>↑ Highlighted row {skipRows} = first data row based on your "Skip header rows" setting</span>
+            <button style={{...gbtn,fontSize:11,padding:"3px 10px"}} onClick={()=>{
+              // Find first row that looks like a transaction (has a date-like value)
+              const dateRe=/\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}/;
+              for(let i=1;i<rawRows.length;i++){
+                if(rawRows[i].some(cell=>dateRe.test(cell))){
+                  setSkipRows(i);
+                  break;
+                }
+              }
+            }}>Auto-detect start row</button>
+          </div>
+        </Card>
+
+        {/* Collapsible mapping section */}
+        <div style={{marginBottom:16}}>
+          <div
+            onClick={()=>setMappingExpanded(e=>!e)}
+            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 16px",background:surf2,border:`1px solid ${bdr}`,borderRadius:mappingExpanded?"10px 10px 0 0":"10px",cursor:"pointer",userSelect:"none"}}>
+            <div style={{textAlign:"left"}}>
+              <div style={{fontSize:13,fontWeight:600,color:txt}}>{selMapping?mappings.find(m=>m.id===selMapping)?.name||"Custom mapping":"No mapping selected"}</div>
+              <div style={{fontSize:11,color:mut,marginTop:2}}>
+                {manualDelim==="auto"?"Auto":manualDelim==="	"?"Tab":manualDelim||"auto"} · Skip {skipRows||0} · Date col {(dateCol||0)+1} · Desc col {(descCol||0)+1} · Amt col {amtType==="single"?(amtCol||0)+1:"split"}
+              </div>
+            </div>
+            <div style={{fontSize:12,color:acc,fontWeight:600,marginLeft:12,flexShrink:0}}>{mappingExpanded?"▲ Collapse":"▼ Edit"}</div>
+          </div>
+          {mappingExpanded&&<div style={{border:`1px solid ${bdr}`,borderTop:"none",borderRadius:"0 0 10px 10px",padding:"16px",background:surf}}>
+            {/* ── Section 1: Identity ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>Mapping Identity</div>
+            <div style={{marginBottom:16}}>
+              {lbl("Mapping Name")}
+              <input style={ss} value={mapName} onChange={e=>setMapName(e.target.value)} placeholder="e.g. HDFC Infinia"/>
+            </div>
+            {/* ── Section 2: Parsing ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Parsing Settings</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                {lbl("Delimiter")}
+                <div style={{display:"flex",gap:6}}>
+                  <select style={{...ss,flex:1}} value={manualDelim} onChange={e=>setManualDelim(e.target.value)}>
+                    <option value="auto">Auto-detect</option>
+                    <option value="|">Pipe | (HDFC)</option>
+                    <option value=",">Comma ,</option>
+                    <option value={"	"}>Tab</option>
+                    <option value=";">Semicolon ;</option>
+                  </select>
+                  <button style={{...gbtn,fontSize:11}} onClick={()=>{if(rawText){const rows=parseCSV(rawText,manualDelim==="auto"?undefined:manualDelim);setRawRows(rows);setColWidths([]);}}}>↺</button>
+                </div>
+              </div>
+              <div>
+                {lbl("Skip header rows")}
+                <select style={ss} value={skipRows} onChange={e=>setSkipRows(Number(e.target.value))}>
+                  {Array.from({length:31},(_,n)=><option key={n} value={n}>{n} row{n!==1?"s":""}</option>)}
+                </select>
+              </div>
+              <div>
+                {lbl("Date format")}
+                <select style={ss} value={dateFormat} onChange={e=>setDateFormat(e.target.value)}>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                  <option value="auto">Auto-detect</option>
+                </select>
+              </div>
+            </div>
+            {/* ── Section 3: Column Mapping ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Column Mapping</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+              <div>{lbl("Date column")}<select style={ss} value={dateCol} onChange={e=>setDateCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              <div>{lbl("Description column")}<select style={ss} value={descCol} onChange={e=>setDescCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              <div>{lbl("Amount type")}<select style={ss} value={amtType} onChange={e=>setAmtType(e.target.value)}><option value="single">Single column</option><option value="split">Separate Debit / Credit</option></select></div>
+              {amtType==="single"?(<>
+                <div>{lbl("Amount column")}<select style={ss} value={amtCol} onChange={e=>setAmtCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+                <div>{lbl("Credit indicator col")}<select style={ss} value={creditIndCol} onChange={e=>setCreditIndCol(Number(e.target.value))}><option value={-1}>None</option>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              </>):(<>
+                <div>{lbl("Debit column")}<select style={ss} value={debitCol} onChange={e=>setDebitCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+                <div>{lbl("Credit column")}<select style={ss} value={creditCol} onChange={e=>setCreditCol(Number(e.target.value))}>{colOpts.map((l,i)=><option key={i} value={i}>{l}</option>)}</select></div>
+              </>)}
+            </div>
+            {/* ── Section 4: Billing Summary ── */}
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,paddingTop:12,borderTop:`1px solid ${bdr}`}}>Billing Summary Location</div>
+            <div style={{fontSize:11,color:mut,marginBottom:10}}>Col 1 = first column</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:txt,marginBottom:6}}>Total Amount Due</div>
+                <div style={{display:"flex",gap:8}}><div style={{flex:1}}>{lbl("Row #")}<input type="text" inputMode="numeric" style={ss} value={totalDueRow} onChange={e=>setTotalDueRow(e.target.value)} placeholder="6"/></div><div style={{flex:1}}>{lbl("Col #")}<input type="text" inputMode="numeric" style={ss} value={totalDueCol} onChange={e=>setTotalDueCol(e.target.value)} placeholder="2"/></div></div>
+              </div>
+              <div>
+                <div style={{fontSize:12,fontWeight:500,color:txt,marginBottom:6}}>Opening Balance</div>
+                <div style={{display:"flex",gap:8}}><div style={{flex:1}}>{lbl("Row #")}<input type="text" inputMode="numeric" style={ss} value={openingBalRow} onChange={e=>setOpeningBalRow(e.target.value)} placeholder="13"/></div><div style={{flex:1}}>{lbl("Col #")}<input type="text" inputMode="numeric" style={ss} value={openingBalCol} onChange={e=>setOpeningBalCol(e.target.value)} placeholder="1"/></div></div>
+              </div>
+            </div>
+            {/* Save mapping */}
+            <div style={{paddingTop:12,borderTop:`1px solid ${bdr}`,display:"flex",justifyContent:"flex-end"}}>
+              <button style={{...gbtn,fontSize:12}} onClick={saveMapping}>Save mapping</button>
+            </div>
+          </div>}
+        </div>
+        {/* Navigation — always visible */}
+        <div style={{display:"flex",justifyContent:"space-between",marginTop:8}}>
+          <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
+          <button style={pbtn} onClick={goToPreview}>Preview →</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── Step 3: Preview & categorise ───────────────────────────────────────────
+  if(step===3) return(
+    <div>
+      {/* Billing summary verification */}
+      {(()=>{
+        // Show raw CSV cell values for debugging
+        const tdr=parseInt(totalDueRow)||0;
+        const tdc=parseInt(totalDueCol);
+        const obr=parseInt(openingBalRow)||0;
+        const obc=parseInt(openingBalCol);
+        const getRow=ri=>(rawRows[ri]||[]);
+        const getCell=(ri,ci1based)=>{
+          const row=getRow(ri);
+          return row[ci1based-1]||"";
+        };
+        const rawDue=getCell(tdr,tdc);
+        const rawOb=getCell(obr,obc);
+        const rowDueCells=getRow(tdr).map((v,i)=>`Col${i+1}: ${v||"—"}`).join(" | ");
+        const rowObCells=getRow(obr).map((v,i)=>`Col${i+1}: ${v||"—"}`).join(" | ");
+        return(
+          <details style={{marginBottom:12}}>
+            <summary style={{fontSize:11,color:mut,cursor:"pointer",padding:"6px 10px",background:surf2,borderRadius:8}}>🔍 Debug: raw CSV values (click to expand)</summary>
+            <div style={{fontSize:11,fontFamily:"monospace",padding:"10px 12px",background:surf2,borderRadius:"0 0 8px 8px",borderTop:`1px solid ${bdr}`}}>
+              <div style={{marginBottom:6}}><strong>Row {tdr} (Total Due):</strong> {rowDueCells||"(row empty)"}</div>
+              <div style={{marginBottom:6}}><strong>Reading Col {tdc}:</strong> "{rawDue}"</div>
+              <div style={{marginBottom:6}}><strong>Row {obr} (Opening Bal):</strong> {rowObCells||"(row empty)"}</div>
+              <div><strong>Reading Col {obc}:</strong> "{rawOb}"</div>
+            </div>
+          </details>
+        );
+      })()}
+      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap"}}>
+        {[
+          {label:"Total Amount Due",value:totalDue,row:totalDueRow,col:totalDueCol},
+          {label:"Opening Balance (Prev Stmt Due)",value:openingBal,row:openingBalRow,col:openingBalCol},
+        ].map((f,i)=>(
+          <Card key={i} style={{flex:1,minWidth:180,padding:"12px 16px",border:`2px solid ${f.value?grn+"55":amber+"55"}`}}>
+            <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>{f.label}</div>
+            {f.value?(
+              <div style={{fontSize:20,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>₹{parseFloat(f.value).toLocaleString("en-IN")}</div>
+            ):(
+              <div style={{fontSize:12,color:amber,fontWeight:500}}>⚠ Not read — check Row/Col settings in Step 2</div>
+            )}
+            <div style={{fontSize:10,color:mut,marginTop:3}}>Row {f.row} · Col {f.col===-1?"last":f.col}</div>
+          </Card>
+        ))}
+
+        <Card style={{flex:1,minWidth:180,padding:"12px 16px"}}>
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Debits this import</div>
+          <div style={{fontSize:20,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>₹{parsed.filter(r=>!r.skip&&r.amount>0).reduce((a,r)=>a+r.amount,0).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+          <div style={{fontSize:10,color:mut,marginTop:3}}>{parsed.filter(r=>!r.skip&&r.amount>0).length} transactions</div>
+        </Card>
+        <Card style={{flex:1,minWidth:180,padding:"12px 16px"}}>
+          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4}}>Credits this import</div>
+          <div style={{fontSize:20,fontWeight:700,color:grn,fontFamily:"'Manrope',sans-serif"}}>₹{Math.abs(parsed.filter(r=>!r.skip&&r.amount<0).reduce((a,r)=>a+r.amount,0)).toLocaleString("en-IN",{maximumFractionDigits:0})}</div>
+          <div style={{fontSize:10,color:mut,marginTop:3}}>{parsed.filter(r=>!r.skip&&r.amount<0).length} transactions</div>
+        </Card>
+      </div>
+      <Hdr title="Review Transactions" sub={`${total} transactions · ₹${totalAmt.toLocaleString("en-IN")}`}/>
+      <div style={{marginBottom:12,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:12,color:mut}}>
+          {total===0&&<div style={{color:red,fontWeight:500,marginBottom:6}}>No transactions found. Check settings — Skip rows: {skipRows}, Date col: Col {dateCol+1}, Desc col: Col {descCol+1}, Amount col: Col {amtCol+1}. Make sure these match your CSV preview.</div>}
+          Review and adjust categories before importing.
+        </div>
+        <div style={{display:"flex",gap:8}}>
+          <button style={gbtn} onClick={()=>setStep(2)}>← Back</button>
+          <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
+        </div>
+      </div>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut}}>
+              <th style={{padding:"8px 10px",textAlign:"left",width:90}}>Date</th>
+              <th style={{padding:"8px 10px",textAlign:"left"}}>Description</th>
+              <th style={{padding:"8px 10px",textAlign:"right",width:100}}>Amount</th>
+              <th style={{padding:"8px 10px",textAlign:"left",width:150}}>Category</th>
+              <th style={{padding:"8px 10px",textAlign:"center",width:60}}>Skip</th>
+            </tr>
+          </thead>
+          <tbody>
+            {parsed.map((row,i)=>(
+              <tr key={i} style={{borderBottom:`1px solid ${bdr}`,opacity:row.skip?0.35:1,background:row.amount<0?grn+"08":row.reimbursable?acc+"06":surf}}>
+                <td style={{padding:"7px 10px",color:mut,whiteSpace:"nowrap"}}>{row.date}</td>
+                <td style={{padding:"7px 10px",color:txt,maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.desc}</td>
+                <td style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:row.amount<0?grn:txt}}>
+                  {row.amount<0?<span style={{fontSize:10,color:grn,marginRight:4}}>CREDIT</span>:null}
+                  ₹{Math.abs(row.amount).toLocaleString("en-IN")}
+                </td>
+                <td style={{padding:"7px 10px"}}>
+                  <select value={row.category} onChange={e=>upd(i,"category",e.target.value)}
+                    style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}}>
+                    {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                  </select>
+                </td>
+
+                <td style={{padding:"7px 10px",textAlign:"center"}}>
+                  <input type="checkbox" checked={row.skip} onChange={e=>upd(i,"skip",e.target.checked)} style={{width:15,height:15}}/>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{display:"flex",justifyContent:"flex-end",marginTop:16}}>
+        <button style={{...pbtn,opacity:importing?0.6:1}} onClick={doImport}>{importing?"Importing…":"Import "+total+" transactions →"}</button>
+      </div>
+      <Modal show={showMonthModal} onClose={()=>setShowMonthModal(false)} title="Import Statement">
+        <div style={{fontSize:13,color:mut,marginBottom:16}}>Select the card and statement month for this import.</div>
+        {lbl("Card *")}
+        <select style={inp} value={selCard} onChange={e=>setSelCard(e.target.value)}>
+          <option value="">Select card…</option>
+          {(()=>{
+            const grouped={};
+            cards.forEach(c=>{
+              const o=owners.find(x=>x.id===c.owner_id);
+              const on=o?.name||"Unknown";
+              if(!grouped[on]) grouped[on]=[];
+              grouped[on].push(c);
+            });
+            return Object.entries(grouped).map(([on,oc])=>(
+              <optgroup key={on} label={"── "+on+" ──"}>
+                {oc.map(c=>{const m=mCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name||c.id}</option>;})}
+              </optgroup>
+            ));
+          })()}
+        </select>
+        <div style={{marginBottom:16}}>
+          {lbl("Statement Month *")}
+          <input
+            type="month"
+            style={{...inp,colorScheme:"light"}}
+            value={modalYear&&modalMonth?modalYear+"-"+modalMonth:""}
+            onChange={e=>{
+              const [y,m]=(e.target.value||"").split("-");
+              setModalYear(y||""); setModalMonth(m||"");
+            }}
+          />
+        </div>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:8}} onClick={()=>{
+          if(!selCard) return alert("Please select a card.");
+          if(!modalMonth||!modalYear) return alert("Please select a statement month.");
+          const chosen=modalYear+"-"+modalMonth;
+          setStmtMonthSel(chosen);
+          runImport(chosen);
+        }}>Import</button>
+      </Modal>
+    </div>
+  );
+
+  // ── Step 4: Done ─────────────────────────────────────────────────────────────
+  if(step===4) return(
+    <div>
+      <Hdr title="Import Complete" sub="Transactions added to your spend tracker"/>
+      <Card style={{maxWidth:520,marginBottom:showRuleSuggestions?16:0}}>
+        <div style={{textAlign:"center",padding:"24px 0"}}>
+          <div style={{fontSize:40,marginBottom:12}}>✓</div>
+          <div style={{fontSize:18,fontWeight:700,color:grn,marginBottom:8}}>{importResult?.added} transactions imported</div>
+          {importResult?.skipped>0&&<div style={{fontSize:13,color:mut,marginBottom:8}}>{importResult.skipped} skipped</div>}
+          <button style={{...pbtn,marginTop:8}} onClick={()=>{setStep(1);setRawRows([]);setFileName("");setParsed([]);setImportResult(null);setRuleSuggestions([]);setShowRuleSuggestions(false);}}>Upload another statement</button>
+        </div>
+      </Card>
+      {showRuleSuggestions&&<Card style={{maxWidth:520}}>
+        <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:4}}>Save auto-rules?</div>
+        <div style={{fontSize:12,color:mut,marginBottom:16}}>
+          You changed {ruleSuggestions.length} categor{ruleSuggestions.length!==1?"ies":"y"} from the default. Save these as rules for future imports?
+        </div>
+        {ruleSuggestions.map((s,i)=>(
+          <div key={i} style={{display:"flex",alignItems:"center",gap:12,padding:"8px 0",borderBottom:`1px solid ${bdr}`}}>
+            <input type="checkbox" checked={s.checked} onChange={()=>setRuleSuggestions(prev=>prev.map((r,ri)=>ri===i?{...r,checked:!r.checked}:r))} style={{accentColor:acc,flexShrink:0}}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontSize:12,color:mut,marginBottom:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.desc}</div>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12}}>
+                <input style={{...inp,marginBottom:0,fontSize:11,padding:"2px 6px",width:140}} value={s.keyword} onChange={e=>setRuleSuggestions(prev=>prev.map((r,ri)=>ri===i?{...r,keyword:e.target.value}:r))}/>
+                <span style={{color:mut}}>→</span>
+                <select style={{...inp,marginBottom:0,fontSize:11,padding:"2px 6px"}} value={s.category} onChange={e=>setRuleSuggestions(prev=>prev.map((r,ri)=>ri===i?{...r,category:e.target.value}:r))}>
+                  {categories.map(c=><option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        ))}
+        <div style={{display:"flex",gap:8,marginTop:14}}>
+          <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>setShowRuleSuggestions(false)}>Skip</button>
+          <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
+            const toSave=ruleSuggestions.filter(s=>s.checked&&s.keyword.trim());
+            for(const s of toSave){
+              await db.from("merchant_rules").insert({keyword:s.keyword.trim().toLowerCase(),category:s.category});
+            }
+            setShowRuleSuggestions(false);
+            if(toSave.length>0) alert(`Saved ${toSave.length} rule${toSave.length!==1?"s":""}.`);
+          }}>Save {ruleSuggestions.filter(s=>s.checked).length} rule{ruleSuggestions.filter(s=>s.checked).length!==1?"s":""}</button>
+        </div>
+      </Card>}
     </div>
   );
 
@@ -3857,8 +5316,6 @@ const NAV=[
 export default function App(){
   const [db,setDb]=useState(null);
   const [user,setUser]=useState(null);
-  const [supaUrl,setSupaUrl]=useState("https://gmrpweqrclfiaxnzqvtn.supabase.co");
-  const [supaKey,setSupaKey]=useState("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc");
   const [tab,setTab]=useState("home");
   const [menuOpen,setMenuOpen]=useState(false);
   const [owners,setOwners]=useState([]);
@@ -3866,17 +5323,13 @@ export default function App(){
 
   useEffect(()=>{
     try{
-      const u="https://gmrpweqrclfiaxnzqvtn.supabase.co",k="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
-      const session=getStoredSession(u);
-      if(session&&session.access_token){
-        const c=createAuthedClient(u,k,session.access_token);
-        setDb(c);setUser(session.user);
+      const s=getStoredSession();
+      if(s&&s.access_token){
+        const c=createAuthedClient(s.access_token);
+        setDb(c);setUser(s.user);
         loadOwners(c);
       }
-    }catch(e){
-      console.error("Session restore failed:",e);
-      try{localStorage.removeItem("pv_session_https://gmrpweqrclfiaxnzqvtn.supabase.co");}catch(_){}
-    }
+    }catch(e){clearSession();}
   },[]);
 
   const loadOwners=async client=>{
@@ -3901,21 +5354,9 @@ export default function App(){
     setMenuOpen(false);
   };
 
-  const handleAuth=(u,k,session,usr)=>{
-    storeSession("https://gmrpweqrclfiaxnzqvtn.supabase.co",{...session,user:usr});
-    const c=createAuthedClient(u,k,session.access_token);
-    setDb(c); setUser(usr); setSupaUrl(u); setSupaKey(k);
-    loadOwners(c);
-  };
-
   const handleSignOut=async()=>{
-    try{
-      const base=createClient("https://gmrpweqrclfiaxnzqvtn.supabase.co","eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc");
-      const session=getStoredSession("https://gmrpweqrclfiaxnzqvtn.supabase.co");
-      if(session) await base.auth.signOut(session.access_token);
-    }catch(_){}
-    clearSession("https://gmrpweqrclfiaxnzqvtn.supabase.co");
-    setDb(null); setUser(null); setTab("home");
+    try{const s=getStoredSession();if(s)await createClient(SUPA_URL,SUPA_KEY).auth.signOut(s.access_token);}catch(_){}
+    clearSession();setDb(null);setUser(null);setTab("home");
   };
 
   if(!db) return(
@@ -3923,17 +5364,9 @@ export default function App(){
       <div style={{width:"100%",maxWidth:420,padding:"0 24px"}}>
         <div style={{fontSize:28,fontWeight:700,color:txt,letterSpacing:"-0.04em",marginBottom:6}}>PointsVault</div>
         <div style={{fontSize:13,color:mut,marginBottom:32,fontWeight:400,textTransform:"uppercase",letterSpacing:"0.08em"}}>Wealth Tracker</div>
-        <AuthScreen supaUrl={supaUrl} supaKey={supaKey}
-          onSetCredentials={(u,k)=>{setSupaUrl(u);setSupaKey(k);}}
-          onAuth={handleAuth}/>
-        <div style={{marginTop:24,textAlign:"center"}}>
-          <button onClick={()=>{
-            try{
-              const u=localStorage.getItem("pv_u");
-              if(u) localStorage.removeItem("pv_session_"+u);
-            }catch(_){}
-            window.location.reload();
-          }} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:11,fontFamily:"'Manrope',sans-serif",textDecoration:"underline"}}>
+        <AuthScreen onAuth={(c,usr)=>{setDb(c);setUser(usr);loadOwners(c);}}/>
+        <div style={{marginTop:16,textAlign:"center"}}>
+          <button onClick={()=>{clearSession();window.location.reload();}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:11,fontFamily:"'Manrope',sans-serif",textDecoration:"underline"}}>
             Having trouble? Clear session and reload
           </button>
         </div>
@@ -4010,12 +5443,6 @@ export default function App(){
 
         <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>
           Secured · Supabase
-        </div>
-        {/* Sign out */}
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,marginTop:"auto"}}>
-          <button onClick={handleSignOut} style={{...gbtn,width:"100%",justifyContent:"center",fontSize:12,padding:"8px"}}>
-            Sign Out
-          </button>
         </div>
       </aside>
 
