@@ -2066,7 +2066,7 @@ function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
 }
 
 
-function Catalog({db}){
+function Catalog({db,ownersData=[],reloadOwners}){
   const [tab,setTab]=useState("cards");
   const [mCards,setMCards]=useState([]);
   const [mProgs,setMProgs]=useState([]);
@@ -2473,6 +2473,9 @@ function Catalog({db}){
         )}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={savePart}>{editItem?"Save Changes":"Add Route"}</button>
       </Modal>
+      {tab==="people"&&<SetupPeople db={db}/>}
+      {tab==="categories"&&<SetupCategories db={db}/>}
+      {tab==="owners"&&<SetupOwners db={db} owners={ownersData} reloadOwners={reloadOwners}/>}
     </div>
   );
 }
@@ -5101,11 +5104,8 @@ const NAV=[
     {id:"settings-danger",  label:"Danger Zone"},
   ], sub:[
     {label:"Setup", items:[
-      {id:"setup-people",      label:"People"},
-      {id:"setup-categories",  label:"Categories"},
       {id:"setup-mappings",    label:"CC Mappings"},
       {id:"setup-catalog",     label:"Master"},
-      {id:"setup-owners",      label:"Owners"},
     ]},
   ]},
 ];
@@ -5280,7 +5280,7 @@ export default function App(){
         {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
         {tab==="vouchers"          &&<Vouchers db={db} owners={owners}/>}
         {(tab==="pm-setup-owners"||tab==="setup-owners")&&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
-        {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog db={db}/>}
+        {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog db={db} ownersData={owners} reloadOwners={()=>loadOwners()}/>}
         {(tab==="spend-setup-people"||tab==="setup-people")&&<SetupPeople db={db}/>}
         {(tab==="spend-setup-categories"||tab==="setup-categories")&&<SetupCategories db={db}/>}
         {(tab==="spend-setup-mappings"||tab==="setup-mappings")&&<SetupMappings db={db}/>}
