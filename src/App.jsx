@@ -3915,10 +3915,19 @@ function SettingsDanger({db,owners,onReset}){
 
   // For master tables: use anon client which has authenticated role via JWT
   const delMasterTable=async(table)=>{
-    const {data}=await db.from(table).select();
-    if(!data||data.length===0) return;
-    // Delete using the authed client which satisfies the authenticated write policy
-    for(const r of data) await db.from(table).delete(r.id);
+    // Use direct fetch to delete all rows - bypasses row-by-row issues
+    // DELETE with a filter that matches all rows (id is never this value)
+    const session=getStoredSession();
+    const token=session?.access_token||SUPA_KEY;
+    const r=await fetch(`${SUPA_URL}/rest/v1/${table}?id=neq.00000000-0000-0000-0000-000000000000`,{
+      method:"DELETE",
+      headers:{apikey:SUPA_KEY,Authorization:`Bearer ${token}`,"Content-Type":"application/json",Prefer:"return=minimal"}
+    });
+    if(!r.ok){
+      // Fallback: row by row
+      const {data}=await db.from(table).select();
+      for(const row of(data||[])) await db.from(table).delete(row.id);
+    }
   };
 
   const clearActivity=async()=>run(async()=>{
@@ -5445,8 +5454,8 @@ export default function App(){
           })}
         </div>
 
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em"}}>
-          Secured · Supabase
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`}}>
+          <button onClick={handleSignOut} style={{...gbtn,width:"100%",justifyContent:"center",fontSize:12,padding:"8px 0"}}>Sign Out</button>
         </div>
       </aside>
 
