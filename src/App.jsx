@@ -6173,10 +6173,10 @@ function SpendCards({db,owners,onNavigate}){
                   </div>
                   <button onClick={e=>{e.stopPropagation();toggleHide(card);}} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:mut,padding:"2px 6px"}}>Hide</button>
                 </div>
-                <div style={{fontSize:20,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif",marginBottom:4}}>
-                  ₹{spend.toLocaleString("en-IN")}
+                <div style={{fontSize:20,fontWeight:700,color:lastStmt?.total_due>0?red:txt,fontFamily:"'Manrope',sans-serif",marginBottom:4}}>
+                  {lastStmt?.total_due>0?"₹"+lastStmt.total_due.toLocaleString("en-IN"):"—"}
                 </div>
-                <div style={{fontSize:11,color:mut}}>{stmtCount} statement{stmtCount!==1?"s":" "}{lastStmt&&"· Last: "+lastStmt.statement_month}</div>
+                <div style={{fontSize:11,color:mut}}>{lastStmt?.total_due>0?"Amount Due · ":""}{stmtCount} statement{stmtCount!==1?"s":" "}{lastStmt&&"· Last: "+fmtMonth(lastStmt.statement_month)}</div>
               </Card>
             );
           })}
