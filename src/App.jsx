@@ -5568,55 +5568,119 @@ export default function App(){
 
       {/* ── Mobile Header ── */}
       <div style={{display:"none"}} className="mobile-header">
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`,position:"sticky",top:0,zIndex:50}}>
           <div onClick={()=>{setTab("home");const s=new Set();NAV.forEach((_,i)=>s.add('s'+i));setCollapsed(s);}} style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
-          <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:txt}}>☰</button>
+          <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:txt,padding:"4px 8px",lineHeight:1}}>
+            {menuOpen?"✕":"☰"}
+          </button>
         </div>
+
+        {/* Full-screen overlay menu */}
         {menuOpen&&(
-          <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(0,0,0,0.3)"}} onClick={()=>setMenuOpen(false)}>
-            <div style={{position:"absolute",left:0,top:0,bottom:0,width:280,background:surf,overflowY:"auto",boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}} onClick={e=>e.stopPropagation()}>
-              <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${bdr}`}}>
-                <div onClick={()=>{setTab("home");const s=new Set();NAV.forEach((_,i)=>s.add('s'+i));setCollapsed(s);setMenuOpen(false);}} style={{fontSize:18,fontWeight:700,color:txt,cursor:"pointer",userSelect:"none"}}>PointsVault</div>
-              </div>
-              {NAV.map((section,si)=>(
-                <div key={si}>
-                  {(()=>{
-                    if(section.comingSoon&&!(section.items||[]).length&&!(section.sub||[]).length)
-                      return <div style={{padding:"10px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{section.section}<span style={{fontSize:9,textTransform:"uppercase",letterSpacing:"0.07em"}}>soon</span></div>;
-                    return <div key="nav-section">
-                      <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.1em",textTransform:"uppercase",padding:"10px 20px 4px",background:surf3}}>{section.section}</div>
-                      {(section.items||[]).map(t=>t.comingSoon?(
-                        <div key={t.id} style={{padding:"9px 20px",fontSize:13,color:mut,opacity:0.4,borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between"}}>{t.label}<span style={{fontSize:9,textTransform:"uppercase"}}>soon</span></div>
-                      ):(
-                        <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"9px 20px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                          <span>{t.label}</span>{t.beta&&<span style={{fontSize:9,color:acc,fontWeight:600,textTransform:"uppercase"}}>beta</span>}
-                        </div>
-                      ))}
-                      {(section.sub||[]).map((sub,subi)=>(
-                        <div key={subi}>
-                          <div style={{fontSize:9,fontWeight:600,color:mut,letterSpacing:"0.08em",textTransform:"uppercase",padding:"8px 28px 3px",background:surf2}}>{sub.label}</div>
-                          {(sub.items||[]).map(t=>(
-                            <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}} style={{padding:"9px 28px",cursor:"pointer",fontSize:13,fontWeight:tab===t.id?600:400,color:tab===t.id?txt:mut,background:tab===t.id?surf2:"transparent",borderBottom:`1px solid ${bdr}`}}>{t.label}</div>
-                          ))}
-                        </div>
-                      ))}
-                    </div>;
-                  })()}
-                </div>
-              ))}
+          <div style={{position:"fixed",inset:0,zIndex:100,background:surf,overflowY:"auto",paddingBottom:100}} onClick={e=>e.stopPropagation()}>
+            {/* Menu header */}
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"16px 20px",borderBottom:`1px solid ${bdr}`}}>
+              <div style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>Menu</div>
+              <button onClick={()=>setMenuOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:22,color:mut,padding:"4px 8px"}}>✕</button>
             </div>
+            {/* Nav sections */}
+            {NAV.map((section,si)=>{
+              if(section.comingSoon) return(
+                <div key={si} style={{padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <span style={{fontSize:14,color:mut}}>{section.section}</span>
+                  <span style={{fontSize:10,background:surf3,color:mut,padding:"2px 8px",borderRadius:10,fontWeight:600}}>Soon</span>
+                </div>
+              );
+              const isOpen=!collapsed.has('s'+si);
+              return(
+                <div key={si} style={{borderBottom:`1px solid ${bdr}`}}>
+                  {/* Section header */}
+                  <div onClick={()=>setCollapsed(s=>{const n=new Set(s);n.has('s'+si)?n.delete('s'+si):n.add('s'+si);return n;})}
+                    style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",cursor:"pointer",userSelect:"none"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.1em"}}>{section.section}</span>
+                    <span style={{fontSize:12,color:mut}}>{isOpen?"▲":"▼"}</span>
+                  </div>
+                  {/* Section items */}
+                  {isOpen&&(
+                    <div style={{paddingBottom:8}}>
+                      {(section.items||[]).map(t=>(
+                        <div key={t.id} onClick={()=>{if(!t.comingSoon){setTab(t.id);setMenuOpen(false);}}}
+                          style={{padding:"11px 28px",fontSize:14,color:t.comingSoon?mut:tab===t.id?acc:txt,fontWeight:tab===t.id?600:400,display:"flex",alignItems:"center",justifyContent:"space-between",cursor:t.comingSoon?"default":"pointer",opacity:t.comingSoon?0.5:1}}>
+                          <span>{t.label}</span>
+                          {t.beta&&<span style={{fontSize:9,color:acc,fontWeight:700,letterSpacing:"0.08em"}}>BETA</span>}
+                          {t.comingSoon&&<span style={{fontSize:10,color:mut}}>Soon</span>}
+                        </div>
+                      ))}
+                      {(section.sub||[]).map((sub,subi)=>{
+                        const subKey='sub'+si+'-'+subi;
+                        const subOpen=!collapsed.has(subKey);
+                        return(
+                          <div key={subi}>
+                            <div onClick={()=>setCollapsed(s=>{const n=new Set(s);n.has(subKey)?n.delete(subKey):n.add(subKey);return n;})}
+                              style={{padding:"10px 28px",display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
+                              <span style={{fontSize:10,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>{sub.label}</span>
+                              <span style={{fontSize:11,color:mut}}>{subOpen?"▲":"▼"}</span>
+                            </div>
+                            {subOpen&&(sub.items||[]).map(t=>(
+                              <div key={t.id} onClick={()=>{setTab(t.id);setMenuOpen(false);}}
+                                style={{padding:"10px 36px",fontSize:14,color:tab===t.id?acc:txt,fontWeight:tab===t.id?600:400,cursor:"pointer"}}>
+                                {t.label}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
+      </div>
+
+      {/* ── Mobile Bottom Nav ── */}
+      <div style={{display:"none"}} className="mobile-bottom-nav">
+        {[
+          {id:"home",        label:"Home",     icon:"⊞"},
+          {id:"overview",    label:"Points",   icon:"✈️"},
+          {id:"spend-overview", label:"Spend", icon:"💳"},
+          {id:"transfer",    label:"Transfer", icon:"↗️"},
+          {id:"__menu__",    label:"More",     icon:"☰"},
+        ].map(item=>(
+          <div key={item.id}
+            onClick={()=>item.id==="__menu__"?setMenuOpen(v=>!v):(()=>{setTab(item.id);setMenuOpen(false);})()}
+            style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3,padding:"8px 4px",cursor:"pointer",color:tab===item.id&&item.id!=="__menu__"?acc:menuOpen&&item.id==="__menu__"?acc:mut}}>
+            <span style={{fontSize:20,lineHeight:1}}>{item.icon}</span>
+            <span style={{fontSize:10,fontWeight:tab===item.id||menuOpen&&item.id==="__menu__"?600:400}}>{item.label}</span>
+          </div>
+        ))}
       </div>
 
       <style>{`
         @media (max-width:700px){
           aside{display:none!important;}
-          .mobile-header{display:block!important;}
+          .mobile-header{display:flex!important;flex-direction:column;}
+          .mobile-bottom-nav{display:flex!important;}
+          main{padding:12px 14px 80px!important;overflow-x:hidden!important;}
+          table{font-size:12px!important;}
+          .mobile-no-scroll{overflow-x:hidden!important;max-width:100vw!important;}
+        }
+        .mobile-bottom-nav{
+          position:fixed;bottom:0;left:0;right:0;
+          background:#fff;border-top:1px solid #e9e8e5;
+          z-index:50;height:64px;
+          padding-bottom:env(safe-area-inset-bottom,0px);
         }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
         input[type=number]{-moz-appearance:textfield;}
+        @media (max-width:700px){
+          * {max-width:100%;box-sizing:border-box;}
+          img{max-width:100%;}
+          .grid-desktop{display:block!important;}
+          div[style*="display:grid"]{overflow-x:hidden;}
+        }
       `}</style>
 
       {/* ── Main content ── */}
