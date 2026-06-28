@@ -4294,6 +4294,16 @@ function SetupCategories({db}){
       db.from("merchant_rules").select(),
     ]);
     let rows=c.data||[];
+    // Auto-seed defaults for new users
+    if(rows.length===0){
+      const uid=getCurrentUserId();
+      if(uid){
+        const defaults=CATEGORIES.map(name=>({name,is_default:true,user_id:uid}));
+        for(const d of defaults) await db.from("spend_categories").insert(d);
+        const {data:d2}=await db.from("spend_categories").select();
+        rows=d2||[];
+      }
+    }
     setCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
     setRules((r.data||[]).sort((a,b)=>a.keyword.localeCompare(b.keyword)));
     setBusy(false);
