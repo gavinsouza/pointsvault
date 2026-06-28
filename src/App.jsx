@@ -1880,8 +1880,8 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
             {label:"INR / Point",      value:"₹"+(card.inr_per_point||0)},
             {label:"Annual Fee",       value:"₹"+Number(card.annual_fee||0).toLocaleString("en-IN"), color:red},
             card.fee_waiver_amt>0&&{label:"Fee Waiver",value:"₹"+Number(card.fee_waiver_amt).toLocaleString("en-IN")+" ("+( card.fee_waiver_cycle==="billing"?"Billing Yr":"Cal. Yr")+")"},
-            card.billing_year_start&&{label:"Billing Yr Start",value:card.billing_year_start},
-            card.fee_charge_date&&{label:"Fee Charge Date",value:card.fee_charge_date},
+            card.billing_year_start&&{label:"Billing Yr Start",value:(()=>{const [bm,bd]=card.billing_year_start.split("-");const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(bd)+"-"+(MONTHS[parseInt(bm)-1]||bm);})()},
+            card.fee_charge_date&&{label:"Fee Charge Date",value:(()=>{const [bm,bd]=card.fee_charge_date.split("-");const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(bd)+"-"+(MONTHS[parseInt(bm)-1]||bm);})()},
           ].filter(Boolean).map((s,i)=>(
             <div key={i} style={{background:surf2,borderRadius:10,padding:"10px 14px",border:`1px solid ${bdr}`}}>
               <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:500}}>{s.label}</div>
@@ -2407,9 +2407,9 @@ function Catalog({db,ownersData=[],reloadOwners}){
           <div>{lbl("Points Unit")}<input style={inp} placeholder="pts / miles" value={fC.points_currency} onChange={ucC("points_currency")}/></div>
           <div>{lbl("INR per Point")}<input style={inp} type="number" step="0.01" placeholder="0.25" value={fC.inr_per_point} onChange={ucC("inr_per_point")}/></div>
         </div>
-        {lbl("Annual Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={fC.annual_fee} onChange={ucC("annual_fee")}/>
+        {lbl("Annual Fee (₹)")}<input style={inp} type="number" placeholder="0" value={fC.annual_fee} onChange={ucC("annual_fee")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Fee Waiver Amt (Rs)")}<input style={inp} type="number" placeholder="0" value={fC.fee_waiver_amt} onChange={ucC("fee_waiver_amt")}/></div>
+          <div>{lbl("Fee Waiver Amt (₹)")}<input style={inp} type="number" placeholder="0" value={fC.fee_waiver_amt} onChange={ucC("fee_waiver_amt")}/></div>
           <div>{lbl("Waiver Cycle")}<select style={inp} value={fC.fee_waiver_cycle} onChange={ucC("fee_waiver_cycle")}><option value="calendar">Calendar Year</option><option value="billing">Billing Year</option></select></div>
         </div>
         <div style={{marginBottom:12}}>
@@ -2672,7 +2672,7 @@ function AddCardModal({db,mCards,owners,onSave,onClose}){
           <input type="checkbox" checked={f.fee_override} onChange={e=>setF(p=>({...p,fee_override:e.target.checked}))} style={{accentColor:acc,cursor:"pointer"}}/>
           Override annual fee (e.g. LTF waiver)
         </label>
-        {f.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
+        {f.fee_override&&<>{lbl("Override Fee (₹)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={e=>setF(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
           <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={e=>setF(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
@@ -2762,7 +2762,7 @@ function EditCardModal({card, db, mCards, owners, onSave, onClose}){
         <input type="checkbox" checked={ef.fee_override} onChange={e=>setEf(p=>({...p,fee_override:e.target.checked}))} style={{accentColor:acc}}/>
         Override annual fee
       </label>
-      {ef.fee_override&&<>{lbl("Override Fee (Rs)")}<input style={inp} type="number" value={ef.fee_override_value} onChange={eup("fee_override_value")}/></>}
+      {ef.fee_override&&<>{lbl("Override Fee (₹)")}<input style={inp} type="number" value={ef.fee_override_value} onChange={eup("fee_override_value")}/></>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
         <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start} onChange={e=>setEf(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
         <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date} onChange={e=>setEf(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
@@ -2935,9 +2935,9 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             {label:"Balance",value:(card.points_balance||0).toLocaleString("en-IN")+" "+(master?.points_currency||"pts")},
             iv>0&&{label:"INR Value",value:inrFmt(iv),color:grn},
             card.stmt_date&&{label:"Statement",value:ordinal(card.stmt_date)},
-            fee>0&&{label:"Annual Fee",value:"Rs"+Number(fee).toLocaleString("en-IN"),color:red},
-            card.billing_year_start&&{label:"Billing Yr Start",value:card.billing_year_start},
-            card.fee_charge_date&&{label:"Fee Charge Date",value:card.fee_charge_date},
+            fee>0&&{label:"Annual Fee",value:"₹"+Number(fee).toLocaleString("en-IN"),color:red},
+            card.billing_year_start&&{label:"Billing Yr Start",value:(()=>{const [bm,bd]=card.billing_year_start.split("-");const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(bd)+"-"+(MONTHS[parseInt(bm)-1]||bm);})()},
+            card.fee_charge_date&&{label:"Fee Charge Date",value:(()=>{const [bm,bd]=card.fee_charge_date.split("-");const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(bd)+"-"+(MONTHS[parseInt(bm)-1]||bm);})()},
           ].filter(Boolean).map((s,i)=>(
             <div key={i} style={{background:surf2,borderRadius:12,padding:"14px 18px",minWidth:110,border:`1px solid ${bdr}`}}>
               <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{s.label}</div>
@@ -3674,7 +3674,7 @@ function Vouchers({db,owners}){
         {lbl("Title *")}<input style={inp} placeholder="Amazon Gift Card" value={f.title} onChange={up("title")}/>
         {lbl("Owner")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}><option value="">—</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
         {lbl("Code")}<input style={inp} placeholder="XXXX-XXXX-XXXX" value={f.code} onChange={up("code")}/>
-        {lbl("Value (Rs)")}<input style={inp} type="number" placeholder="500" value={f.value} onChange={up("value")}/>
+        {lbl("Value (₹)")}<input style={inp} type="number" placeholder="500" value={f.value} onChange={up("value")}/>
         {lbl("Expiry date")}<input style={inp} type="date" value={f.expiry} onChange={up("expiry")}/>
         {lbl("Notes")}<input style={inp} placeholder="Any notes" value={f.notes} onChange={up("notes")}/>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={save}>{edit?"Save Changes":"Add Voucher"}</button>
@@ -5152,7 +5152,13 @@ export default function App(){
   // Navigate to a tab and expand only that section's menu
   const navigate=(tabId,sectionIdx)=>{
     setTab(tabId);
-    if(sectionIdx!==undefined){
+    if(tabId==="home"){
+      // Collapse all sections on landing page
+      const s=new Set();
+      NAV.forEach((_,i)=>s.add('s'+i));
+      setCollapsed(s);
+    } else if(sectionIdx!==undefined){
+      // Expand only the relevant section
       const s=new Set();
       NAV.forEach((_,i)=>{ if(i!==sectionIdx) s.add('s'+i); });
       setCollapsed(s);
@@ -5190,7 +5196,7 @@ export default function App(){
       {/* ── Desktop Sidebar ── */}
       <aside style={{width:220,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
         <div style={{padding:"22px 20px 12px"}}>
-          <div onClick={()=>setTab("home")} style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.04em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
+          <div onClick={()=>{setTab("home");const s=new Set();NAV.forEach((_,i)=>s.add('s'+i));setCollapsed(s);}} style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.04em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
           <div style={{fontSize:9,color:mut,marginTop:2,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:500}}>Wealth Tracker</div>
         </div>
 
@@ -5245,14 +5251,14 @@ export default function App(){
       {/* ── Mobile Header ── */}
       <div style={{display:"none"}} className="mobile-header">
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`}}>
-          <div onClick={()=>setTab("home")} style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
+          <div onClick={()=>{setTab("home");const s=new Set();NAV.forEach((_,i)=>s.add('s'+i));setCollapsed(s);}} style={{fontSize:18,fontWeight:700,color:txt,letterSpacing:"-0.03em",cursor:"pointer",userSelect:"none"}}>PointsVault</div>
           <button onClick={()=>setMenuOpen(!menuOpen)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:txt}}>☰</button>
         </div>
         {menuOpen&&(
           <div style={{position:"fixed",inset:0,zIndex:100,background:"rgba(0,0,0,0.3)"}} onClick={()=>setMenuOpen(false)}>
             <div style={{position:"absolute",left:0,top:0,bottom:0,width:280,background:surf,overflowY:"auto",boxShadow:"0 4px 16px rgba(0,0,0,0.08)"}} onClick={e=>e.stopPropagation()}>
               <div style={{padding:"20px 20px 12px",borderBottom:`1px solid ${bdr}`}}>
-                <div onClick={()=>{setTab("home");setMenuOpen(false);}} style={{fontSize:18,fontWeight:700,color:txt,cursor:"pointer",userSelect:"none"}}>PointsVault</div>
+                <div onClick={()=>{setTab("home");const s=new Set();NAV.forEach((_,i)=>s.add('s'+i));setCollapsed(s);setMenuOpen(false);}} style={{fontSize:18,fontWeight:700,color:txt,cursor:"pointer",userSelect:"none"}}>PointsVault</div>
               </div>
               {NAV.map((section,si)=>(
                 <div key={si}>
