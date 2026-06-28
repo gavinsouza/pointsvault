@@ -2505,7 +2505,7 @@ function MyCards({db,owners}){
   if(detail){
     const master=mCards.find(m=>m.id===detail.master_id);
     const owner=owners.find(o=>o.id===detail.owner_id);
-    return <CardDetail card={detail} master={master} owner={owner} db={db} mCards={mCards} owners={owners} onBack={()=>{setDetail(null);load();}} onDelete={()=>{setDetail(null);load();}}/>;
+    return <CardDetail card={detail} master={master} owner={owner} db={db} mCards={mCards} owners={owners} onBack={()=>{setDetail(null);load();}} onDelete={()=>{setDetail(null);load();}} onUpdate={()=>load()}/>;
   }
 
   const save=async()=>{
@@ -2766,7 +2766,7 @@ function EditCardModal({card, db, mCards, owners, onSave, onClose}){
   );
 }
 
-function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete}){
+function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete,onUpdate}){
   const [card,setCard]=useState(initCard);
   const [txns,setTxns]=useState([]);
   const [partners,setPartners]=useState([]);
@@ -2840,6 +2840,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       setCard(c=>({...c,points_balance:nb}));
     }
     setShowTxn(false);setF(tf);load();
+    onUpdate&&onUpdate();
   };
 
   const saveEdit=async()=>{
@@ -3127,6 +3128,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
     await db.from("my_programs").update(prog.id,{points_balance:nb});
     setProg(p=>({...p,points_balance:nb}));
     setShowTxn(false);setF(tf);load();
+    onUpdate&&onUpdate();
   };
 
   const saveEdit=async()=>{
@@ -3651,44 +3653,68 @@ function Vouchers({db,owners}){
 
 // ── SetupOwners ───────────────────────────────────────────────────────────────
 function SetupOwners({db,owners,reloadOwners}){
-  const [showAdd,setShowAdd]=useState(false);
   const [newOwner,setNewOwner]=useState("");
+  const [editId,setEditId]=useState(null);
+  const [editName,setEditName]=useState("");
 
   const addOwner=async()=>{
     if(!newOwner.trim()) return;
     await db.from("owners").insert({name:newOwner.trim()});
-    setNewOwner("");setShowAdd(false);reloadOwners();
+    setNewOwner(""); reloadOwners();
   };
   const delOwner=async owner=>{
     const [c,p,v]=await Promise.all([db.from("my_cards").filter("owner_id",owner.id),db.from("my_programs").filter("owner_id",owner.id),db.from("vouchers").filter("owner_id",owner.id)]);
     const n=(c.data||[]).length+(p.data||[]).length+(v.data||[]).length;
     if(n>0) return alert("Cannot delete \""+owner.name+"\" — they have "+n+" linked cards, programs or vouchers. Reassign or delete those first.");
     if(!confirm("Delete owner \""+owner.name+"\"?")) return;
-    await db.from("owners").delete(owner.id);
-    reloadOwners();
+    await db.from("owners").delete(owner.id); reloadOwners();
+  };
+  const saveEdit=async()=>{
+    if(!editName.trim()) return;
+    await db.from("owners").update(editId,{name:editName.trim()});
+    setEditId(null); setEditName(""); reloadOwners();
   };
 
   return(
     <div>
       <Hdr title="Owners" sub="People whose points you track"/>
       <div style={{maxWidth:520}}>
-        <Card>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Owners</div>
-            <button style={{...gbtn,padding:"6px 14px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Owner</button>
+        <Card style={{marginBottom:16}}>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Add Owner</div>
+          <div style={{display:"flex",gap:8}}>
+            <input
+              style={{...inp,flex:1,marginBottom:0}}
+              placeholder="e.g. Gavin"
+              value={newOwner}
+              onChange={e=>setNewOwner(e.target.value)}
+              onKeyDown={e=>e.key==="Enter"&&addOwner()}
+            />
+            <button style={{...pbtn,whiteSpace:"nowrap"}} onClick={addOwner}>+ Add</button>
           </div>
-          {owners.length===0?<div style={{color:mut,fontSize:13}}>No owners yet</div>:owners.map(o=>(
-            <div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
-              <div style={{fontSize:14,fontWeight:600,color:txt}}>{o.name}</div>
-              <button style={{...dbtn,padding:"4px 10px",fontSize:12}} onClick={()=>delOwner(o)}>Delete</button>
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Owners ({owners.length})</div>
+          {owners.length===0?(
+            <div style={{color:mut,fontSize:13,padding:"8px 0"}}>No owners yet</div>
+          ):owners.map(o=>(
+            <div key={o.id} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
+              {editId===o.id?(
+                <>
+                  <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                  <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+                </>
+              ):(
+                <>
+                  <div style={{flex:1,fontSize:14,fontWeight:600,color:txt}}>{o.name}</div>
+                  <button style={{...gbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>{setEditId(o.id);setEditName(o.name);}}>Edit</button>
+                  <button style={{...dbtn,fontSize:12,padding:"4px 10px"}} onClick={()=>delOwner(o)}>Delete</button>
+                </>
+              )}
             </div>
           ))}
         </Card>
       </div>
-      <Modal show={showAdd} onClose={()=>setShowAdd(false)} title="Add Owner">
-        {lbl("Name")}<input style={inp} placeholder="Gavin" value={newOwner} onChange={e=>setNewOwner(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addOwner()}/>
-        <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={addOwner}>Add Owner</button>
-      </Modal>
     </div>
   );
 }
