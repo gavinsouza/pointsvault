@@ -2701,10 +2701,6 @@ function AddCardModal({db,mCards,owners,onSave,onClose}){
     const {data,error}=await db.from("my_cards").insert(p);
     if(error){setSaving(false);alert("Failed to add card: "+JSON.stringify(error));return;}
     const newId=data&&data[0]?.id;
-    if(newId){
-      const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
-    }
     setSaving(false);
     onSave&&onSave();
     onClose&&onClose();
@@ -2921,7 +2917,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
     setPartners(par.data||[]);
     setMProgs(mp.data||[]);
     setMyProgs(myp.data||[]);
-    const sum=td.reduce((a,t)=>a+t.points,0);
+    const sum=td.filter(t=>t.description!=="Opening balance").reduce((a,t)=>a+t.points,0);
     const correct=(card.opening_balance||0)+sum;
     if(correct!==(card.points_balance||0)){
       await db.from("my_cards").update(card.id,{points_balance:correct});
@@ -3001,12 +2997,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const ob=card.opening_balance||0;
   const iv=(card.points_balance||0)*(master?.inr_per_point||0);
   const fee=card.fee_override?card.fee_override_value:master?.annual_fee;
-  const sorted=[...txns].sort((a,b)=>{
-    const aIsOB=a.description==="Opening balance";
-    const bIsOB=b.description==="Opening balance";
-    if(aIsOB) return -1; if(bIsOB) return 1;
-    return new Date(a.txn_date)-new Date(b.txn_date);
-  });
+  const sorted=[...txns].filter(t=>t.description!=="Opening balance").sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
   let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); const disp=rows.reverse();
 
   return(
@@ -3143,10 +3134,6 @@ function MyPrograms({db,owners}){
     const {data,error}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:0,expiry_date:f.expiry_date||null,user_id:getCurrentUserId()});
     if(error){ alert("Failed to add program: "+JSON.stringify(error)); return; }
     const newId=data&&data[0]?.id;
-    if(newId){
-      const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:0,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
-    }
     setShow(false);load();
   };
 
@@ -3248,7 +3235,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
     const td=t.data||[];
     setTxns(td.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     setPartners(par.data||[]);
-    const sum=td.reduce((a,t)=>a+t.points,0);
+    const sum=td.filter(t=>t.description!=="Opening balance").reduce((a,t)=>a+t.points,0);
     const correct=(prog.opening_balance||0)+sum;
     if(correct!==(prog.points_balance||0)){
       await db.from("my_programs").update(prog.id,{points_balance:correct});
@@ -3296,12 +3283,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const iv=(prog.points_balance||0)*(master?.inr_per_point||0);
   const days=prog.expiry_date?Math.round((new Date(prog.expiry_date)-new Date())/86400000):null;
   const exp=days!==null&&days<=60;
-  const sorted=[...txns].sort((a,b)=>{
-    const aIsOB=a.description==="Opening balance";
-    const bIsOB=b.description==="Opening balance";
-    if(aIsOB) return -1; if(bIsOB) return 1;
-    return new Date(a.txn_date)-new Date(b.txn_date);
-  });
+  const sorted=[...txns].filter(t=>t.description!=="Opening balance").sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
   let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); const disp=rows.reverse();
 
   return(
