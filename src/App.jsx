@@ -2674,8 +2674,32 @@ function AddCardModal({db,mCards,owners,onSave,onClose}){
         </label>
         {f.fee_override&&<>{lbl("Override Fee (₹)")}<input style={inp} type="number" placeholder="0" value={f.fee_override_value} onChange={up("fee_override_value")}/></>}
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-          <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={f.billing_year_start} onChange={e=>setF(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
-          <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={f.fee_charge_date} onChange={e=>setF(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
+          <div>
+              {lbl("Billing Year Start")}
+              <div style={{display:"flex",gap:6}}>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(f.billing_year_start||"").split("-")[0]||""} onChange={e=>{const d=(f.billing_year_start||"").split("-")[1]||"01";setF(p=>(({...p,billing_year_start:e.target.value?e.target.value+"-"+d:""})));}}>
+                  <option value="">Month</option>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((mn,i)=>(<option key={i+1} value={String(i+1).padStart(2,"0")}>{mn}</option>))}
+                </select>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(f.billing_year_start||"").split("-")[1]||""} onChange={e=>{const m=(f.billing_year_start||"").split("-")[0]||"01";setF(p=>(({...p,billing_year_start:m?m+"-"+e.target.value:""})));}}>
+                  <option value="">Day</option>
+                  {Array.from({length:31},(_,i)=><option key={i+1} value={String(i+1).padStart(2,"0")}>{i+1}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              {lbl("Fee Charge Date")}
+              <div style={{display:"flex",gap:6}}>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(f.fee_charge_date||"").split("-")[0]||""} onChange={e=>{const d=(f.fee_charge_date||"").split("-")[1]||"01";setF(p=>(({...p,fee_charge_date:e.target.value?e.target.value+"-"+d:""})));}}>
+                  <option value="">Month</option>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((mn,i)=>(<option key={i+1} value={String(i+1).padStart(2,"0")}>{mn}</option>))}
+                </select>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(f.fee_charge_date||"").split("-")[1]||""} onChange={e=>{const m=(f.fee_charge_date||"").split("-")[0]||"01";setF(p=>(({...p,fee_charge_date:m?m+"-"+e.target.value:""})));}}>
+                  <option value="">Day</option>
+                  {Array.from({length:31},(_,i)=><option key={i+1} value={String(i+1).padStart(2,"0")}>{i+1}</option>)}
+                </select>
+              </div>
+            </div>
         </div>
         {(()=>{
           const master=mCards.find(m=>m.id===f.master_id);
@@ -2764,8 +2788,32 @@ function EditCardModal({card, db, mCards, owners, onSave, onClose}){
       </label>
       {ef.fee_override&&<>{lbl("Override Fee (₹)")}<input style={inp} type="number" value={ef.fee_override_value} onChange={eup("fee_override_value")}/></>}
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-        <div>{lbl("Billing Year Start (MM/DD)")}<input style={inp} placeholder="04-01" value={ef.billing_year_start} onChange={e=>setEf(p=>({...p,billing_year_start:e.target.value.replace(/[/]/g,"-")}))}/></div>
-        <div>{lbl("Fee Charge Date (MM/DD)")}<input style={inp} placeholder="06-15" value={ef.fee_charge_date} onChange={e=>setEf(p=>({...p,fee_charge_date:e.target.value.replace(/[/]/g,"-")}))}/></div>
+        <div>
+              {lbl("Billing Year Start")}
+              <div style={{display:"flex",gap:6}}>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(ef.billing_year_start||"").split("-")[0]||""} onChange={e=>{const d=(ef.billing_year_start||"").split("-")[1]||"01";setEf(p=>(({...p,billing_year_start:e.target.value?e.target.value+"-"+d:""})));}}>
+                  <option value="">Month</option>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((mn,i)=>(<option key={i+1} value={String(i+1).padStart(2,"0")}>{mn}</option>))}
+                </select>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(ef.billing_year_start||"").split("-")[1]||""} onChange={e=>{const m=(ef.billing_year_start||"").split("-")[0]||"01";setEf(p=>(({...p,billing_year_start:m?m+"-"+e.target.value:""})));}}>
+                  <option value="">Day</option>
+                  {Array.from({length:31},(_,i)=><option key={i+1} value={String(i+1).padStart(2,"0")}>{i+1}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              {lbl("Fee Charge Date")}
+              <div style={{display:"flex",gap:6}}>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(ef.fee_charge_date||"").split("-")[0]||""} onChange={e=>{const d=(ef.fee_charge_date||"").split("-")[1]||"01";setEf(p=>(({...p,fee_charge_date:e.target.value?e.target.value+"-"+d:""})));}}>
+                  <option value="">Month</option>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"].map((mn,i)=>(<option key={i+1} value={String(i+1).padStart(2,"0")}>{mn}</option>))}
+                </select>
+                <select style={{...inp,flex:1,marginBottom:0}} value={(ef.fee_charge_date||"").split("-")[1]||""} onChange={e=>{const m=(ef.fee_charge_date||"").split("-")[0]||"01";setEf(p=>(({...p,fee_charge_date:m?m+"-"+e.target.value:""})));}}>
+                  <option value="">Day</option>
+                  {Array.from({length:31},(_,i)=><option key={i+1} value={String(i+1).padStart(2,"0")}>{i+1}</option>)}
+                </select>
+              </div>
+            </div>
       </div>
       {master?.auto_transfer_to&&(()=>{
         const masterProgName=mProgs.find(m=>m.id===master.auto_transfer_to)?.name||"linked program";
@@ -5023,29 +5071,21 @@ function SpendUpload({db,owners}){
             ));
           })()}
         </select>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:4}}>
-          <div>
-            {lbl("Month *")}
-            <select style={inp} value={modalMonth} onChange={e=>setModalMonth(e.target.value)}>
-              <option value="">Select month…</option>
-              {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
-                <option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            {lbl("Year *")}
-            <select style={inp} value={modalYear} onChange={e=>setModalYear(e.target.value)}>
-              <option value="">Select year…</option>
-              {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=>(
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          </div>
+        <div style={{marginBottom:16}}>
+          {lbl("Statement Month *")}
+          <input
+            type="month"
+            style={{...inp,colorScheme:"light"}}
+            value={modalYear&&modalMonth?modalYear+"-"+modalMonth:""}
+            onChange={e=>{
+              const [y,m]=(e.target.value||"").split("-");
+              setModalYear(y||""); setModalMonth(m||"");
+            }}
+          />
         </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:8}} onClick={()=>{
           if(!selCard) return alert("Please select a card.");
-          if(!modalMonth||!modalYear) return alert("Please select both month and year.");
+          if(!modalMonth||!modalYear) return alert("Please select a statement month.");
           const chosen=modalYear+"-"+modalMonth;
           setStmtMonthSel(chosen);
           runImport(chosen);
@@ -5743,20 +5783,16 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       </div>
       <Card style={{maxWidth:400}}>
         <div style={{fontSize:13,color:mut,marginBottom:16}}>Current: <strong style={{color:txt}}>{fmtMonth(editMonthStmt.statement_month)}</strong></div>
-        {lbl("Month")}
-        <select style={inp} value={editMonthM} onChange={e=>setEditMonthM(e.target.value)}>
-          <option value="">Select month…</option>
-          {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
-            <option key={m} value={m}>{["January","February","March","April","May","June","July","August","September","October","November","December"][i]}</option>
-          ))}
-        </select>
-        {lbl("Year")}
-        <select style={inp} value={editMonthY} onChange={e=>setEditMonthY(e.target.value)}>
-          <option value="">Select year…</option>
-          {Array.from({length:11},(_,i)=>(new Date().getFullYear()-5+i).toString()).map(y=>(
-            <option key={y} value={y}>{y}</option>
-          ))}
-        </select>
+        {lbl("Statement Month")}
+        <input
+          type="month"
+          style={{...inp,colorScheme:"light"}}
+          value={editMonthY&&editMonthM?editMonthY+"-"+editMonthM:""}
+          onChange={e=>{
+            const [y,m]=(e.target.value||"").split("-");
+            setEditMonthY(y||""); setEditMonthM(m||"");
+          }}
+        />
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={async()=>{
           if(!editMonthM||!editMonthY) return alert("Select both month and year");
           const newM=editMonthY+"-"+editMonthM;
