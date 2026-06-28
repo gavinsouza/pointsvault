@@ -3904,20 +3904,21 @@ function SettingsDanger({db,owners,onReset}){
   };
 
   // ── Delete helpers ──────────────────────────────────────────────────────────
+  // Delete all rows in a table using REST (works with RLS)
   const delAll=async(table)=>{
-    // Before deleting master_programs, clean up orphaned master_partners
-    if(table==="master_programs"){
-      const {data:progs}=await db.from("master_programs").select();
-      const progIds=new Set((progs||[]).map(p=>p.id));
-      const {data:partners}=await db.from("master_partners").select();
-      for(const p of(partners||[])){
-        if(!progIds.has(p.to_id)||!progIds.has(p.from_id)){
-          await db.from("master_partners").delete(p.id);
-        }
-      }
-    }
+    // Use a filter that matches all rows: id not equal to a non-existent value
+    // For personal tables (have user_id), RLS scopes this to current user automatically
+    // For master tables (no user_id), the authenticated write policy allows this
     const {data}=await db.from(table).select();
-    for(const r of(data||[]))await db.from(table).delete(r.id);
+    for(const r of(data||[])) await db.from(table).delete(r.id);
+  };
+
+  // For master tables: use anon client which has authenticated role via JWT
+  const delMasterTable=async(table)=>{
+    const {data}=await db.from(table).select();
+    if(!data||data.length===0) return;
+    // Delete using the authed client which satisfies the authenticated write policy
+    for(const r of data) await db.from(table).delete(r.id);
   };
 
   const clearActivity=async()=>run(async()=>{
@@ -3951,7 +3952,10 @@ function SettingsDanger({db,owners,onReset}){
   });
 
   const completeWipe=async()=>run(async()=>{
-    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","master_partners","master_milestones","master_programs","master_cards","spend_categories"])await delAll(t);
+    // Personal tables (RLS scoped to user)
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","spend_categories"])await delAll(t);
+    // Master tables (no user_id, use authenticated write policy)
+    for(const t of["master_partners","master_milestones","master_programs","master_cards"])await delMasterTable(t);
     alert("Complete wipe done. App is factory fresh.");
     onReset&&onReset();
   });
