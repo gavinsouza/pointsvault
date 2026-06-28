@@ -3135,7 +3135,7 @@ function MyPrograms({db,owners}){
     if(newId){
       const today=new Date().toISOString().split("T")[0];
       await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:ob,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
-    ,user_id:getCurrentUserId()}
+    }
     setShow(false);load();
   };
 
@@ -4825,8 +4825,7 @@ function SpendUpload({db,owners=[]}){
         total_spend:parsed.filter(r=>!r.skip&&r.amount>0).reduce((a,r)=>a+r.amount,0),
         file_name:fileName,
         total_due:parseFloat(totalDue)||0,
-        opening_balance:parseFloat(openingBal)||0,
-      ,user_id:getCurrentUserId()});
+        opening_balance:parseFloat(openingBal)||0,user_id:getCurrentUserId()});
       stmtId=stmtData?.[0]?.id||null;
     }catch(e){
       console.error("Statement insert failed:",e);
@@ -6489,8 +6488,7 @@ function SpendTransactions({db,owners}){
         transaction_id:showSplit.id,
         person_id:s.is_personal?null:(s.person_id||null),
         amount:Number(s.amount),
-        is_personal:s.is_personal,
-      ,user_id:getCurrentUserId()});
+        is_personal:s.is_personal,user_id:getCurrentUserId()});
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({
           person_id:s.person_id,
@@ -6499,8 +6497,7 @@ function SpendTransactions({db,owners}){
           description:showSplit.description||"CC transaction",
           entry_date:showSplit.txn_date,
           entry_type:"transaction",
-          transaction_id:showSplit.id,
-        ,user_id:getCurrentUserId()});
+          transaction_id:showSplit.id,user_id:getCurrentUserId()});
       }
     }
     // Mark transaction as reimbursable if any non-personal split
