@@ -2321,7 +2321,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
         <button style={tb("owners")} onClick={()=>setTab("owners")}>Owners</button>
       </div>
       <Modal show={showLibrary} onClose={()=>setShowLibrary(false)} title="" wide>
-        <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load} userId={user?.id}/>
+        <LibraryImport db={db} onClose={()=>setShowLibrary(false)} onDone={load} userId={userId}/>
       </Modal>
       <Modal show={!!showMerge} onClose={()=>setShowMerge(null)} title="">
         {showMerge&&<MergeMasters db={db} type={showMerge} onClose={()=>setShowMerge(null)} onDone={load}/>}
