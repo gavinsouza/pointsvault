@@ -1228,7 +1228,7 @@ function MergeMasters({db, type, onClose, onDone}){
         ratio_from:p.ratio_from, ratio_to:p.ratio_to,
         min_transfer:p.min_transfer, transfer_time:p.transfer_time,
         notes:p.notes, has_reverse:p.has_reverse,
-      ,user_id:userId||getCurrentUserId()});
+        user_id:userId||getCurrentUserId()});
       entries.push({type:"ok", msg:`Copied transfer route to kept master`});
     }
 
@@ -1569,7 +1569,7 @@ function LibraryImport({db, onClose, onDone, userId}){
           cycle_type:m.cycle_type, benefit_type:m.benefit_type,
           benefit_value:m.benefit_value, benefit_points:m.benefit_points||null,
           stackable:m.stackable, sort_order:m.sort_order,
-        ,user_id:userId||getCurrentUserId()});
+        user_id:userId||getCurrentUserId()});
       }
       if((card.milestones||[]).length>0) log.push({type:"ok", msg:`Added ${card.milestones.length} milestones for ${card.name}`});
     }
@@ -1591,7 +1591,7 @@ function LibraryImport({db, onClose, onDone, userId}){
           ratio_from:p.ratio_from, ratio_to:p.ratio_to,
           min_transfer:p.min_transfer||null, transfer_time:p.transfer_time||null,
           notes:p.notes||null, has_reverse:false,
-        ,user_id:userId||getCurrentUserId()});
+        user_id:userId||getCurrentUserId()});
         added++;
       }
       if(added>0) log.push({type:"ok", msg:`Added ${added} transfer routes for ${card.name}`});
@@ -1611,7 +1611,7 @@ function LibraryImport({db, onClose, onDone, userId}){
         ratio_from:r.ratio_from, ratio_to:r.ratio_to,
         min_transfer:r.min_transfer||null, transfer_time:r.transfer_time||null,
         notes:r.notes||null, has_reverse:false,
-      ,user_id:userId||getCurrentUserId()});
+      user_id:userId||getCurrentUserId()});
       lpAdded++;
     }
     if(lpAdded>0) log.push({type:"ok", msg:`Added ${lpAdded} LP→LP transfer routes`});
