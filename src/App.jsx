@@ -7370,7 +7370,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
             <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
               await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category,user_id:getCurrentUserId()});
               setShowCreateRule(null);
-            },user_id:getCurrentUserId()}>Save Rule</button>
+            }}>Save Rule</button>
           </div>
         </>}
       </Modal>
