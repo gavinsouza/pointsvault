@@ -3741,7 +3741,8 @@ function AuthScreen({supaUrl,supaKey,onSetCredentials,onAuth}){
     const base=createClient(url.trim(),key.trim());
     const {data,error}=await base.auth.signIn(email.trim(),password);
     if(error){ setErr(error.message); setBusy(false); return; }
-    const {data:usr}=await base.auth.getUser(data.access_token);
+    // data contains access_token, user object is in data.user
+    const usr=data.user||data;
     onAuth(url.trim(),key.trim(),data,usr);
     setBusy(false);
   };
@@ -3853,15 +3854,21 @@ export default function App(){
   const [collapsed,setCollapsed]=useState(()=>{const s=new Set();[0,1,2,3,4].forEach(i=>s.add('s'+i));return s;});
 
   useEffect(()=>{
-    const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
-    if(u&&k){
-      // Try to restore existing session
-      const session=getStoredSession(u);
-      if(session){
-        const c=createAuthedClient(u,k,session.access_token);
-        setDb(c);setUser(session.user);setSupaUrl(u);setSupaKey(k);
-        loadOwners(c);
+    try{
+      const u=localStorage.getItem("pv_u"),k=localStorage.getItem("pv_k");
+      if(u&&k){
+        // Try to restore existing session
+        const session=getStoredSession(u);
+        if(session&&session.access_token){
+          const c=createAuthedClient(u,k,session.access_token);
+          setDb(c);setUser(session.user);setSupaUrl(u);setSupaKey(k);
+          loadOwners(c);
+        }
       }
+    }catch(e){
+      console.error("Session restore failed:",e);
+      // Clear broken session and show login
+      try{localStorage.removeItem("pv_session_"+localStorage.getItem("pv_u"));}catch(_){}
     }
   },[]);
 
@@ -3913,6 +3920,17 @@ export default function App(){
         <AuthScreen supaUrl={supaUrl} supaKey={supaKey}
           onSetCredentials={(u,k)=>{setSupaUrl(u);setSupaKey(k);}}
           onAuth={handleAuth}/>
+        <div style={{marginTop:24,textAlign:"center"}}>
+          <button onClick={()=>{
+            try{
+              const u=localStorage.getItem("pv_u");
+              if(u) localStorage.removeItem("pv_session_"+u);
+            }catch(_){}
+            window.location.reload();
+          }} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:11,fontFamily:"'Manrope',sans-serif",textDecoration:"underline"}}>
+            Having trouble? Clear session and reload
+          </button>
+        </div>
       </div>
     </div>
   );
