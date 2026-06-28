@@ -1050,7 +1050,7 @@ function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
       if(!libLp) continue;
       let prog=allProgs?.find(p=>p.name.toLowerCase()===libLp.name.toLowerCase());
       if(!prog){
-        const {data}=await db.from("master_programs").insert({name:libLp.name,category:libLp.category,points_currency:libLp.points_currency,inr_per_point:libLp.inr_per_point,expiry_rule:libLp.expiry_rule});
+        const {data}=await db.from("master_programs").insert({name:libLp.name,category:libLp.category,points_currency:libLp.points_currency,inr_per_point:libLp.inr_per_point,expiry_rule:libLp.expiry_rule,logo_url:libLp.logo_url||null});
         if(data&&data[0]) prog=data[0];
       }
       if(!prog||existIds.has(prog.id)) continue;
@@ -1098,7 +1098,7 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
       if(!toLp) continue;
       let toDbProg=allProgs?.find(p=>p.name.toLowerCase()===toLp.name.toLowerCase());
       if(!toDbProg){
-        const {data}=await db.from("master_programs").insert({name:toLp.name,category:toLp.category,points_currency:toLp.points_currency,inr_per_point:toLp.inr_per_point,expiry_rule:toLp.expiry_rule});
+        const {data}=await db.from("master_programs").insert({name:toLp.name,category:toLp.category,points_currency:toLp.points_currency,inr_per_point:toLp.inr_per_point,expiry_rule:toLp.expiry_rule,logo_url:toLp.logo_url||null});
         if(data&&data[0]) toDbProg=data[0];
       }
       if(!toDbProg||existIds.has(toDbProg.id)) continue;
@@ -1475,7 +1475,7 @@ function LibraryImport({db, onClose, onDone}){
       if(!lp||progIdMap[lid]) continue;
       const {data,error} = await db.from("master_programs").insert({
         name:lp.name, category:lp.category, points_currency:lp.points_currency,
-        inr_per_point:lp.inr_per_point, expiry_rule:lp.expiry_rule
+        inr_per_point:lp.inr_per_point, expiry_rule:lp.expiry_rule, logo_url:lp.logo_url||null
       });
       if(error){ log.push({type:"error", msg:`Failed: ${lp.name} — ${error.message}`}); continue; }
       if(data&&data[0]){ progIdMap[lid]=data[0].id; log.push({type:"ok", msg:`Added LP: ${lp.name}`}); }
@@ -1520,7 +1520,7 @@ function LibraryImport({db, onClose, onDone}){
       const {data,error} = await db.from("master_cards").insert({
         name:card.name, bank:card.bank, network:card.network,
         points_currency:card.points_currency, inr_per_point:card.inr_per_point,
-        annual_fee:card.annual_fee,
+        annual_fee:card.annual_fee, logo_url:card.logo_url||null,
         auto_transfer_to:auto_id,
         auto_transfer_ratio_from:card.auto_transfer_ratio_from||1,
         auto_transfer_ratio_to:card.auto_transfer_ratio_to||1,
