@@ -401,7 +401,7 @@ function Hdr({title,sub,action}){
   );
 }
 
-function LogoCircle({url,name,size=40}){
+function LogoCircle({url,name,size=52}){
   const [err,setErr]=useState(false);
   const init=(name||"?").split(" ").map(w=>w[0]).join("").slice(0,2).toUpperCase();
   if(url&&url.length>10&&!err) return(
@@ -738,7 +738,7 @@ function OvList({title,items,filterOptions,owners,onNav}){
           :filtered.map(item=>(
             <div key={item.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:`1px solid ${bdr}`}}>
               <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
-                <LogoCircle url={item.logo} name={item.name} size={32}/>
+                <LogoCircle url={item.logo} name={item.name} size={44}/>
                 <div style={{minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{item.name}</div>
                   {item.sub&&<div style={{fontSize:10,color:mut,marginTop:1,fontWeight:400}}>{item.sub}</div>}
@@ -1018,7 +1018,7 @@ function PartnerRow({p,gName,gLogo}){
   return(
     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
       <div style={{display:"flex",alignItems:"center",gap:10}}>
-        <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={32}/>
+        <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={44}/>
         <div>
           <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{gName(p.to_type,p.to_id)}</div>
           {p.notes&&<div style={{fontSize:10,color:mut,marginTop:1}}>{p.notes}</div>}
@@ -1863,7 +1863,7 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
       {/* Hero */}
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
-          <LogoCircle url={card.logo_url} name={card.name} size={56}/>
+          <LogoCircle url={card.logo_url} name={card.name} size={68}/>
           <div>
             <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.name}</div>
             <div style={{fontSize:13,color:mut,marginTop:3}}>{card.bank&&card.bank+" · "}{card.network}</div>
@@ -1924,7 +1924,7 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
             {partners.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={getLogo(p.to_type,p.to_id)} name={getName(p.to_type,p.to_id)} size={32}/>
+                  <LogoCircle url={getLogo(p.to_type,p.to_id)} name={getName(p.to_type,p.to_id)} size={44}/>
                   <div>
                     <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{getName(p.to_type,p.to_id)}</div>
                     <div style={{fontSize:10,color:mut}}>{p.to_type==="card"?"Credit Card":"Loyalty Program"}</div>
@@ -1953,7 +1953,7 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
             {inboundPartners.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={getLogo(p.from_type,p.from_id)} name={getName(p.from_type,p.from_id)} size={32}/>
+                  <LogoCircle url={getLogo(p.from_type,p.from_id)} name={getName(p.from_type,p.from_id)} size={44}/>
                   <div>
                     <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{getName(p.from_type,p.from_id)}</div>
                     <div style={{fontSize:10,color:mut}}>{p.from_type==="card"?"Credit Card":"Loyalty Program"}</div>
@@ -2011,7 +2011,7 @@ function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
             return(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <LogoCircle url={getLogo(nameType,nameId)} name={getName(nameType,nameId)} size={32}/>
+                  <LogoCircle url={getLogo(nameType,nameId)} name={getName(nameType,nameId)} size={44}/>
                   <div>
                     <div style={{fontSize:12,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{getName(nameType,nameId)}</div>
                     <div style={{fontSize:10,color:mut}}>{nameType==="card"?"Credit Card":"Loyalty Program"}</div>
@@ -2043,7 +2043,7 @@ function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
 
       <Card style={{marginBottom:16}}>
         <div style={{display:"flex",gap:16,alignItems:"center",marginBottom:16}}>
-          <LogoCircle url={prog.logo_url} name={prog.name} size={56}/>
+          <LogoCircle url={prog.logo_url} name={prog.name} size={68}/>
           <div>
             <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{prog.name}</div>
             <div style={{fontSize:13,color:mut,marginTop:3}}>{prog.category}</div>
@@ -2281,7 +2281,7 @@ function Catalog({db,ownersData=[],reloadOwners}){
                 {filtMC.map(c=>(
                   <Card key={c.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailCard(c)}>
                     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-                      <LogoCircle url={c.logo_url} name={c.name} size={40}/>
+                      <LogoCircle url={c.logo_url} name={c.name} size={52}/>
                       <div>
                         <div style={{fontSize:13,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{c.name}</div>
                         <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{c.bank&&c.bank+" · "}{c.network}</div>
@@ -2313,7 +2313,7 @@ function Catalog({db,ownersData=[],reloadOwners}){
                 {filtMP.map(p=>(
                   <Card key={p.id} style={{position:"relative",cursor:"pointer"}} onClick={()=>setDetailProg(p)}>
                     <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
-                      <LogoCircle url={p.logo_url} name={p.name} size={40}/>
+                      <LogoCircle url={p.logo_url} name={p.name} size={52}/>
                       <div>
                         <div style={{fontSize:13,fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>{p.name}</div>
                         <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{p.category}</div>
@@ -2364,13 +2364,13 @@ function Catalog({db,ownersData=[],reloadOwners}){
                   <Card key={p.id}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
-                        <LogoCircle url={gLogo(p.from_type,p.from_id)} name={gName(p.from_type,p.from_id)} size={36}/>
+                        <LogoCircle url={gLogo(p.from_type,p.from_id)} name={gName(p.from_type,p.from_id)} size={48}/>
                         <div>
                           <div style={{fontSize:13,fontWeight:600,color:txt}}>{gName(p.from_type,p.from_id)}</div>
                           <div style={{fontSize:11,color:mut}}>{p.from_type==="card"?"Credit Card":"Loyalty Program"}</div>
                         </div>
                         <div style={{fontSize:16,color:mut,padding:"0 6px"}}>{"→"}</div>
-                        <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={36}/>
+                        <LogoCircle url={gLogo(p.to_type,p.to_id)} name={gName(p.to_type,p.to_id)} size={48}/>
                         <div>
                           <div style={{fontSize:13,fontWeight:600,color:txt}}>{gName(p.to_type,p.to_id)}</div>
                           <div style={{fontSize:11,color:mut}}>{p.to_type==="card"?"Credit Card":"Loyalty Program"}</div>
@@ -2580,7 +2580,7 @@ function MyCards({db,owners}){
                 onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
                 onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={40}/>
+                  <LogoCircle url={m?.logo_url} name={m?.name} size={52}/>
                   <div style={{minWidth:0,flex:1}}>
                     <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.nickname||m?.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> ·· {c.last4}</span>}</div>
                     <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{m?.network&&" · "+m.network}</div>
@@ -2960,7 +2960,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <Card style={{marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
-            <LogoCircle url={master?.logo_url} name={master?.name} size={56}/>
+            <LogoCircle url={master?.logo_url} name={master?.name} size={68}/>
             <div>
               <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||master?.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&".... "+card.last4+" · "}{owner?.name||"--"} · {master?.bank||""} {master?.network||""}</div>
@@ -3122,7 +3122,7 @@ function MyPrograms({db,owners}){
                 onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
                 onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={40}/>
+                  <LogoCircle url={m?.logo_url} name={m?.name} size={52}/>
                   <div style={{minWidth:0,flex:1}}>
                     <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{p.nickname||m?.name}</div>
                     <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
@@ -3255,7 +3255,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       <Card style={{marginBottom:20}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
           <div style={{display:"flex",gap:14,alignItems:"center"}}>
-            <LogoCircle url={master?.logo_url} name={master?.name} size={56}/>
+            <LogoCircle url={master?.logo_url} name={master?.name} size={68}/>
             <div>
               <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{prog.nickname||master?.name}</div>
               <div style={{fontSize:13,color:mut,marginTop:2}}>{owner?.name||"--"} · {master?.category||""}{prog.tier&&" · "+prog.tier}{prog.membership_number&&" · #"+prog.membership_number}</div>
