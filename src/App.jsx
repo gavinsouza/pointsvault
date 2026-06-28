@@ -2140,10 +2140,18 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
   const nets=["Visa","Mastercard","Amex","Diners","RuPay","Other"];
   const cats=["Airline","Hotel","Retail","Dining","Fuel","Other"];
 
+  const [loadError,setLoadError]=useState(null);
   const load=useCallback(async()=>{
+    if(!db) return;
     setBusy(true);
-    const [a,b,c]=await Promise.all([db.from("master_cards").select(),db.from("master_programs").select(),db.from("master_partners").select()]);
-    setMCards(a.data||[]); setMProgs(b.data||[]); setMParts(c.data||[]);
+    try{
+      const [a,b,c]=await Promise.all([db.from("master_cards").select(),db.from("master_programs").select(),db.from("master_partners").select()]);
+      setMCards(a.data||[]); setMProgs(b.data||[]); setMParts(c.data||[]);
+      setLoadError(null);
+    }catch(e){
+      console.error("Catalog load error:",e);
+      setLoadError(e.message||"Failed to load catalog");
+    }
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
@@ -2260,6 +2268,9 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
   const gName=(type,id)=>type==="card"?mCards.find(m=>m.id===id)?.name||"--":mProgs.find(m=>m.id===id)?.name||"--";
   const gLogo=(type,id)=>type==="card"?mCards.find(m=>m.id===id)?.logo_url:mProgs.find(m=>m.id===id)?.logo_url;
   const tb=t=>({padding:"8px 18px",borderRadius:20,border:`1px solid ${tab===t?txt:bdr}`,cursor:"pointer",fontSize:11,fontWeight:tab===t?600:500,background:tab===t?txt:"transparent",color:tab===t?"#fff":mut2,transition:"all 0.15s",letterSpacing:"0.01em",fontFamily:"'Manrope',sans-serif"});
+
+  if(busy) return <div style={{padding:32,color:mut}}>Loading catalog…</div>;
+  if(loadError) return <div style={{padding:32,color:red}}>Error loading catalog — <button onClick={load} style={{...gbtn,fontSize:12,marginLeft:8}}>Retry</button></div>;
 
   return(
     <div>
