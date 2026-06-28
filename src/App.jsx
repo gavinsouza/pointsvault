@@ -445,11 +445,11 @@ function Hdr({title,sub,action}){
 
 // ── CC Mapping Library ────────────────────────────────────────────────────────
 const MAPPING_LIBRARY=[
-  {lid:"ml_hdfc_csv",name:"HDFC Bank CSV",bank:"HDFC Bank",
-   description:"HDFC Bank credit card statement (pipe-delimited CSV)",
-   delimiter:"|",skip_rows:0,date_col:0,desc_col:2,amount_type:"single",
+  {lid:"ml_hdfc_csv",name:"HDFC INFINIA / BIZ BLACK",bank:"HDFC Bank",
+   description:"HDFC Infinia / Biz Black credit card statement (pipe-delimited CSV)",
+   delimiter:"|",skip_rows:21,date_col:2,desc_col:3,amount_type:"single",
    amount_col:4,debit_col:-1,credit_col:-1,date_format:"DD/MM/YYYY",
-   credit_ind_col:-1,total_due_row:6,total_due_col:1,opening_bal_row:13,opening_bal_col:0},
+   credit_ind_col:5,total_due_row:6,total_due_col:2,opening_bal_row:13,opening_bal_col:1},
   {lid:"ml_axis_xlsx",name:"Axis Bank XLSX",bank:"Axis Bank",
    description:"Axis Bank credit card statement (Excel XLSX format)",
    delimiter:"auto",skip_rows:8,date_col:0,desc_col:1,amount_type:"debit_credit",
@@ -2592,7 +2592,7 @@ function MyCards({db,owners}){
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
     }
     setShow(false); load();
   };
@@ -2692,7 +2692,7 @@ function AddCardModal({db,mCards,owners,onSave,onClose}){
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:newId,points:0,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
     }
     setSaving(false);
     onSave&&onSave();
@@ -2936,21 +2936,21 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         return alert("This co-branded card needs a linked "+( autoMaster?.name||"loyalty program")+" account. Edit the card and select which account to link.");
       }
       // Record earn on card
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description||"Earn",txn_date:f.txn_date});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description||"Earn",txn_date:f.txn_date,user_id:getCurrentUserId()});
       // Record auto-transfer-out on card
       const rFrom=master.auto_transfer_ratio_from||1;
       const rTo=master.auto_transfer_ratio_to||1;
       const transferredPts=Math.floor(pts*(rTo/rFrom));
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:-pts,description:"Auto-transferred to "+(linkedProg.nickname||autoMaster?.name),txn_date:f.txn_date});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:-pts,description:"Auto-transferred to "+(linkedProg.nickname||autoMaster?.name),txn_date:f.txn_date,user_id:getCurrentUserId()});
       // Card balance stays 0 (earn + immediate outgoing = net 0)
       await db.from("my_cards").update(card.id,{points_balance:0});
       setCard(c=>({...c,points_balance:0}));
       // Record transfer-in on LP
-      await db.from("point_transactions").insert({entity_type:"program",entity_id:linkedProg.id,points:transferredPts,description:"Auto-transferred from "+(card.nickname||master?.name),txn_date:f.txn_date});
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:linkedProg.id,points:transferredPts,description:"Auto-transferred from "+(card.nickname||master?.name),txn_date:f.txn_date,user_id:getCurrentUserId()});
       const newProgBal=(linkedProg.points_balance||0)+transferredPts;
-      await db.from("my_programs").update(linkedProg.id,{points_balance:newProgBal});
+      await db.from("my_programs").update(linkedProg.id,{points_balance:newProgBal,user_id:getCurrentUserId()});
     } else {
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description,txn_date:f.txn_date});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description,txn_date:f.txn_date,user_id:getCurrentUserId()});
       const nb=(card.points_balance||0)+pts;
       await db.from("my_cards").update(card.id,{points_balance:nb});
       setCard(c=>({...c,points_balance:nb}));
@@ -3129,13 +3129,13 @@ function MyPrograms({db,owners}){
     if(!f.master_id) return alert("Select a master program");
     if(!f.owner_id) return alert("Select an owner");
     const ob=parseInt(f.opening_balance)||0;
-    const {data,error}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:0,expiry_date:f.expiry_date||null});
+    const {data,error}=await db.from("my_programs").insert({master_id:f.master_id,owner_id:f.owner_id,nickname:f.nickname,membership_number:f.membership_number,tier:f.tier,opening_balance:ob,points_balance:0,expiry_date:f.expiry_date||null,user_id:getCurrentUserId()});
     if(error){ alert("Failed to add program: "+JSON.stringify(error)); return; }
     const newId=data&&data[0]?.id;
     if(newId){
       const today=new Date().toISOString().split("T")[0];
-      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:ob,description:"Opening balance",txn_date:today});
-    }
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:newId,points:ob,description:"Opening balance",txn_date:today,user_id:getCurrentUserId()});
+    ,user_id:getCurrentUserId()}
     setShow(false);load();
   };
 
@@ -3250,7 +3250,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const saveTxn=async()=>{
     if(!f.points) return alert("Enter points");
     const pts=f.type==="redeem"?-Math.abs(parseInt(f.points)):Math.abs(parseInt(f.points));
-    await db.from("point_transactions").insert({entity_type:"program",entity_id:prog.id,points:pts,description:f.description,txn_date:f.txn_date});
+    await db.from("point_transactions").insert({entity_type:"program",entity_id:prog.id,points:pts,description:f.description,txn_date:f.txn_date,user_id:getCurrentUserId()});
     const nb=(prog.points_balance||0)+pts;
     await db.from("my_programs").update(prog.id,{points_balance:nb});
     setProg(p=>({...p,points_balance:nb}));
@@ -3454,11 +3454,11 @@ function TransferPoints({db,owners}){
     const tTbl=toType==="card"?"my_cards":"my_programs";
     const fName=fromEntity?.nickname||fromMaster?.name||"--";
     const tName=toEntity?.nickname||toMaster?.name||"--";
-    await db.from(fTbl).update(fromEntity.id,{points_balance:(fromEntity.points_balance||0)-sentPts});
+    await db.from(fTbl).update(fromEntity.id,{points_balance:(fromEntity.points_balance||0)-sentPts,user_id:getCurrentUserId()});
     await db.from(tTbl).update(toEntity.id,{points_balance:(toEntity.points_balance||0)+totalRec});
-    await db.from("point_transactions").insert({entity_type:fromType,entity_id:fromEntity.id,points:-sentPts,description:"Transfer to "+tName+(notes?" - "+notes:""),txn_date:txnDate});
-    await db.from("point_transactions").insert({entity_type:toType,entity_id:toEntity.id,points:totalRec,description:"Transfer from "+fName+(bonusPts?" (+"+bonusPts+" bonus)":"")+(notes?" - "+notes:""),txn_date:txnDate});
-    const logResult=await db.from("transfer_log").insert({from_type:fromType,from_id:fromEntity.id,from_owner_id:fromEntity.owner_id,to_type:toType,to_id:toEntity.id,to_owner_id:toEntity.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,transfer_date:txnDate,cross_owner:fromEntity.owner_id!==toEntity.owner_id,notes:notes||null,from_name:fName,to_name:tName});
+    await db.from("point_transactions").insert({entity_type:fromType,entity_id:fromEntity.id,points:-sentPts,description:"Transfer to "+tName+(notes?" - "+notes:""),txn_date:txnDate,user_id:getCurrentUserId()});
+    await db.from("point_transactions").insert({entity_type:toType,entity_id:toEntity.id,points:totalRec,description:"Transfer from "+fName+(bonusPts?" (+"+bonusPts+" bonus)":"")+(notes?" - "+notes:""),txn_date:txnDate,user_id:getCurrentUserId()});
+    const logResult=await db.from("transfer_log").insert({from_type:fromType,from_id:fromEntity.id,from_owner_id:fromEntity.owner_id,to_type:toType,to_id:toEntity.id,to_owner_id:toEntity.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,transfer_date:txnDate,cross_owner:fromEntity.owner_id!==toEntity.owner_id,notes:notes||null,from_name:fName,to_name:tName,user_id:getCurrentUserId()});
     if(logResult.error) alert("Transfer logged but history save failed: "+JSON.stringify(logResult.error)+"\n\nRun in Supabase SQL: ALTER TABLE transfer_log ADD COLUMN IF NOT EXISTS from_name text; ALTER TABLE transfer_log ADD COLUMN IF NOT EXISTS to_name text;");
     setDone({fName,tName,sent:sentPts,received:ratioRec,bonus:bonusPts,total:totalRec,crossOwner:fromEntity.owner_id!==toEntity.owner_id});
     setFromId(""); setToId(""); setPts(""); setBonus(""); setNotes("");
@@ -4144,7 +4144,9 @@ function SetupMappings({db}){
     setImporting(lib.lid);
     const exists=mappings.find(m=>m.name.toLowerCase()===lib.name.toLowerCase());
     if(exists){alert(`"${lib.name}" is already saved.`);setImporting(null);return;}
-    await db.from("csv_mappings").insert({
+    const uid=getCurrentUserId();
+    if(!uid){alert("Session error — please sign out and sign back in.");setImporting(null);return;}
+    const {error}=await db.from("csv_mappings").insert({
       name:lib.name,card_id:null,
       date_col:lib.date_col,desc_col:lib.desc_col,
       amount_type:lib.amount_type,amount_col:lib.amount_col,
@@ -4153,7 +4155,9 @@ function SetupMappings({db}){
       credit_ind_col:lib.credit_ind_col,delimiter:lib.delimiter,
       total_due_row:lib.total_due_row,total_due_col:lib.total_due_col,
       opening_bal_row:lib.opening_bal_row,opening_bal_col:lib.opening_bal_col,
+      user_id:uid,
     });
+    if(error){alert("Import failed: "+JSON.stringify(error));setImporting(null);return;}
     setImporting(null);setShowLibrary(false);load();
   };
 
@@ -4274,7 +4278,7 @@ function SetupCategories({db}){
   // Rule CRUD
   const addRule=async()=>{
     if(!newKeyword.trim()||!newRuleCat) return alert("Enter both keyword and category");
-    await db.from("merchant_rules").insert({keyword:newKeyword.trim().toLowerCase(),category:newRuleCat});
+    await db.from("merchant_rules").insert({keyword:newKeyword.trim().toLowerCase(),category:newRuleCat,user_id:getCurrentUserId()});
     setNewKeyword(""); setNewRuleCat(""); load();
   };
   const delRule=async id=>{if(!confirm("Delete this rule?")) return;await db.from("merchant_rules").delete(id);load();};
@@ -4718,7 +4722,7 @@ function SpendUpload({db,owners=[]}){
   const saveMapping=async()=>{
     const name=mapName.trim();
     if(!name) return alert("Please enter a mapping name.");
-    const p={name,card_id:null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol)};
+    const p={name,card_id:null,date_col:dateCol,desc_col:descCol,amount_type:amtType,amount_col:amtCol,debit_col:debitCol,credit_col:creditCol,date_format:dateFormat,skip_rows:skipRows,credit_ind_col:creditIndCol,delimiter:manualDelim,total_due_row:parseInt(totalDueRow)||0,total_due_col:parseInt(totalDueCol),opening_bal_row:parseInt(openingBalRow)||0,opening_bal_col:parseInt(openingBalCol),user_id:getCurrentUserId()};
     // Only rule: does a mapping with this name already exist?
     const existing=mappings.find(m=>m.name.trim().toLowerCase()===name.toLowerCase());
     try{
@@ -4822,7 +4826,7 @@ function SpendUpload({db,owners=[]}){
         file_name:fileName,
         total_due:parseFloat(totalDue)||0,
         opening_balance:parseFloat(openingBal)||0,
-      });
+      ,user_id:getCurrentUserId()});
       stmtId=stmtData?.[0]?.id||null;
     }catch(e){
       console.error("Statement insert failed:",e);
@@ -5354,7 +5358,7 @@ function SpendUpload({db,owners=[]}){
           <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
             const toSave=ruleSuggestions.filter(s=>s.checked&&s.keyword.trim());
             for(const s of toSave){
-              await db.from("merchant_rules").insert({keyword:s.keyword.trim().toLowerCase(),category:s.category});
+              await db.from("merchant_rules").insert({keyword:s.keyword.trim().toLowerCase(),category:s.category,user_id:getCurrentUserId()});
             }
             setShowRuleSuggestions(false);
             if(toSave.length>0) alert(`Saved ${toSave.length} rule${toSave.length!==1?"s":""}.`);
@@ -6486,7 +6490,7 @@ function SpendTransactions({db,owners}){
         person_id:s.is_personal?null:(s.person_id||null),
         amount:Number(s.amount),
         is_personal:s.is_personal,
-      });
+      ,user_id:getCurrentUserId()});
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({
           person_id:s.person_id,
@@ -6496,7 +6500,7 @@ function SpendTransactions({db,owners}){
           entry_date:showSplit.txn_date,
           entry_type:"transaction",
           transaction_id:showSplit.id,
-        });
+        ,user_id:getCurrentUserId()});
       }
     }
     // Mark transaction as reimbursable if any non-personal split
@@ -6612,7 +6616,7 @@ function SpendTransactions({db,owners}){
           <div style={{display:"flex",gap:8}}>
             <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>setShowCreateRule(null)}>Skip</button>
             <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
-              await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category});
+              await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category,user_id:getCurrentUserId()});
               setShowCreateRule(null);
             }}>Save Rule</button>
           </div>
@@ -7084,9 +7088,9 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     for(const e of (oldLedger||[])) await db.from("ledger_entries").delete(e.id);
     for(const s of splits){
       if(Number(s.amount)===0) continue;
-      await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal});
+      await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal,user_id:getCurrentUserId()});
       if(!s.is_personal&&s.person_id){
-        await db.from("ledger_entries").insert({person_id:s.person_id,amount:Math.abs(Number(s.amount)),direction:Number(s.amount)<0?"i_owe":"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id});
+        await db.from("ledger_entries").insert({person_id:s.person_id,amount:Math.abs(Number(s.amount)),direction:Number(s.amount)<0?"i_owe":"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id,user_id:getCurrentUserId()});
       }
     }
     const hasReimb=splits.some(s=>!s.is_personal&&s.person_id);
@@ -7367,9 +7371,9 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
           <div style={{display:"flex",gap:8}}>
             <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>setShowCreateRule(null)}>Skip</button>
             <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={async()=>{
-              await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category});
+              await db.from("merchant_rules").insert({keyword:showCreateRule.keyword.toLowerCase(),category:showCreateRule.category,user_id:getCurrentUserId()});
               setShowCreateRule(null);
-            }}>Save Rule</button>
+            },user_id:getCurrentUserId()}>Save Rule</button>
           </div>
         </>}
       </Modal>
