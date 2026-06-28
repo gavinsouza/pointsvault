@@ -3904,16 +3904,40 @@ function SetupOwners({db,owners,reloadOwners}){
 }
 
 // ── SettingsGeneral ───────────────────────────────────────────────────────────
-function SettingsGeneral({db,onDisconnect}){
+function SettingsGeneral({onSignOut}){
+  const session=getStoredSession();
+  const email=session?.user?.email||session?.user?.email||"—";
+  const userId=session?.user?.id||"—";
+  const signedIn=session&&session.access_token;
   return(
     <div>
-      <Hdr title="General" sub="Database connection"/>
-      <div style={{maxWidth:520}}>
+      <Hdr title="Account" sub="Your PointsVault account"/>
+      <div style={{maxWidth:520,display:"flex",flexDirection:"column",gap:12}}>
         <Card>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Database Connection</div>
-          <div style={{fontSize:12,color:mut,marginBottom:4}}>Connected to</div>
-          <div style={{fontSize:12,color:txt,fontFamily:"monospace",background:surf2,padding:"8px 12px",borderRadius:8,marginBottom:16,wordBreak:"break-all",border:`1px solid ${bdr}`}}>{localStorage.getItem("pv_u")}</div>
-          <button style={dbtn} onClick={()=>{localStorage.removeItem("pv_u");localStorage.removeItem("pv_k");onDisconnect();}}>Disconnect</button>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Signed In As</div>
+          <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:16}}>
+            <div style={{width:44,height:44,borderRadius:22,background:acc+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+              <span style={{fontSize:18,fontWeight:700,color:acc}}>{email&&email!=="—"?email[0].toUpperCase():"?"}</span>
+            </div>
+            <div>
+              <div style={{fontSize:14,fontWeight:600,color:txt}}>{email}</div>
+              <div style={{fontSize:11,color:mut,marginTop:2,fontFamily:"monospace"}}>{userId.slice(0,8)}…</div>
+            </div>
+          </div>
+          <button style={{...dbtn,fontSize:13}} onClick={onSignOut}>Sign Out</button>
+        </Card>
+        <Card>
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>App Info</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+              <span style={{color:mut}}>Version</span>
+              <span style={{color:txt,fontWeight:500}}>PointsVault 1.0</span>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",fontSize:13}}>
+              <span style={{color:mut}}>Database</span>
+              <span style={{color:grn,fontWeight:500}}>● Connected</span>
+            </div>
+          </div>
         </Card>
       </div>
     </div>
@@ -5399,7 +5423,7 @@ const NAV=[
   {section:"Transfer Routes", comingSoon:true, items:[]},
   {section:"Double Dip",      comingSoon:true, items:[]},
   {section:"Settings", items:[
-    {id:"settings-general", label:"General"},
+    {id:"settings-general", label:"Account"},
     {id:"settings-danger",  label:"Danger Zone"},
   ], sub:[
     {label:"Setup", items:[
@@ -5618,7 +5642,7 @@ export default function App(){
         {(tab==="spend-setup-people"||tab==="setup-people")&&<SetupPeople db={db}/>}
         {(tab==="spend-setup-categories"||tab==="setup-categories")&&<SetupCategories db={db}/>}
         {(tab==="spend-setup-mappings"||tab==="setup-mappings")&&<SetupMappings db={db}/>}
-        {tab==="settings-general"  &&<SettingsGeneral db={db} onDisconnect={()=>setDb(null)}/>}
+        {tab==="settings-general"  &&<SettingsGeneral onSignOut={handleSignOut}/>}
         {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
         {tab==="spend-overview"    &&<SpendOverview db={db} owners={owners}/>}
