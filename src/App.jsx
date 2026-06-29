@@ -3056,7 +3056,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
           <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPtsHistory?"▲":"▼"}</span>
         </div>
-        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
+        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
@@ -3337,7 +3337,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
           <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPtsHistory?"▲":"▼"}</span>
         </div>
-        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:txns.length===0?<Empty msg="No transactions yet"/>:(
+        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
