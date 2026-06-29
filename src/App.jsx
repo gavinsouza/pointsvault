@@ -6083,6 +6083,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   // Reassign statement
   const [reassignTarget,setReassignTarget]=useState(null);
   const [reassignCardId,setReassignCardId]=useState("");
+  const [reassignDone,setReassignDone]=useState(null); // id of last reassigned statement
   const [editMonthStmt,setEditMonthStmt]=useState(null);
   const [editMonthM,setEditMonthM]=useState("");
   const [editMonthY,setEditMonthY]=useState("");
@@ -6101,7 +6102,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         const {error:e2}=await db.from("spend_transactions").update(t.id,{card_id:reassignCardId,statement_id:reassignTarget.id});
         if(e2) console.error("Txn update failed:",e2);
       }
+      setReassignDone(reassignTarget.id);
       setReassignTarget(null); setReassignCardId(""); load();
+      setTimeout(()=>setReassignDone(null), 3000);
     }catch(err){
       alert("Reassign failed: "+err.message);
     }
@@ -6193,10 +6196,12 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       {stmts.length===0?<Empty icon="📄" msg="No statements uploaded yet — use CC Statement Upload to import your first bank statement"/>:(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {stmts.map(s=>(
-            <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,border:reassignDone===s.id?`2px solid ${grn}`:`1px solid ${bdr}`,transition:"border 0.3s"}}>
               <div style={{cursor:"pointer"}} onClick={()=>setSelStmt(s)}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{fontSize:14,fontWeight:700,color:acc,textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmtMonth(s.statement_month)}</div>
+                  {(()=>{const assignedCard=allCards.find(c=>c.id===s.card_id);const assignedMC=assignedCard&&allMCards.find(m=>m.id===assignedCard.master_id);return assignedCard&&assignedCard.id!==card.id?<span style={{fontSize:10,color:grn,fontWeight:600,background:grn+"12",padding:"2px 8px",borderRadius:10}}>→ {assignedMC?.name||assignedCard.nickname||"Other card"}</span>:null;})()}
+                  {reassignDone===s.id&&<span style={{fontSize:10,color:grn,fontWeight:600}}>✓ Reassigned</span>}
                   <button onClick={e=>{e.stopPropagation();const cur=s.statement_month||"";setEditMonthStmt(s);setEditMonthM(cur?cur.split("-")[1]:"");setEditMonthY(cur?cur.split("-")[0]:String(new Date().getFullYear()));}}
                     style={{fontSize:10,color:mut,background:"none",border:`1px solid ${bdr}`,borderRadius:6,padding:"1px 8px",cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>✏ rename</button>
                 </div>
