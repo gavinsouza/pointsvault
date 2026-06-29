@@ -5947,6 +5947,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const PAGE=15;
 
   const [splitsMap,setSplitsMap]=useState({});
+  const [pieMode,setPieMode]=useState("pct");
+  const [pieTooltip,setPieTooltip]=useState(null);
+  const [stmtFilterOpen,setStmtFilterOpen]=useState(false);
+  const [selectedStmts,setSelectedStmts]=useState(new Set());
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -6016,10 +6020,6 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const total=catData.reduce((a,[,v])=>a+v,0)||1;
   const allCategories=[...new Set(txns.map(t=>t.category||"Other"))].sort();
   const PIE_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4","#f6c94e","#7b9e87","#c87dd4","#8fb0d4"];
-  const [pieMode,setPieMode]=useState("pct"); // pct | inr
-  const [pieTooltip,setPieTooltip]=useState(null); // {cat,val,pct,x,y}
-  const [stmtFilterOpen,setStmtFilterOpen]=useState(false);
-  const [selectedStmts,setSelectedStmts]=useState(new Set()); // empty = all
 
   // Pie chart SVG
   const makePie=()=>{
