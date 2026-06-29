@@ -6266,6 +6266,25 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
             </div>
           </div>
         </div>
+        <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
+          {[
+            {label:"Total Spend",value:"₹"+Number(stmts.reduce((a,s)=>a+(s.total_spend||0),0)).toLocaleString("en-IN")},
+            {label:"Statements",value:stmts.length+" uploaded"},
+            card.stmt_date&&{label:"Statement Day",value:ordinal(card.stmt_date)},
+            (()=>{
+              const fee=card.fee_override?card.fee_override_value:mCard?.annual_fee;
+              return fee>0?{label:"Annual Fee",value:"₹"+Number(fee).toLocaleString("en-IN"),color:red}:null;
+            })(),
+            card.billing_year_start&&{label:"Billing Yr Start",value:(()=>{const [bm,bd]=card.billing_year_start.split("-");const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(bd)+"-"+(MONTHS[parseInt(bm)-1]||bm);})()},
+            card.fee_charge_date&&{label:"Fee Charge Date",value:(()=>{const [bm,bd]=card.fee_charge_date.split("-");const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];return parseInt(bd)+"-"+(MONTHS[parseInt(bm)-1]||bm);})()},
+            card.card_expiry&&{label:"Expires",value:card.card_expiry},
+          ].filter(Boolean).map((s,i)=>(
+            <div key={i} style={{background:surf2,borderRadius:12,padding:"14px 18px",minWidth:110,border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{s.label}</div>
+              <div className="pv-num" style={{fontSize:15,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.01em"}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
       </Card>
 
       {/* Stats */}
