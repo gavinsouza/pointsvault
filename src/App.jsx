@@ -4888,6 +4888,7 @@ function SpendUpload({db,owners=[]}){
         raw_description:row.desc,
         imported_from:fileName,
         statement_month:stmtMonth,
+        user_id:getCurrentUserId(),
       };
       if(stmtId) txnData.statement_id=stmtId;
       const {error}=await db.from("spend_transactions").insert(txnData);
