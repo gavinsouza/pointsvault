@@ -6345,51 +6345,52 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               </div>
             </div>
           </div>
-          {/* Statement filter dropdown */}
-          <div style={{position:"relative",marginBottom:10}}>
-            <button onClick={()=>setStmtFilterOpen(v=>!v)}
-              style={{...gbtn,fontSize:11,padding:"5px 12px",gap:6}}>
-              📅 {selectedStmts.size===0?"All Statements":selectedStmts.size+" selected"} ▾
-            </button>
-            {stmtFilterOpen&&(
-              <div style={{position:"absolute",top:"100%",left:0,zIndex:20,background:surf,
-                border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 0",
-                boxShadow:"0 4px 16px rgba(0,0,0,0.1)",minWidth:180,marginTop:4}}>
-                <div onClick={()=>{setSelectedStmts(new Set());setStmtFilterOpen(false);}}
-                  style={{padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:selectedStmts.size===0?600:400,
-                  color:selectedStmts.size===0?acc:txt}}>All Statements</div>
-                <div style={{height:1,background:bdr,margin:"4px 0"}}/>
-                {stmts.map(s=>{
-                  const key=s.id||s.statement_month;
-                  const checked=selectedStmts.has(s.statement_id||s.id||s.statement_month);
-                  return(
-                    <div key={key} onClick={()=>{
-                      const n=new Set(selectedStmts);
-                      const id=s.statement_id||s.id||s.statement_month;
-                      n.has(id)?n.delete(id):n.add(id);
-                      setSelectedStmts(n);
-                    }} style={{padding:"7px 14px",fontSize:12,cursor:"pointer",
-                      display:"flex",alignItems:"center",gap:8,
-                      background:selectedStmts.has(s.statement_id||s.id||s.statement_month)?acc+"10":"transparent"}}>
-                      <div style={{width:14,height:14,borderRadius:3,border:`1.5px solid ${bdr}`,
-                        background:selectedStmts.has(s.statement_id||s.id||s.statement_month)?acc:"transparent",
-                        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        {selectedStmts.has(s.statement_id||s.id||s.statement_month)&&
-                          <span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+          {/* Controls row: statement filter + % / INR toggle */}
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
+            {/* Statement filter dropdown */}
+            <div style={{position:"relative"}}>
+              <button onClick={()=>setStmtFilterOpen(v=>!v)}
+                style={{...gbtn,fontSize:11,padding:"5px 12px",gap:6}}>
+                📅 {selectedStmts.size===0?"All Statements":selectedStmts.size+" selected"} ▾
+              </button>
+              {stmtFilterOpen&&(
+                <div style={{position:"absolute",top:"100%",left:0,zIndex:20,background:surf,
+                  border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 0",
+                  boxShadow:"0 4px 16px rgba(0,0,0,0.1)",minWidth:180,marginTop:4}}>
+                  <div onClick={()=>{setSelectedStmts(new Set());setStmtFilterOpen(false);}}
+                    style={{padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:selectedStmts.size===0?600:400,
+                    color:selectedStmts.size===0?acc:txt}}>All Statements</div>
+                  <div style={{height:1,background:bdr,margin:"4px 0"}}/>
+                  {stmts.map(s=>{
+                    const key=s.id||s.statement_month;
+                    const checked=selectedStmts.has(s.statement_id||s.id||s.statement_month);
+                    return(
+                      <div key={key} onClick={()=>{
+                        const n=new Set(selectedStmts);
+                        const id=s.statement_id||s.id||s.statement_month;
+                        n.has(id)?n.delete(id):n.add(id);
+                        setSelectedStmts(n);
+                      }} style={{padding:"7px 14px",fontSize:12,cursor:"pointer",
+                        display:"flex",alignItems:"center",gap:8,
+                        background:selectedStmts.has(s.statement_id||s.id||s.statement_month)?acc+"10":"transparent"}}>
+                        <div style={{width:14,height:14,borderRadius:3,border:`1.5px solid ${bdr}`,
+                          background:selectedStmts.has(s.statement_id||s.id||s.statement_month)?acc:"transparent",
+                          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          {selectedStmts.has(s.statement_id||s.id||s.statement_month)&&
+                            <span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+                        </div>
+                        <span>{fmtMonth(s.statement_month)}</span>
                       </div>
-                      <span>{fmtMonth(s.statement_month)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          {/* % / INR toggle */}
-          <div style={{display:"flex",gap:6,marginBottom:14}}>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* % / INR toggle */}
             {["pct","inr"].map(m=>(
               <button key={m} onClick={()=>setPieMode(m)}
-                style={{padding:"4px 14px",borderRadius:20,border:`1px solid ${m===pieMode?txt:bdr}`,background:m===pieMode?txt:"transparent",color:m===pieMode?"#fff":mut,fontSize:11,fontWeight:m===pieMode?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
-                {m==="pct"?"%" :"₹ Amount"}
+                style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${m===pieMode?txt:bdr}`,background:m===pieMode?txt:"transparent",color:m===pieMode?"#fff":mut,fontSize:11,fontWeight:m===pieMode?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+                {m==="pct"?"%":"₹ Amount"}
               </button>
             ))}
           </div>
@@ -6437,47 +6438,69 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               ))}
             </div>
           </div>
-        </Card>}
+        </Card>
         <Card>
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Statement</div>
-          {stmts.length===0?<div style={{color:mut,fontSize:12}}>No statements yet</div>:(
-            <div>
-              {(()=>{
-                const BAR_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4"];
-                const shown=stmts.slice(0,6);
-                const totals=shown.map(s=>txns.filter(t=>
-                  (t.statement_id===s.id||t.statement_month===s.statement_month)&&Number(t.amount||0)>0
-                ).reduce((a,t)=>a+Number(t.amount||0),0));
-                const maxVal=Math.max(...totals,1);
-                const barH=140;
-                return(
-                  <div style={{display:"flex",alignItems:"flex-end",gap:8,height:barH+40,paddingBottom:24,position:"relative"}}>
-                    {shown.map((s,i)=>(
-                      <div key={s.id} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,height:"100%",justifyContent:"flex-end"}}>
-                        <div style={{fontSize:10,fontWeight:600,color:txt,marginBottom:2}}>
-                          ₹{(totals[i]/1000).toFixed(0)}k
+          {(()=>{
+              // Build last 12 months grid ending at latest uploaded statement month
+              const BAR_COLOR=acc; // single tasteful colour
+              const latestMonth=stmts.length>0?stmts[0].statement_month:null;
+              if(!latestMonth) return <div style={{color:mut,fontSize:12}}>No statements yet</div>;
+              // Generate 12 months ending at latestMonth
+              const [ly,lm]=latestMonth.split("-").map(Number);
+              const months=[];
+              for(let i=11;i>=0;i--){
+                let m=lm-i; let y=ly;
+                while(m<=0){m+=12;y--;}
+                months.push(`${y}-${String(m).padStart(2,"0")}`);
+              }
+              const totals=months.map(mo=>{
+                const s=stmts.find(s=>s.statement_month===mo);
+                if(!s) return 0;
+                return txns.filter(t=>
+                  (t.statement_id===s.id||t.statement_month===mo)&&Number(t.amount||0)>0
+                ).reduce((a,t)=>a+Number(t.amount||0),0);
+              });
+              const maxVal=Math.max(...totals,1);
+              const barH=120;
+              return(
+                <div style={{overflowX:"auto"}}>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:4,height:barH+52,minWidth:0,paddingBottom:0,position:"relative",borderBottom:`1px solid ${bdr}`}}>
+                    {months.map((mo,i)=>{
+                      const val=totals[i];
+                      const missing=!stmts.find(s=>s.statement_month===mo);
+                      const h=val>0?Math.max((val/maxVal)*barH,4):0;
+                      const [,mm]=mo.split("-");
+                      const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+                      const label=MNAMES[parseInt(mm)-1];
+                      const isLatest=mo===latestMonth;
+                      return(
+                        <div key={mo} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%",minWidth:0}}>
+                          {val>0&&<div style={{fontSize:9,fontWeight:600,color:txt,marginBottom:2,textAlign:"center"}}>
+                            {val>=1000?"₹"+(val/1000).toFixed(0)+"k":"₹"+val.toFixed(0)}
+                          </div>}
+                          <div style={{
+                            width:"70%",
+                            height:h||2,
+                            background:missing?"transparent":isLatest?txt:BAR_COLOR,
+                            borderRadius:"3px 3px 0 0",
+                            border:missing?`1px dashed ${bdr}`:"none",
+                            opacity:missing?0.4:1,
+                            transition:"height 0.3s",
+                            alignSelf:"flex-end",
+                          }}
+                            title={mo+": "+(missing?"No statement uploaded":"₹"+val.toLocaleString("en-IN"))}
+                          />
+                          <div style={{fontSize:9,color:isLatest?txt:mut,fontWeight:isLatest?700:400,marginTop:4,textAlign:"center"}}>
+                            {label}
+                          </div>
                         </div>
-                        <div style={{
-                          width:"100%",
-                          height:Math.max((totals[i]/maxVal)*barH,3),
-                          background:BAR_COLORS[i%BAR_COLORS.length],
-                          borderRadius:"5px 5px 0 0",
-                          transition:"height 0.3s",
-                          position:"relative",
-                        }}
-                          title={fmtMonth(s.statement_month)+": ₹"+totals[i].toLocaleString("en-IN")}
-                        />
-                        <div style={{fontSize:10,color:mut,textAlign:"center",marginTop:4,width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {fmtMonth(s.statement_month)}
-                        </div>
-                      </div>
-                    ))}
-                    {/* Baseline */}
-                    <div style={{position:"absolute",bottom:24,left:0,right:0,height:1,background:bdr}}/>
+                      );
+                    })}
                   </div>
-                );
-              })()}
-            </div>
+                </div>
+              );
+            })()}
           )}
         </Card>
       </div>
@@ -6559,8 +6582,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </div>}
         </>}
       </Card>
-      {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>
-}
+      {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
     </div>
   );
 }
