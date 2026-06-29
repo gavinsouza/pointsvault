@@ -6007,13 +6007,14 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const catData=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const total=catData.reduce((a,[,v])=>a+v,0)||1;
   const allCategories=[...new Set(txns.map(t=>t.category||"Other"))].sort();
-  const PIE_COLORS=["#b07d3a","#2d6a4f","#9b2335","#7c6fcd","#2980b9","#e67e22","#16a085","#8a8883"];
+  const PIE_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4","#f6c94e","#7b9e87","#c87dd4","#8fb0d4"];
+  const [pieMode,setPieMode]=useState("pct"); // pct | inr
 
   // Pie chart SVG
   const makePie=()=>{
     if(!total||catData.length===0) return null;
     let angle=0;
-    const cx=80,cy=80,r=70;
+    const cx=100,cy=100,r=88;
     const slices=catData.map(([cat,val],i)=>{
       const pct=val/total;
       const a1=angle; const a2=angle+pct*2*Math.PI;
@@ -6333,20 +6334,35 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               </div>
             </div>
           </div>
-          <div style={{display:"flex",gap:16,alignItems:"center"}}>
-            <svg width="110" height="110" viewBox="0 0 160 160" style={{flexShrink:0}}>
+          {/* % / INR toggle */}
+          <div style={{display:"flex",gap:6,marginBottom:14}}>
+            {["pct","inr"].map(m=>(
+              <button key={m} onClick={()=>setPieMode(m)}
+                style={{padding:"4px 14px",borderRadius:20,border:`1px solid ${m===pieMode?txt:bdr}`,background:m===pieMode?txt:"transparent",color:m===pieMode?"#fff":mut,fontSize:11,fontWeight:m===pieMode?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+                {m==="pct"?"%" :"₹ Amount"}
+              </button>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
+            <svg width="200" height="200" viewBox="0 0 200 200" style={{flexShrink:0}}>
               {pieSlices.map((s,i)=>(
-                <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1.5" opacity="0.9"/>
+                <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="2" opacity="0.95"/>
               ))}
+              {/* Centre hole for donut effect */}
+              <circle cx="100" cy="100" r="40" fill={surf}/>
             </svg>
-            <div style={{flex:1}}>
+            <div style={{flex:1,minWidth:160}}>
               {pieSlices.map((s,i)=>(
-                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
-                    <span style={{fontSize:11,color:txt}}>{s.cat}</span>
+                <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
+                  <div style={{display:"flex",alignItems:"center",gap:7}}>
+                    <div style={{width:10,height:10,borderRadius:3,background:s.color,flexShrink:0}}/>
+                    <span style={{fontSize:12,color:txt}}>{s.cat}</span>
                   </div>
-                  <span style={{fontSize:11,fontWeight:600,color:txt,marginLeft:8}}>{(s.pct*100).toFixed(0)}%</span>
+                  <span style={{fontSize:12,fontWeight:600,color:txt,marginLeft:8}}>
+                    {pieMode==="pct"
+                      ? (s.pct*100).toFixed(0)+"%"
+                      : "₹"+Number(s.val).toLocaleString("en-IN")}
+                  </span>
                 </div>
               ))}
             </div>
