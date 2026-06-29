@@ -6256,15 +6256,17 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEditCard(true)}>Edit</button>
         </div>
       </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12,marginBottom:20}}>
-        <div style={{display:"flex",gap:14,alignItems:"center"}}>
-          <LogoCircle url={mCard?.logo_url} name={mCard?.name} size={80}/>
-          <div>
-            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||mCard?.name}</div>
-            <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&"···· "+card.last4+" · "}{owner?.name||""}{mCard?.bank?" · "+mCard.bank:""}{mCard?.network?" · "+mCard.network:""}</div>
+      <Card style={{marginBottom:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12}}>
+          <div style={{display:"flex",gap:14,alignItems:"center"}}>
+            <LogoCircle url={mCard?.logo_url} name={mCard?.name} size={80}/>
+            <div>
+              <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||mCard?.name}</div>
+              <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&"···· "+card.last4+" · "}{owner?.name||""}{mCard?.bank?" · "+mCard.bank:""}{mCard?.network?" · "+mCard.network:""}</div>
+            </div>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* Stats */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
