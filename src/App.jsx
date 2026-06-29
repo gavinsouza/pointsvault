@@ -6083,7 +6083,8 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   // Reassign statement
   const [reassignTarget,setReassignTarget]=useState(null);
   const [reassignCardId,setReassignCardId]=useState("");
-  const [reassignDone,setReassignDone]=useState(null); // id of last reassigned statement
+  const [reassignDone,setReassignDone]=useState(null);
+  const [reassignSuccess,setReassignSuccess]=useState(null); // card name after success
   const [editMonthStmt,setEditMonthStmt]=useState(null);
   const [editMonthM,setEditMonthM]=useState("");
   const [editMonthY,setEditMonthY]=useState("");
@@ -6103,8 +6104,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         if(e2) console.error("Txn update failed:",e2);
       }
       setReassignDone(reassignTarget.id);
+      const doneCard=allCards.find(c=>c.id===reassignCardId);
+      const doneMC=doneCard&&allMCards.find(m=>m.id===doneCard.master_id);
+      setReassignSuccess(doneMC?.name||doneCard?.nickname||"new card");
       setReassignTarget(null); setReassignCardId(""); load();
-      setTimeout(()=>setReassignDone(null), 3000);
     }catch(err){
       alert("Reassign failed: "+err.message);
     }
@@ -6117,6 +6120,24 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       onBack={()=>setSelStmt(null)}
       onSave={()=>load()}
     />
+  );
+
+  if(reassignSuccess) return(
+    <div>
+      <Hdr title="Statement Reassigned" sub=""/>
+      <div style={{maxWidth:420}}>
+        <Card style={{textAlign:"center",padding:"32px 24px"}}>
+          <div style={{fontSize:36,marginBottom:16}}>✓</div>
+          <div style={{fontSize:16,fontWeight:700,color:txt,marginBottom:8}}>Reassignment complete</div>
+          <div style={{fontSize:13,color:mut,marginBottom:24}}>
+            Statement successfully reassigned to <span style={{fontWeight:600,color:acc}}>{reassignSuccess}</span>.
+          </div>
+          <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{setReassignSuccess(null);setReassignDone(null);}}>
+            OK — Back to Statements
+          </button>
+        </Card>
+      </div>
+    </div>
   );
 
   if(reassignTarget) return(
