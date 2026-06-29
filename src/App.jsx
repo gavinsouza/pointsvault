@@ -3079,7 +3079,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
               </tbody>
             </table>
           </div>
-        ))}
+        )}
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {master?.auto_transfer_to&&<div style={{background:acc+"10",border:`1px solid ${acc}33`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:acc,fontWeight:500}}>
@@ -3360,7 +3360,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
               </tbody>
             </table>
           </div>
-        ))}
+        )}
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="adjust">Adjustment</option></select>
@@ -5340,15 +5340,20 @@ function SpendUpload({db,owners=[]}){
         </select>
         <div style={{marginBottom:16}}>
           {lbl("Statement Month *")}
-          <input
-            type="month"
-            style={{...inp,colorScheme:"light"}}
-            value={modalYear&&modalMonth?modalYear+"-"+modalMonth:""}
-            onChange={e=>{
-              const [y,m]=(e.target.value||"").split("-");
-              setModalYear(y||""); setModalMonth(m||"");
-            }}
-          />
+          <div style={{display:"flex",gap:8}}>
+            <select style={{...inp,flex:1,marginBottom:0}} value={modalMonth} onChange={e=>setModalMonth(e.target.value)}>
+              <option value="">Month</option>
+              {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
+                <option key={m} value={m}>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i]}</option>
+              ))}
+            </select>
+            <select style={{...inp,flex:1,marginBottom:0}} value={modalYear} onChange={e=>setModalYear(e.target.value)}>
+              <option value="">Year</option>
+              {Array.from({length:6},(_,i)=>String(new Date().getFullYear()-i)).map(y=>(
+                <option key={y} value={y}>{y}</option>
+              ))}
+            </select>
+          </div>
         </div>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:8}} onClick={()=>{
           if(!selCard) return alert("Please select a card.");
