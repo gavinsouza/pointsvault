@@ -6088,10 +6088,23 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [editMonthY,setEditMonthY]=useState("");
   const doReassign=async()=>{
     if(!reassignCardId||!reassignTarget) return;
-    await db.from("statements").update(reassignTarget.id,{card_id:reassignCardId});
-    const stmtTxns=txns.filter(t=>t.statement_id===reassignTarget.id);
-    for(const t of stmtTxns) await db.from("spend_transactions").update(t.id,{card_id:reassignCardId});
-    setReassignTarget(null); setReassignCardId(""); load();
+    try{
+      // Update statement card
+      const {error:e1}=await db.from("statements").update(reassignTarget.id,{card_id:reassignCardId});
+      if(e1) throw new Error("Statement update failed: "+JSON.stringify(e1));
+      // Update all transactions linked to this statement (by statement_id OR by matching card+month)
+      const stmtTxns=txns.filter(t=>
+        t.statement_id===reassignTarget.id ||
+        (t.card_id===reassignTarget.card_id && t.statement_month===reassignTarget.statement_month)
+      );
+      for(const t of stmtTxns){
+        const {error:e2}=await db.from("spend_transactions").update(t.id,{card_id:reassignCardId,statement_id:reassignTarget.id});
+        if(e2) console.error("Txn update failed:",e2);
+      }
+      setReassignTarget(null); setReassignCardId(""); load();
+    }catch(err){
+      alert("Reassign failed: "+err.message);
+    }
   };
 
   if(selStmt) return(
