@@ -2998,7 +2998,10 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const iv=(card.points_balance||0)*(master?.inr_per_point||0);
   const fee=card.fee_override?card.fee_override_value:master?.annual_fee;
   const sorted=[...txns].filter(t=>t.description!=="Opening balance").sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
-  let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); const disp=rows.reverse();
+  let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); 
+  // Always show opening balance as first entry (at bottom of reversed list)
+  const obRow={id:"__ob__",description:"Opening balance",points:null,txn_date:null,opening:null,closing:ob};
+  const disp=[...rows.reverse(), obRow];
 
   return(
     <div>
@@ -3061,11 +3064,15 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
               </tr></thead>
               <tbody>
                 {disp.map(t=>(
-                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":fmtDate(t.txn_date)}</td>
-                    <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
+                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
+                    <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+                      {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
+                    </td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
+                      {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
+                    </td>
                   </tr>
                 ))}
 
@@ -3284,7 +3291,10 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const days=prog.expiry_date?Math.round((new Date(prog.expiry_date)-new Date())/86400000):null;
   const exp=days!==null&&days<=60;
   const sorted=[...txns].filter(t=>t.description!=="Opening balance").sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
-  let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); const disp=rows.reverse();
+  let bal=ob; const rows=sorted.map(t=>{const op=bal;bal+=t.points;return{...t,opening:op,closing:bal};}); 
+  // Always show opening balance as first entry (at bottom of reversed list)
+  const obRow={id:"__ob__",description:"Opening balance",points:null,txn_date:null,opening:null,closing:ob};
+  const disp=[...rows.reverse(), obRow];
 
   return(
     <div>
@@ -3335,11 +3345,15 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
               </tr></thead>
               <tbody>
                 {disp.map(t=>(
-                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.description==="Opening balance"?"—":fmtDate(t.txn_date)}</td>
-                    <td style={{padding:"10px 12px",color:txt,fontWeight:400}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.points>0?grn:t.points<0?red:mut}}>{t.points>0?"+":""}{t.points.toLocaleString()}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:txt}}>{t.closing.toLocaleString()}</td>
+                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
+                    <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+                      {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
+                    </td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
+                      {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
+                    </td>
                   </tr>
                 ))}
 
