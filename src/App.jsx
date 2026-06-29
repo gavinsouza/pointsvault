@@ -6083,18 +6083,17 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   // Reassign statement
   const [reassignTarget,setReassignTarget]=useState(null);
   const [reassignCardId,setReassignCardId]=useState("");
-  const [reassignDone,setReassignDone]=useState(null);
-  const [reassignSuccess,setReassignSuccess]=useState(null); // card name after success
+  const [reassignStatus,setReassignStatus]=useState("idle"); // idle|loading|done
+  const [reassignDoneCard,setReassignDoneCard]=useState("");
   const [editMonthStmt,setEditMonthStmt]=useState(null);
   const [editMonthM,setEditMonthM]=useState("");
   const [editMonthY,setEditMonthY]=useState("");
   const doReassign=async()=>{
     if(!reassignCardId||!reassignTarget) return;
+    setReassignStatus("loading");
     try{
-      // Update statement card
       const {error:e1}=await db.from("statements").update(reassignTarget.id,{card_id:reassignCardId});
       if(e1) throw new Error("Statement update failed: "+JSON.stringify(e1));
-      // Update all transactions linked to this statement (by statement_id OR by matching card+month)
       const stmtTxns=txns.filter(t=>
         t.statement_id===reassignTarget.id ||
         (t.card_id===reassignTarget.card_id && t.statement_month===reassignTarget.statement_month)
@@ -6103,12 +6102,13 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         const {error:e2}=await db.from("spend_transactions").update(t.id,{card_id:reassignCardId,statement_id:reassignTarget.id});
         if(e2) console.error("Txn update failed:",e2);
       }
-      setReassignDone(reassignTarget.id);
       const doneCard=allCards.find(c=>c.id===reassignCardId);
       const doneMC=doneCard&&allMCards.find(m=>m.id===doneCard.master_id);
-      setReassignSuccess(doneMC?.name||doneCard?.nickname||"new card");
-      setReassignTarget(null); setReassignCardId(""); load();
+      setReassignDoneCard(doneMC?.name||doneCard?.nickname||"card");
+      setReassignStatus("done");
+      await load(); // reload so dashboard reflects changes
     }catch(err){
+      setReassignStatus("idle");
       alert("Reassign failed: "+err.message);
     }
   };
@@ -6122,27 +6122,29 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     />
   );
 
-  if(reassignSuccess) return(
+  if(reassignTarget||reassignStatus!=="idle") return(
     <div>
-      <Hdr title="Statement Reassigned" sub=""/>
-      <div style={{maxWidth:420}}>
-        <Card style={{textAlign:"center",padding:"32px 24px"}}>
-          <div style={{fontSize:36,marginBottom:16}}>✓</div>
-          <div style={{fontSize:16,fontWeight:700,color:txt,marginBottom:8}}>Reassignment complete</div>
-          <div style={{fontSize:13,color:mut,marginBottom:24}}>
-            Statement successfully reassigned to <span style={{fontWeight:600,color:acc}}>{reassignSuccess}</span>.
-          </div>
-          <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{setReassignSuccess(null);setReassignDone(null);}}>
-            OK — Back to Statements
-          </button>
-        </Card>
-      </div>
-    </div>
-  );
-
-  if(reassignTarget) return(
-    <div>
-      <Hdr title={"Reassign Statement — "+fmtMonth(reassignTarget.statement_month)} sub="Choose a different card for this statement"/>
+      <Hdr title={"Reassign Statement — "+(reassignTarget?fmtMonth(reassignTarget.statement_month):"")} sub={reassignStatus==="loading"?"Reassigning…":reassignStatus==="done"?"Complete":"Choose a different card for this statement"}/>
+      {reassignStatus==="done"?(
+        <div style={{maxWidth:420}}>
+          <Card style={{textAlign:"center",padding:"36px 24px"}}>
+            <div style={{fontSize:40,marginBottom:12}}>✓</div>
+            <div style={{fontSize:16,fontWeight:700,color:txt,marginBottom:8}}>Statement reassigned</div>
+            <div style={{fontSize:13,color:mut,marginBottom:24}}>
+              Successfully moved to <span style={{fontWeight:600,color:acc}}>{reassignDoneCard}</span>.
+            </div>
+            <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={()=>{setReassignStatus("idle");setReassignTarget(null);setReassignCardId("");onBack&&onBack();}}>
+              OK — Back to Dashboard
+            </button>
+          </Card>
+        </div>
+      ):reassignStatus==="loading"?(
+        <div style={{maxWidth:420}}>
+          <Card style={{textAlign:"center",padding:"36px 24px"}}>
+            <div style={{fontSize:13,color:mut}}>Reassigning statement and transactions…</div>
+          </Card>
+        </div>
+      ):(
       <Card style={{maxWidth:480}}>
         {lbl("Assign to card")}
         <select style={inp} value={reassignCardId} onChange={e=>setReassignCardId(e.target.value)}>
@@ -6167,6 +6169,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={doReassign}>Reassign Statement</button>
         </div>
       </Card>
+      )}
     </div>
   );
 
