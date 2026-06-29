@@ -3264,11 +3264,11 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   };
 
   const saveEdit=async()=>{
-    const sum=txns.reduce((a,t)=>a+t.points,0);
+    const sum=txns.filter(t=>t.description!=="Opening balance").reduce((a,t)=>a+t.points,0);
     const nOp=parseInt(ef.opening_balance)||0;
     const p={owner_id:ef.owner_id,nickname:ef.nickname,membership_number:ef.membership_number,tier:ef.tier,opening_balance:nOp,points_balance:nOp+sum,expiry_date:ef.expiry_date||null};
     await db.from("my_programs").update(prog.id,p);
-    setProg(x=>({...x,...p}));setShowEdit(false);
+    setProg(x=>({...x,...p}));load();setShowEdit(false);
   };
 
   const del=async()=>{
