@@ -6477,7 +6477,7 @@ function SpendCards({db,owners,onNavigate}){
         <SpendCardDetail
           card={selCard} mCard={mc} db={db} owners={owners}
           allCards={cards} allMCards={mCards}
-          onBack={()=>setSelCard(null)}
+          onBack={()=>{setSelCard(null);load();}}
         />
 
       </div>
