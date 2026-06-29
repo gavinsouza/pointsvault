@@ -6268,8 +6268,6 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         </div>
         <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
           {[
-            {label:"Total Spend",value:"₹"+Number(stmts.reduce((a,s)=>a+(s.total_spend||0),0)).toLocaleString("en-IN")},
-            {label:"Statements",value:stmts.length+" uploaded"},
             card.stmt_date&&{label:"Statement Day",value:ordinal(card.stmt_date)},
             (()=>{
               const fee=card.fee_override?card.fee_override_value:mCard?.annual_fee;
