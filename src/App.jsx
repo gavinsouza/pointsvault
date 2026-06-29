@@ -6248,19 +6248,21 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
 
   return(
     <div>
-      {/* Header */}
-      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:20,flexWrap:"wrap",gap:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}>
-          <button onClick={onBack} style={{...gbtn,fontSize:12}}>← My Cards</button>
+      {/* Header — matches P&M CardDetail style */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; My Cards</button>
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEditCard(true)}>Edit</button>
+        </div>
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12,marginBottom:20}}>
+        <div style={{display:"flex",gap:14,alignItems:"center"}}>
           <LogoCircle url={mCard?.logo_url} name={mCard?.name} size={80}/>
           <div>
-            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em"}}>{card.nickname||mCard?.name}</div>
-            <div style={{fontSize:12,color:mut,marginTop:2}}>{owner?.name||""}{mCard?.bank?" · "+mCard.bank:""}{mCard?.network?" · "+mCard.network:""}{card.last4?" · ····"+card.last4:""}</div>
+            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{card.nickname||mCard?.name}</div>
+            <div style={{fontSize:13,color:mut,marginTop:2}}>{card.last4&&"···· "+card.last4+" · "}{owner?.name||""}{mCard?.bank?" · "+mCard.bank:""}{mCard?.network?" · "+mCard.network:""}</div>
           </div>
-        </div>
-        <div style={{display:"flex",gap:8}}>
-          <button style={{...gbtn,fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
-          <button style={pbtn} onClick={()=>setShowEditCard(true)}>Edit Card</button>
         </div>
       </div>
 
