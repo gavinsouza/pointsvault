@@ -6004,11 +6004,22 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     }
     if(amt>0) catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+amt;
   });
-  const catData=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  // Filter transactions by selected statements for pie
+  const filteredForPie=selectedStmts.size===0?txns:txns.filter(t=>
+    selectedStmts.has(t.statement_id||t.statement_month)
+  );
+  const catTotalsPie=filteredForPie.reduce((acc,t)=>{
+    if(t.amount>0){const cat=t.category||"Other";acc[cat]=(acc[cat]||0)+Number(t.amount);}
+    return acc;
+  },{});
+  const catData=Object.entries(catTotalsPie).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const total=catData.reduce((a,[,v])=>a+v,0)||1;
   const allCategories=[...new Set(txns.map(t=>t.category||"Other"))].sort();
   const PIE_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4","#f6c94e","#7b9e87","#c87dd4","#8fb0d4"];
   const [pieMode,setPieMode]=useState("pct"); // pct | inr
+  const [pieTooltip,setPieTooltip]=useState(null); // {cat,val,pct,x,y}
+  const [stmtFilterOpen,setStmtFilterOpen]=useState(false);
+  const [selectedStmts,setSelectedStmts]=useState(new Set()); // empty = all
 
   // Pie chart SVG
   const makePie=()=>{
@@ -6334,6 +6345,45 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               </div>
             </div>
           </div>
+          {/* Statement filter dropdown */}
+          <div style={{position:"relative",marginBottom:10}}>
+            <button onClick={()=>setStmtFilterOpen(v=>!v)}
+              style={{...gbtn,fontSize:11,padding:"5px 12px",gap:6}}>
+              📅 {selectedStmts.size===0?"All Statements":selectedStmts.size+" selected"} ▾
+            </button>
+            {stmtFilterOpen&&(
+              <div style={{position:"absolute",top:"100%",left:0,zIndex:20,background:surf,
+                border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 0",
+                boxShadow:"0 4px 16px rgba(0,0,0,0.1)",minWidth:180,marginTop:4}}>
+                <div onClick={()=>{setSelectedStmts(new Set());setStmtFilterOpen(false);}}
+                  style={{padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:selectedStmts.size===0?600:400,
+                  color:selectedStmts.size===0?acc:txt}}>All Statements</div>
+                <div style={{height:1,background:bdr,margin:"4px 0"}}/>
+                {stmts.map(s=>{
+                  const key=s.id||s.statement_month;
+                  const checked=selectedStmts.has(s.statement_id||s.id||s.statement_month);
+                  return(
+                    <div key={key} onClick={()=>{
+                      const n=new Set(selectedStmts);
+                      const id=s.statement_id||s.id||s.statement_month;
+                      n.has(id)?n.delete(id):n.add(id);
+                      setSelectedStmts(n);
+                    }} style={{padding:"7px 14px",fontSize:12,cursor:"pointer",
+                      display:"flex",alignItems:"center",gap:8,
+                      background:selectedStmts.has(s.statement_id||s.id||s.statement_month)?acc+"10":"transparent"}}>
+                      <div style={{width:14,height:14,borderRadius:3,border:`1.5px solid ${bdr}`,
+                        background:selectedStmts.has(s.statement_id||s.id||s.statement_month)?acc:"transparent",
+                        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {selectedStmts.has(s.statement_id||s.id||s.statement_month)&&
+                          <span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+                      </div>
+                      <span>{fmtMonth(s.statement_month)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
           {/* % / INR toggle */}
           <div style={{display:"flex",gap:6,marginBottom:14}}>
             {["pct","inr"].map(m=>(
@@ -6344,13 +6394,33 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
             ))}
           </div>
           <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
-            <svg width="200" height="200" viewBox="0 0 200 200" style={{flexShrink:0}}>
-              {pieSlices.map((s,i)=>(
-                <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="2" opacity="0.95"/>
-              ))}
-              {/* Centre hole for donut effect */}
-              <circle cx="100" cy="100" r="40" fill={surf}/>
-            </svg>
+            <div style={{position:"relative",flexShrink:0}}>
+              <svg width="200" height="200" viewBox="0 0 200 200"
+                onMouseLeave={()=>setPieTooltip(null)}>
+                {pieSlices.map((s,i)=>(
+                  <path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="2"
+                    opacity={pieTooltip&&pieTooltip.cat!==s.cat?0.5:0.95}
+                    style={{cursor:"pointer",transition:"opacity 0.15s"}}
+                    onMouseEnter={e=>{
+                      const rect=e.currentTarget.closest("svg").getBoundingClientRect();
+                      setPieTooltip({cat:s.cat,val:s.val,pct:s.pct,
+                        x:e.clientX-rect.left,y:e.clientY-rect.top});
+                    }}
+                  />
+                ))}
+                <circle cx="100" cy="100" r="40" fill={surf} style={{pointerEvents:"none"}}/>
+              </svg>
+              {pieTooltip&&(
+                <div style={{position:"absolute",left:pieTooltip.x+10,top:pieTooltip.y-10,
+                  background:txt,color:"#fff",borderRadius:8,padding:"8px 12px",
+                  fontSize:12,pointerEvents:"none",zIndex:10,whiteSpace:"nowrap",
+                  boxShadow:"0 4px 12px rgba(0,0,0,0.2)"}}>
+                  <div style={{fontWeight:700,marginBottom:3}}>{pieTooltip.cat}</div>
+                  <div>₹{Number(pieTooltip.val).toLocaleString("en-IN")}</div>
+                  <div style={{color:"#ccc",fontSize:11}}>{(pieTooltip.pct*100).toFixed(1)}%</div>
+                </div>
+              )}
+            </div>
             <div style={{flex:1,minWidth:160}}>
               {pieSlices.map((s,i)=>(
                 <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
@@ -6372,21 +6442,41 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Statement</div>
           {stmts.length===0?<div style={{color:mut,fontSize:12}}>No statements yet</div>:(
             <div>
-              {stmts.slice(0,6).map((s,i)=>{
-                const stmtTotal=txns.filter(t=>t.statement_month===s.statement_month).reduce((a,t)=>a+Number(t.amount||0),0);
-                const maxStmt=Math.max(...stmts.slice(0,6).map(st=>txns.filter(t=>t.statement_month===st.statement_month).reduce((a,t)=>a+Number(t.amount||0),0)));
+              {(()=>{
+                const BAR_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4"];
+                const shown=stmts.slice(0,6);
+                const totals=shown.map(s=>txns.filter(t=>
+                  (t.statement_id===s.id||t.statement_month===s.statement_month)&&Number(t.amount||0)>0
+                ).reduce((a,t)=>a+Number(t.amount||0),0));
+                const maxVal=Math.max(...totals,1);
+                const barH=140;
                 return(
-                  <div key={s.id} style={{marginBottom:8}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:11}}>
-                      <span style={{color:txt}}>{fmtMonth(s.statement_month)}</span>
-                      <span style={{fontWeight:600,color:txt}}>₹{stmtTotal.toLocaleString("en-IN")}</span>
-                    </div>
-                    <div style={{height:5,background:surf3,borderRadius:3}}>
-                      <div style={{height:5,background:acc,borderRadius:3,width:maxStmt>0?((stmtTotal/maxStmt)*100)+"%":"0%",transition:"width 0.3s"}}/>
-                    </div>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:8,height:barH+40,paddingBottom:24,position:"relative"}}>
+                    {shown.map((s,i)=>(
+                      <div key={s.id} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:4,height:"100%",justifyContent:"flex-end"}}>
+                        <div style={{fontSize:10,fontWeight:600,color:txt,marginBottom:2}}>
+                          ₹{(totals[i]/1000).toFixed(0)}k
+                        </div>
+                        <div style={{
+                          width:"100%",
+                          height:Math.max((totals[i]/maxVal)*barH,3),
+                          background:BAR_COLORS[i%BAR_COLORS.length],
+                          borderRadius:"5px 5px 0 0",
+                          transition:"height 0.3s",
+                          position:"relative",
+                        }}
+                          title={fmtMonth(s.statement_month)+": ₹"+totals[i].toLocaleString("en-IN")}
+                        />
+                        <div style={{fontSize:10,color:mut,textAlign:"center",marginTop:4,width:"100%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {fmtMonth(s.statement_month)}
+                        </div>
+                      </div>
+                    ))}
+                    {/* Baseline */}
+                    <div style={{position:"absolute",bottom:24,left:0,right:0,height:1,background:bdr}}/>
                   </div>
                 );
-              })}
+              })()}
             </div>
           )}
         </Card>
