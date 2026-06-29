@@ -6258,6 +6258,24 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     </div>
   );
 
+
+  // Bar chart - last 12 months
+  const barLatestMonth=stmts.length>0?stmts[0].statement_month:null;
+  const barMonths=(()=>{
+    if(!barLatestMonth) return [];
+    const [ly,lm]=barLatestMonth.split("-").map(Number);
+    const months=[];
+    for(let i=11;i>=0;i--){let m=lm-i;let y=ly;while(m<=0){m+=12;y--;}months.push(`${y}-${String(m).padStart(2,"0")}`);}
+    return months;
+  })();
+  const barTotals=barMonths.map(mo=>{
+    const s=stmts.find(s=>s.statement_month===mo);
+    if(!s) return 0;
+    return txns.filter(t=>(t.statement_id===s.id||t.statement_month===mo)&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount||0),0);
+  });
+  const barMax=Math.max(...barTotals,1);
+  const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
   return(
     <div>
       {/* Header — matches P&M CardDetail style */}
@@ -6438,70 +6456,35 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
               ))}
             </div>
           </div>
-        </Card>
+        </Card>}
         <Card>
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Statement</div>
-          {(()=>{
-              // Build last 12 months grid ending at latest uploaded statement month
-              const BAR_COLOR=acc; // single tasteful colour
-              const latestMonth=stmts.length>0?stmts[0].statement_month:null;
-              if(!latestMonth) return <div style={{color:mut,fontSize:12}}>No statements yet</div>;
-              // Generate 12 months ending at latestMonth
-              const [ly,lm]=latestMonth.split("-").map(Number);
-              const months=[];
-              for(let i=11;i>=0;i--){
-                let m=lm-i; let y=ly;
-                while(m<=0){m+=12;y--;}
-                months.push(`${y}-${String(m).padStart(2,"0")}`);
-              }
-              const totals=months.map(mo=>{
-                const s=stmts.find(s=>s.statement_month===mo);
-                if(!s) return 0;
-                return txns.filter(t=>
-                  (t.statement_id===s.id||t.statement_month===mo)&&Number(t.amount||0)>0
-                ).reduce((a,t)=>a+Number(t.amount||0),0);
-              });
-              const maxVal=Math.max(...totals,1);
-              const barH=120;
-              return(
-                <div style={{overflowX:"auto"}}>
-                  <div style={{display:"flex",alignItems:"flex-end",gap:4,height:barH+52,minWidth:0,paddingBottom:0,position:"relative",borderBottom:`1px solid ${bdr}`}}>
-                    {months.map((mo,i)=>{
-                      const val=totals[i];
-                      const missing=!stmts.find(s=>s.statement_month===mo);
-                      const h=val>0?Math.max((val/maxVal)*barH,4):0;
-                      const [,mm]=mo.split("-");
-                      const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
-                      const label=MNAMES[parseInt(mm)-1];
-                      const isLatest=mo===latestMonth;
-                      return(
-                        <div key={mo} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%",minWidth:0}}>
-                          {val>0&&<div style={{fontSize:9,fontWeight:600,color:txt,marginBottom:2,textAlign:"center"}}>
-                            {val>=1000?"₹"+(val/1000).toFixed(0)+"k":"₹"+val.toFixed(0)}
-                          </div>}
-                          <div style={{
-                            width:"70%",
-                            height:h||2,
-                            background:missing?"transparent":isLatest?txt:BAR_COLOR,
-                            borderRadius:"3px 3px 0 0",
-                            border:missing?`1px dashed ${bdr}`:"none",
-                            opacity:missing?0.4:1,
-                            transition:"height 0.3s",
-                            alignSelf:"flex-end",
-                          }}
-                            title={mo+": "+(missing?"No statement uploaded":"₹"+val.toLocaleString("en-IN"))}
-                          />
-                          <div style={{fontSize:9,color:isLatest?txt:mut,fontWeight:isLatest?700:400,marginTop:4,textAlign:"center"}}>
-                            {label}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })()}
-          )}
+          {barLatestMonth?(
+            <div style={{overflowX:"auto"}}>
+              <div style={{display:"flex",alignItems:"flex-end",gap:4,height:172,paddingBottom:0,position:"relative",borderBottom:`1px solid ${bdr}`}}>
+                {barMonths.map((mo,i)=>{
+                  const val=barTotals[i];
+                  const missing=!stmts.find(s=>s.statement_month===mo);
+                  const h=val>0?Math.max((val/barMax)*120,4):0;
+                  const label=MNAMES[parseInt(mo.split("-")[1])-1];
+                  const isLatest=mo===barLatestMonth;
+                  return(
+                    <div key={mo} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"flex-end",height:"100%",minWidth:0}}>
+                      {val>0&&<div style={{fontSize:9,fontWeight:600,color:txt,marginBottom:2,textAlign:"center"}}>
+                        {val>=1000?"₹"+(val/1000).toFixed(0)+"k":"₹"+Math.round(val)}
+                      </div>}
+                      <div style={{width:"70%",height:h||2,background:missing?"transparent":isLatest?txt:acc,
+                        borderRadius:"3px 3px 0 0",border:missing?`1px dashed ${bdr}`:"none",
+                        opacity:missing?0.4:1,alignSelf:"flex-end"}}
+                        title={mo+": "+(missing?"No statement":"₹"+val.toLocaleString("en-IN"))}
+                      />
+                      <div style={{fontSize:9,color:isLatest?txt:mut,fontWeight:isLatest?700:400,marginTop:4,textAlign:"center"}}>{label}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ):<div style={{color:mut,fontSize:12}}>No statements yet</div>}
         </Card>
       </div>
 
