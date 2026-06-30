@@ -2565,6 +2565,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
 // MyCards
 function MyCards({db,owners,onNavigate}){
   const [cards,setCards]=useState([]);
+  const [viewMode,setViewMode]=useState(()=>localStorage.getItem("pv_mycards_view")||"grid");
   const [mCards,setMCards]=useState([]);
   const [myProgs,setMyProgs]=useState([]);
   const [mProgNames,setMProgNames]=useState({}); // master_prog_id → name
@@ -2625,7 +2626,15 @@ function MyCards({db,owners,onNavigate}){
   return(
     <div>
       <Hdr title="My Cards" sub={`${filtered.length} cards · ${total.toLocaleString("en-IN")} pts${totalInr>0?" · "+inrFmt(totalInr):""}`}
-        action={<div style={{display:"flex",gap:8}}>
+        action={<div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",border:`1px solid ${bdr}`,borderRadius:8,overflow:"hidden"}}>
+            <button onClick={()=>{setViewMode("grid");localStorage.setItem("pv_mycards_view","grid");}}
+              style={{padding:"6px 10px",border:"none",background:viewMode==="grid"?txt:surf,color:viewMode==="grid"?"#fff":mut,cursor:"pointer",fontSize:13,lineHeight:1}}
+              title="Grid view">⊞</button>
+            <button onClick={()=>{setViewMode("list");localStorage.setItem("pv_mycards_view","list");}}
+              style={{padding:"6px 10px",border:"none",background:viewMode==="list"?txt:surf,color:viewMode==="list"?"#fff":mut,cursor:"pointer",fontSize:13,lineHeight:1}}
+              title="List view">☰</button>
+          </div>
           <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("overview")}>Overview</button>
           <button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Card</button>
         </div>}/>
@@ -2640,6 +2649,7 @@ function MyCards({db,owners,onNavigate}){
         </select>
       </div>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="💳" msg={search?"No cards match your search":"No cards added yet — go to Setup → Master to add cards to your catalog, then add them here"}/>:(
+        viewMode==="grid"?(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
           {filtered.map(c=>{
             const m=mCards.find(x=>x.id===c.master_id);
@@ -2669,6 +2679,38 @@ function MyCards({db,owners,onNavigate}){
             );
           })}
         </div>
+        ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {filtered.map(c=>{
+            const m=mCards.find(x=>x.id===c.master_id);
+            const owner=owners.find(o=>o.id===c.owner_id);
+            const iv=(c.points_balance||0)*(m?.inr_per_point||0);
+            const fee=c.fee_override?c.fee_override_value:m?.annual_fee;
+            return(
+              <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s,border-color 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)";e.currentTarget.style.borderColor=bdr2;}}
+                onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
+                <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nickname||m?.name}{c.last4&&<span style={{color:mut,fontWeight:400}}> ·· {c.last4}</span>}</div>
+                  <div style={{fontSize:11,color:mut,marginTop:1}}>{owner?.name||""}{m?.network&&" · "+m.network}{m?.auto_transfer_to&&<span style={{color:acc,fontWeight:600}}> · Co-branded</span>}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+                  <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>{m?.points_currency||"pts"}</div>
+                </div>
+                {iv>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+                  <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(iv)}</div>
+                </div>}
+                <div style={{textAlign:"right",flexShrink:0,minWidth:100,fontSize:11,color:mut}}>
+                  {c.stmt_date?"Stmt "+ordinal(c.stmt_date):""}
+                  {fee>0&&<div>₹{Number(fee).toLocaleString()} p.a.</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        )
       )}
       {show&&<AddCardModal db={db} mCards={mCards} owners={owners} onSave={()=>load()} onClose={()=>setShow(false)}/>}
     </div>
@@ -3121,6 +3163,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
 // MyPrograms
 function MyPrograms({db,owners,onNavigate}){
   const [progs,setProgs]=useState([]);
+  const [viewMode,setViewMode]=useState(()=>localStorage.getItem("pv_myprogs_view")||"grid");
   const [mProgs,setMProgs]=useState([]);
   const [busy,setBusy]=useState(true);
   const [show,setShow]=useState(false);
@@ -3164,7 +3207,15 @@ function MyPrograms({db,owners,onNavigate}){
   return(
     <div>
       <Hdr title="My Programs" sub={`${filtered.length} programs${totalInr>0?" · "+inrFmt(totalInr)+" est. value":""}`}
-        action={<div style={{display:"flex",gap:8}}>
+        action={<div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",border:`1px solid ${bdr}`,borderRadius:8,overflow:"hidden"}}>
+            <button onClick={()=>{setViewMode("grid");localStorage.setItem("pv_myprogs_view","grid");}}
+              style={{padding:"6px 10px",border:"none",background:viewMode==="grid"?txt:surf,color:viewMode==="grid"?"#fff":mut,cursor:"pointer",fontSize:13,lineHeight:1}}
+              title="Grid view">⊞</button>
+            <button onClick={()=>{setViewMode("list");localStorage.setItem("pv_myprogs_view","list");}}
+              style={{padding:"6px 10px",border:"none",background:viewMode==="list"?txt:surf,color:viewMode==="list"?"#fff":mut,cursor:"pointer",fontSize:13,lineHeight:1}}
+              title="List view">☰</button>
+          </div>
           <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("overview")}>Overview</button>
           <button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Program</button>
         </div>}/>
@@ -3179,6 +3230,7 @@ function MyPrograms({db,owners,onNavigate}){
         </select>
       </div>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="✈️" msg={search?"No programs match your search":"No programs added yet — go to Setup → Master to add programs to your catalog, then add them here"}/>:(
+        viewMode==="grid"?(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
           {filtered.map(p=>{
             const m=mProgs.find(x=>x.id===p.master_id);
@@ -3207,6 +3259,38 @@ function MyPrograms({db,owners,onNavigate}){
             );
           })}
         </div>
+        ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {filtered.map(p=>{
+            const m=mProgs.find(x=>x.id===p.master_id);
+            const owner=owners.find(o=>o.id===p.owner_id);
+            const iv=(p.points_balance||0)*(m?.inr_per_point||0);
+            const days=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null;
+            const exp=days!==null&&days<=60;
+            return(
+              <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s,border-color 0.2s"}}
+                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)";e.currentTarget.style.borderColor=bdr2;}}
+                onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
+                <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nickname||m?.name}</div>
+                  <div style={{fontSize:11,color:mut,marginTop:1}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
+                </div>
+                <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+                  <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
+                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>points</div>
+                </div>
+                {iv>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+                  <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(iv)}</div>
+                </div>}
+                <div style={{textAlign:"right",flexShrink:0,minWidth:120,fontSize:11,color:exp?red:mut}}>
+                  {p.expiry_date?(exp?"⚠ ":"")+fmtDate(p.expiry_date)+(days!==null?" · "+days+"d":""):""}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        )
       )}
       <Modal show={show} onClose={()=>setShow(false)} title="Add Program">
         {lbl("Master Program *")}<select style={inp} value={f.master_id} onChange={up("master_id")}>
@@ -5862,6 +5946,8 @@ function SpendOverview({db,owners,onNavigate}){
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
   const [busy,setBusy]=useState(true);
+  const [ownerF,setOwnerF]=useState("all");
+  const [cardF,setCardF]=useState("all");
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -5877,20 +5963,33 @@ function SpendOverview({db,owners,onNavigate}){
 
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
+  // Apply owner/card filters
+  const cardIdsForOwner=ownerF==="all"?null:new Set(cards.filter(c=>c.owner_id===ownerF).map(c=>c.id));
+  const filteredTxns=txns.filter(t=>{
+    if(cardF!=="all"&&t.card_id!==cardF) return false;
+    if(cardF==="all"&&ownerF!=="all"&&!cardIdsForOwner.has(t.card_id)) return false;
+    return true;
+  });
+
   const now=new Date();
   const ytdStart=now.getFullYear()+"-01-01";
   const thisMonth=now.toISOString().slice(0,7);
-  const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
-  const monthSpend=txns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
-  const totalSpend=txns.filter(t=>Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  // Financial year: 1 Apr to 31 Mar
+  const fyStartYear=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1; // getMonth()3=April(0-indexed)
+  const fyStart=fyStartYear+"-04-01";
+  const fySpend=filteredTxns.filter(t=>t.txn_date>=fyStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  const ytdSpend=filteredTxns.filter(t=>t.txn_date>=ytdStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  const monthSpend=filteredTxns.filter(t=>(t.statement_month||t.txn_date?.slice(0,7))===thisMonth&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  const totalSpend=filteredTxns.filter(t=>Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
 
   const catTotals={};
-  txns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
+  filteredTxns.forEach(t=>{catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+Number(t.amount||0);});
   const topCats=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,6);
 
-  const cardSpend=cards.map(c=>{
+  const visibleCardsForSpend=cardF==="all"?(ownerF==="all"?cards:cards.filter(c=>c.owner_id===ownerF)):cards.filter(c=>c.id===cardF);
+  const cardSpend=visibleCardsForSpend.map(c=>{
     const m=mCards.find(x=>x.id===c.master_id);
-    const spend=txns.filter(t=>t.card_id===c.id).reduce((a,t)=>a+Number(t.amount||0),0);
+    const spend=filteredTxns.filter(t=>t.card_id===c.id).reduce((a,t)=>a+Number(t.amount||0),0);
     return{name:c.nickname||m?.name||"Card",spend};
   }).filter(c=>c.spend>0).sort((a,b)=>b.spend-a.spend);
 
@@ -5904,12 +6003,26 @@ function SpendOverview({db,owners,onNavigate}){
           </div>
         }
       />
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+        <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={ownerF} onChange={e=>{setOwnerF(e.target.value);setCardF("all");}}>
+          <option value="all">All Owners</option>
+          {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={cardF} onChange={e=>setCardF(e.target.value)}>
+          <option value="all">All Cards</option>
+          {cards.filter(c=>ownerF==="all"||c.owner_id===ownerF).map(c=>{
+            const m=mCards.find(x=>x.id===c.master_id);
+            return <option key={c.id} value={c.id}>{c.nickname||m?.name||"Card"}</option>;
+          })}
+        </select>
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
         {[
           {label:"This Month",value:monthSpend},
-          {label:"Year to Date",value:ytdSpend},
+          {label:"FY to Date",value:fySpend},
+          {label:"Cal. Year to Date",value:ytdSpend},
           {label:"All Time",value:totalSpend},
-          {label:"Total Transactions",value:txns.length,plain:true},
+          {label:"Total Transactions",value:filteredTxns.length,plain:true},
         ].map((s,i)=>(
           <Card key={i} style={{padding:"14px 16px"}}>
             <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>{s.label}</div>
