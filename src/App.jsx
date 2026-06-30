@@ -886,15 +886,19 @@ function Overview({db,owners,onNavigate}){
 
   return(
     <div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:24,flexWrap:"wrap",gap:12}}>
-        <div>
-          <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Overview</div>
-          <div style={{fontSize:12,color:mut,marginTop:5,fontWeight:400}}>Your rewards portfolio at a glance</div>
+      <div style={{marginBottom:24}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:12,marginBottom:14}}>
+          <div>
+            <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Overview</div>
+            <div style={{fontSize:12,color:mut,marginTop:5,fontWeight:400}}>Your rewards portfolio at a glance</div>
+          </div>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("my-cards")}>My Cards</button>
+            <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("my-programs")}>My Programs</button>
+            <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("vouchers")}>Vouchers</button>
+          </div>
         </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("my-cards")}>My Cards</button>
-          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("my-programs")}>My Programs</button>
-          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("vouchers")}>Vouchers</button>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
           <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={ownerF} onChange={e=>setOwnerF(e.target.value)}>
             <option value="all">All Owners</option>
             {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
@@ -2559,7 +2563,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId}){
 }
 
 // MyCards
-function MyCards({db,owners}){
+function MyCards({db,owners,onNavigate}){
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
   const [myProgs,setMyProgs]=useState([]);
@@ -2586,7 +2590,7 @@ function MyCards({db,owners}){
   if(detail){
     const master=mCards.find(m=>m.id===detail.master_id);
     const owner=owners.find(o=>o.id===detail.owner_id);
-    return <CardDetail card={detail} master={master} owner={owner} db={db} mCards={mCards} owners={owners} onBack={()=>{setDetail(null);load();}} onDelete={()=>{setDetail(null);load();}} onUpdate={()=>load()}/>;
+    return <CardDetail card={detail} master={master} owner={owner} db={db} mCards={mCards} owners={owners} onBack={()=>{setDetail(null);load();}} onDelete={()=>{setDetail(null);load();}} onUpdate={()=>load()} onNavigate={onNavigate}/>;
   }
 
   const save=async()=>{
@@ -2621,7 +2625,10 @@ function MyCards({db,owners}){
   return(
     <div>
       <Hdr title="My Cards" sub={`${filtered.length} cards · ${total.toLocaleString("en-IN")} pts${totalInr>0?" · "+inrFmt(totalInr):""}`}
-        action={<button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Card</button>}/>
+        action={<div style={{display:"flex",gap:8}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("overview")}>Overview</button>
+          <button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Card</button>
+        </div>}/>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:1,minWidth:160}}>
           <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:13}}>S</span>
@@ -2891,7 +2898,7 @@ function EditCardModal({card, db, mCards, owners, onSave, onClose}){
   );
 }
 
-function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete,onUpdate}){
+function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete,onUpdate,onNavigate}){
   const [card,setCard]=useState(initCard);
   const [txns,setTxns]=useState([]);
   const [partners,setPartners]=useState([]);
@@ -3011,6 +3018,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("transfer")}>Transfer Points</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||""),billing_year_start:card.billing_year_start||"",fee_charge_date:card.fee_charge_date||"",linked_program_id:card.linked_program_id||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
@@ -3111,7 +3119,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
 }
 
 // MyPrograms
-function MyPrograms({db,owners}){
+function MyPrograms({db,owners,onNavigate}){
   const [progs,setProgs]=useState([]);
   const [mProgs,setMProgs]=useState([]);
   const [busy,setBusy]=useState(true);
@@ -3134,7 +3142,7 @@ function MyPrograms({db,owners}){
   if(detail){
     const master=mProgs.find(m=>m.id===detail.master_id);
     const owner=owners.find(o=>o.id===detail.owner_id);
-    return <ProgDetail prog={detail} master={master} owner={owner} db={db} mProgs={mProgs} mCards={[]} owners={owners} onBack={()=>{setDetail(null);load();}} onDelete={()=>{setDetail(null);load();}}/>;
+    return <ProgDetail prog={detail} master={master} owner={owner} db={db} mProgs={mProgs} mCards={[]} owners={owners} onBack={()=>{setDetail(null);load();}} onDelete={()=>{setDetail(null);load();}} onNavigate={onNavigate}/>;
   }
 
   const save=async()=>{
@@ -3155,8 +3163,11 @@ function MyPrograms({db,owners}){
 
   return(
     <div>
-      <Hdr title="My Programs" sub="Your frequent flyer, hotel and loyalty program memberships" sub={`${filtered.length} programs${totalInr>0?" · "+inrFmt(totalInr)+" est. value":""}`}
-        action={<button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Program</button>}/>
+      <Hdr title="My Programs" sub={`${filtered.length} programs${totalInr>0?" · "+inrFmt(totalInr)+" est. value":""}`}
+        action={<div style={{display:"flex",gap:8}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("overview")}>Overview</button>
+          <button style={pbtn} onClick={()=>{setF(eF);setShow(true);}}>+ Add Program</button>
+        </div>}/>
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
         <div style={{position:"relative",flex:1,minWidth:160}}>
           <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:13}}>S</span>
@@ -3222,7 +3233,7 @@ function MyPrograms({db,owners}){
 }
 
 // ProgDetail
-function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,onDelete}){
+function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,onDelete,onNavigate}){
   const [prog,setProg]=useState(initProg);
   const [txns,setTxns]=useState([]);
   const [partners,setPartners]=useState([]);
@@ -3304,6 +3315,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("transfer")}>Transfer Points</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:prog.owner_id,nickname:prog.nickname||"",membership_number:prog.membership_number||"",tier:prog.tier||"",opening_balance:String(prog.opening_balance||""),expiry_date:prog.expiry_date||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
@@ -3768,7 +3780,7 @@ function AuthScreen({onAuth}){
 }
 
 
-function Vouchers({db,owners}){
+function Vouchers({db,owners,onNavigate}){
   const [rows,setRows]=useState([]);
   const [busy,setBusy]=useState(true);
   const [show,setShow]=useState(false);
@@ -3801,7 +3813,10 @@ function Vouchers({db,owners}){
   return(
     <div>
       <Hdr title="Vouchers" sub={`${rows.filter(v=>!expired(v)).length} active · Rewards and benefits redeemed from your points`}
-        action={<button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>}/>
+        action={<div style={{display:"flex",gap:8}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("overview")}>Overview</button>
+          <button style={pbtn} onClick={()=>{setEdit(null);setF(eF);setShow(true);}}>+ Add Voucher</button>
+        </div>}/>
       {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:rows.length===0?<Empty icon="🎟️" msg="No vouchers yet — vouchers are created when you redeem points for a reward"/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
           {rows.map(v=>(
@@ -5715,11 +5730,11 @@ export default function App(){
         `}</style>
         {tab==="home"&&<LandingPage onNavigate={navigate}/>}
         {tab==="overview"          &&<Overview db={db} owners={owners} onNavigate={setTab}/>}
-        {tab==="my-cards"          &&<MyCards db={db} owners={owners}/>}
-        {tab==="my-programs"       &&<MyPrograms db={db} owners={owners}/>}
+        {tab==="my-cards"          &&<MyCards db={db} owners={owners} onNavigate={setTab}/>}
+        {tab==="my-programs"       &&<MyPrograms db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="transfer"          &&<TransferPoints db={db} owners={owners}/>}
         {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
-        {tab==="vouchers"          &&<Vouchers db={db} owners={owners}/>}
+        {tab==="vouchers"          &&<Vouchers db={db} owners={owners} onNavigate={setTab}/>}
         {(tab==="pm-setup-owners"||tab==="setup-owners")&&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
         {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog db={db} ownersData={owners} reloadOwners={()=>loadOwners()} userId={user?.id}/>}
         {(tab==="spend-setup-people"||tab==="setup-people")&&<SetupPeople db={db}/>}
@@ -5730,7 +5745,7 @@ export default function App(){
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
         {tab==="spend-overview"    &&<SpendOverview db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="spend-cards"       &&<SpendCards db={db} owners={owners} onNavigate={setTab}/>}
-        {tab==="spend-ledger"      &&<SpendLedger db={db} owners={owners}/>}
+        {tab==="spend-ledger"      &&<SpendLedger db={db} owners={owners} onNavigate={setTab}/>}
       </main>
     </div>
   );
@@ -5937,7 +5952,7 @@ function SpendOverview({db,owners,onNavigate}){
 }
 
 
-function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
+function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavigate}){
   const [txns,setTxns]=useState([]);
   const [stmts,setStmts]=useState([]);
   const [busy,setBusy]=useState(true);
@@ -6296,6 +6311,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; My Cards</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-upload")}>Upload Statement</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEditCard(true)}>Edit</button>
         </div>
@@ -6618,6 +6634,7 @@ function SpendCards({db,owners,onNavigate}){
           card={selCard} mCard={mc} db={db} owners={owners}
           allCards={cards} allMCards={mCards}
           onBack={()=>{setSelCard(null);load();}}
+          onNavigate={onNavigate}
         />
 
       </div>
@@ -6633,8 +6650,11 @@ function SpendCards({db,owners,onNavigate}){
 
   return(
     <div>
-      <Hdr title="My Cards" sub="Your credit cards — tap a card to view its statements and transactions" sub="Spend tracker view"
-        action={<button style={pbtn} onClick={()=>setShowAddCard(true)}>+ Add Card</button>}/>
+      <Hdr title="My Cards" sub="Your credit cards — tap a card to view its statements and transactions"
+        action={<div style={{display:"flex",gap:8}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-overview")}>Overview</button>
+          <button style={pbtn} onClick={()=>setShowAddCard(true)}>+ Add Card</button>
+        </div>}/>
 
 
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14,marginBottom:16}}>
@@ -6955,7 +6975,7 @@ function SpendTransactions({db,owners}){
 }
 
 // ── SpendLedger ────────────────────────────────────────────────────────────────
-function SpendLedger({db,owners}){
+function SpendLedger({db,owners,onNavigate}){
   const [people,setPeople]=useState([]);
   const [entries,setEntries]=useState([]);
   const [cards,setCards]=useState([]);
@@ -7167,7 +7187,9 @@ function SpendLedger({db,owners}){
 
   return(
     <div>
-      <Hdr title="Ledger" sub="Splits and reimbursements — track money owed between you and others"/>
+      <Hdr title="Ledger" sub="Splits and reimbursements — track money owed between you and others"
+        action={<button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-overview")}>Overview</button>}
+      />
       {people.length===0?<Empty icon="👥" msg="No people added yet — go to Setup → Master → People to add family or friends for splitting expenses"/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
           {people.map(p=>{
