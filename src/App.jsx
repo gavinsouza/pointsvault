@@ -891,7 +891,10 @@ function Overview({db,owners,onNavigate}){
           <div style={{fontSize:22,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>Overview</div>
           <div style={{fontSize:12,color:mut,marginTop:5,fontWeight:400}}>Your rewards portfolio at a glance</div>
         </div>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("my-cards")}>My Cards</button>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("my-programs")}>My Programs</button>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("vouchers")}>Vouchers</button>
           <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={ownerF} onChange={e=>setOwnerF(e.target.value)}>
             <option value="all">All Owners</option>
             {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
@@ -5725,7 +5728,7 @@ export default function App(){
         {tab==="settings-general"  &&<SettingsGeneral onSignOut={handleSignOut}/>}
         {tab==="settings-danger"   &&<SettingsDanger db={db} owners={owners} onReset={()=>setDb(null)}/>}
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
-        {tab==="spend-overview"    &&<SpendOverview db={db} owners={owners}/>}
+        {tab==="spend-overview"    &&<SpendOverview db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="spend-cards"       &&<SpendCards db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="spend-ledger"      &&<SpendLedger db={db} owners={owners}/>}
       </main>
@@ -5839,7 +5842,7 @@ function LandingPage({onNavigate}){
 }
 
 // ── SpendOverview ──────────────────────────────────────────────────────────────
-function SpendOverview({db,owners}){
+function SpendOverview({db,owners,onNavigate}){
   const [txns,setTxns]=useState([]);
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
@@ -5878,7 +5881,14 @@ function SpendOverview({db,owners}){
 
   return(
     <div>
-      <Hdr title="Spend Overview" sub="A snapshot of your total credit card spending across all cards"/>
+      <Hdr title="Spend Overview" sub="A snapshot of your total credit card spending across all cards"
+        action={
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("spend-cards")}>My Cards</button>
+            <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate("spend-ledger")}>Ledger</button>
+          </div>
+        }
+      />
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
         {[
           {label:"This Month",value:monthSpend},
@@ -5951,6 +5961,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const [pieTooltip,setPieTooltip]=useState(null);
   const [stmtFilterOpen,setStmtFilterOpen]=useState(false);
   const [selectedStmts,setSelectedStmts]=useState(new Set());
+  const [barMyShareOnly,setBarMyShareOnly]=useState(false);
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -6267,7 +6278,14 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   const barTotals=barMonths.map(mo=>{
     const s=stmts.find(s=>s.statement_month===mo);
     if(!s) return 0;
-    return txns.filter(t=>(t.statement_id===s.id||t.statement_month===mo)&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount||0),0);
+    return txns.filter(t=>(t.statement_id===s.id||t.statement_month===mo)&&Number(t.amount||0)>0).reduce((a,t)=>{
+      let amt=Number(t.amount||0);
+      if(barMyShareOnly&&t.is_reimbursable&&splitsMap[t.id]){
+        const mine=splitsMap[t.id].find(sp=>sp.is_personal);
+        amt=Number(mine?.amount||0);
+      }
+      return a+amt;
+    },0);
   });
   const barMax=Math.max(...barTotals,1);
   const MNAMES=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -6442,7 +6460,13 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
           </div>
         </Card>}
         <Card style={{display:"flex",flexDirection:"column",height:"100%"}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Statement</div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by Statement</div>
+            <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut}}>
+              <input type="checkbox" checked={barMyShareOnly} onChange={e=>setBarMyShareOnly(e.target.checked)} style={{accentColor:acc}}/>
+              My share only
+            </label>
+          </div>
           {barLatestMonth?(
             <div style={{overflowX:"auto",height:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
               <div style={{display:"flex",alignItems:"flex-end",gap:4,minHeight:220,paddingBottom:0,position:"relative",borderBottom:`1px solid ${bdr}`}}>
