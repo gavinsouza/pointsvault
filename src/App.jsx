@@ -5945,29 +5945,38 @@ function SpendOverview({db,owners,onNavigate}){
   const [txns,setTxns]=useState([]);
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
+  const [stmts,setStmts]=useState([]);
   const [busy,setBusy]=useState(true);
   const [ownerF,setOwnerF]=useState("all");
   const [cardF,setCardF]=useState("all");
+  const [stmtF,setStmtF]=useState(new Set()); // empty = all
+  const [stmtFilterOpen,setStmtFilterOpen]=useState(false);
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [t,c,mc]=await Promise.all([
+    const [t,c,mc,s]=await Promise.all([
       db.from("spend_transactions").select(),
       db.from("my_cards").select(),
       db.from("master_cards").select(),
+      db.from("statements").select(),
     ]);
-    setTxns(t.data||[]); setCards(c.data||[]); setMCards(mc.data||[]);
+    setTxns(t.data||[]); setCards(c.data||[]); setMCards(mc.data||[]); setStmts(s.data||[]);
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
 
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
-  // Apply owner/card filters
+  // Apply owner/card/statement filters
   const cardIdsForOwner=ownerF==="all"?null:new Set(cards.filter(c=>c.owner_id===ownerF).map(c=>c.id));
+  const stmtsForCard=cardF==="all"?[]:stmts.filter(s=>s.card_id===cardF).sort((a,b)=>(b.statement_month||"").localeCompare(a.statement_month||""));
   const filteredTxns=txns.filter(t=>{
     if(cardF!=="all"&&t.card_id!==cardF) return false;
     if(cardF==="all"&&ownerF!=="all"&&!cardIdsForOwner.has(t.card_id)) return false;
+    if(cardF!=="all"&&stmtF.size>0){
+      const matches=stmtF.has(t.statement_id)||stmtF.has(t.statement_month);
+      if(!matches) return false;
+    }
     return true;
   });
 
@@ -6003,18 +6012,56 @@ function SpendOverview({db,owners,onNavigate}){
           </div>
         }
       />
-      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-        <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={ownerF} onChange={e=>{setOwnerF(e.target.value);setCardF("all");}}>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16,alignItems:"center"}}>
+        <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={ownerF} onChange={e=>{setOwnerF(e.target.value);setCardF("all");setStmtF(new Set());}}>
           <option value="all">All Owners</option>
           {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
         </select>
-        <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={cardF} onChange={e=>setCardF(e.target.value)}>
+        <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={cardF} onChange={e=>{setCardF(e.target.value);setStmtF(new Set());}}>
           <option value="all">All Cards</option>
           {cards.filter(c=>ownerF==="all"||c.owner_id===ownerF).map(c=>{
             const m=mCards.find(x=>x.id===c.master_id);
             return <option key={c.id} value={c.id}>{c.nickname||m?.name||"Card"}</option>;
           })}
         </select>
+        <div style={{position:"relative"}}>
+          <button disabled={cardF==="all"} onClick={()=>setStmtFilterOpen(v=>!v)}
+            style={{...gbtn,fontSize:12,padding:"6px 12px",opacity:cardF==="all"?0.4:1,cursor:cardF==="all"?"not-allowed":"pointer"}}>
+            📅 {cardF==="all"?"All Statements":stmtF.size===0?"All Statements":stmtF.size+" selected"} ▾
+          </button>
+          {stmtFilterOpen&&cardF!=="all"&&(
+            <div style={{position:"absolute",top:"100%",left:0,zIndex:20,background:surf,
+              border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 0",
+              boxShadow:"0 4px 16px rgba(0,0,0,0.1)",minWidth:180,marginTop:4,maxHeight:280,overflowY:"auto"}}>
+              <div onClick={()=>{setStmtF(new Set());setStmtFilterOpen(false);}}
+                style={{padding:"7px 14px",fontSize:12,cursor:"pointer",fontWeight:stmtF.size===0?600:400,
+                color:stmtF.size===0?acc:txt}}>All Statements</div>
+              <div style={{height:1,background:bdr,margin:"4px 0"}}/>
+              {stmtsForCard.map(s=>{
+                const key=s.id||s.statement_month;
+                const checked=stmtF.has(s.id)||stmtF.has(s.statement_month);
+                return(
+                  <div key={key} onClick={()=>{
+                    const n=new Set(stmtF);
+                    const id=s.id||s.statement_month;
+                    n.has(id)?n.delete(id):n.add(id);
+                    setStmtF(n);
+                  }} style={{padding:"7px 14px",fontSize:12,cursor:"pointer",
+                    display:"flex",alignItems:"center",gap:8,
+                    background:checked?acc+"10":"transparent"}}>
+                    <div style={{width:14,height:14,borderRadius:3,border:`1.5px solid ${bdr}`,
+                      background:checked?acc:"transparent",
+                      display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {checked&&<span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+                    </div>
+                    <span>{fmtMonth(s.statement_month)}</span>
+                  </div>
+                );
+              })}
+              {stmtsForCard.length===0&&<div style={{padding:"7px 14px",fontSize:12,color:mut}}>No statements for this card</div>}
+            </div>
+          )}
+        </div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:24}}>
         {[
