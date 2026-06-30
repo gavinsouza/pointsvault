@@ -5998,8 +5998,12 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
   }
 
   // Category breakdown for pie chart (with filters)
+  // Unified pie data: respects statement filter, category exclusion, and my-share-only
+  const filteredForPie=selectedStmts.size===0?txns:txns.filter(t=>
+    selectedStmts.has(t.statement_id||t.statement_month)
+  );
   const catTotals={};
-  txns.forEach(t=>{
+  filteredForPie.forEach(t=>{
     if(pieExcludeCats.has(t.category||"Other")) return;
     let amt=Number(t.amount||0);
     if(pieMyShareOnly&&t.is_reimbursable&&splitsMap[t.id]){
@@ -6008,15 +6012,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
     }
     if(amt>0) catTotals[t.category||"Other"]=(catTotals[t.category||"Other"]||0)+amt;
   });
-  // Filter transactions by selected statements for pie
-  const filteredForPie=selectedStmts.size===0?txns:txns.filter(t=>
-    selectedStmts.has(t.statement_id||t.statement_month)
-  );
-  const catTotalsPie=filteredForPie.reduce((acc,t)=>{
-    if(t.amount>0){const cat=t.category||"Other";acc[cat]=(acc[cat]||0)+Number(t.amount);}
-    return acc;
-  },{});
-  const catData=Object.entries(catTotalsPie).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const catData=Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).slice(0,10);
   const total=catData.reduce((a,[,v])=>a+v,0)||1;
   const allCategories=[...new Set(txns.map(t=>t.category||"Other"))].sort();
   const PIE_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4","#f6c94e","#7b9e87","#c87dd4","#8fb0d4"];
@@ -6341,31 +6337,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
         {pieSlices&&pieSlices.length>0&&<Card>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10,flexWrap:"wrap",gap:8}}>
             <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by Category</div>
-            <div style={{display:"flex",gap:8,alignItems:"center"}}>
-              <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut}}>
-                <input type="checkbox" checked={pieMyShareOnly} onChange={e=>setPieMyShareOnly(e.target.checked)} style={{accentColor:acc}}/>
-                My share only
-              </label>
-              <div style={{position:"relative"}}>
-                <button style={{...gbtn,fontSize:10,padding:"3px 10px"}} onClick={()=>setShowPieFilter(f=>!f)}>
-                  Filter {pieExcludeCats.size>0?`(${pieExcludeCats.size} hidden)`:""}
-                </button>
-                {showPieFilter&&<div style={{position:"absolute",right:0,top:"100%",zIndex:10,background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 12px",minWidth:180,boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
-                  <div style={{fontSize:10,color:mut,marginBottom:6,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em"}}>Hide categories</div>
-                  {allCategories.map(cat=>(
-                    <label key={cat} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"3px 0",fontSize:12,color:txt}}>
-                      <input type="checkbox" checked={pieExcludeCats.has(cat)} onChange={e=>{setPieExcludeCats(prev=>{const n=new Set(prev);e.target.checked?n.add(cat):n.delete(cat);return n;});}} style={{accentColor:acc}}/>
-                      {cat}
-                    </label>
-                  ))}
-                  <button style={{...gbtn,fontSize:10,marginTop:8,width:"100%"}} onClick={()=>{setPieExcludeCats(new Set());setShowPieFilter(false);}}>Clear all</button>
-                </div>}
-              </div>
-            </div>
           </div>
-          {/* Controls row: statement filter + % / INR toggle */}
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,flexWrap:"wrap"}}>
-            {/* Statement filter dropdown */}
+          {/* Single-line controls: statements + my share + category filter */}
+          <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:14,flexWrap:"wrap"}}>
             <div style={{position:"relative"}}>
               <button onClick={()=>setStmtFilterOpen(v=>!v)}
                 style={{...gbtn,fontSize:11,padding:"5px 12px",gap:6}}>
@@ -6381,7 +6355,6 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                   <div style={{height:1,background:bdr,margin:"4px 0"}}/>
                   {stmts.map(s=>{
                     const key=s.id||s.statement_month;
-                    const checked=selectedStmts.has(s.statement_id||s.id||s.statement_month);
                     return(
                       <div key={key} onClick={()=>{
                         const n=new Set(selectedStmts);
@@ -6404,13 +6377,25 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                 </div>
               )}
             </div>
-            {/* % / INR toggle */}
-            {["pct","inr"].map(m=>(
-              <button key={m} onClick={()=>setPieMode(m)}
-                style={{padding:"5px 14px",borderRadius:20,border:`1px solid ${m===pieMode?txt:bdr}`,background:m===pieMode?txt:"transparent",color:m===pieMode?"#fff":mut,fontSize:11,fontWeight:m===pieMode?600:400,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
-                {m==="pct"?"%":"₹ Amount"}
+            <label style={{display:"flex",alignItems:"center",gap:5,cursor:"pointer",fontSize:11,color:mut,padding:"5px 10px"}}>
+              <input type="checkbox" checked={pieMyShareOnly} onChange={e=>setPieMyShareOnly(e.target.checked)} style={{accentColor:acc}}/>
+              My share only
+            </label>
+            <div style={{position:"relative"}}>
+              <button style={{...gbtn,fontSize:11,padding:"5px 12px"}} onClick={()=>setShowPieFilter(f=>!f)}>
+                Categories {pieExcludeCats.size>0?`(${pieExcludeCats.size} hidden)`:""} ▾
               </button>
-            ))}
+              {showPieFilter&&<div style={{position:"absolute",left:0,top:"100%",zIndex:10,background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 12px",minWidth:180,marginTop:4,boxShadow:"0 4px 16px rgba(0,0,0,0.12)"}}>
+                <div style={{fontSize:10,color:mut,marginBottom:6,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.07em"}}>Hide categories</div>
+                {allCategories.map(cat=>(
+                  <label key={cat} style={{display:"flex",alignItems:"center",gap:6,cursor:"pointer",padding:"3px 0",fontSize:12,color:txt}}>
+                    <input type="checkbox" checked={pieExcludeCats.has(cat)} onChange={e=>{setPieExcludeCats(prev=>{const n=new Set(prev);e.target.checked?n.add(cat):n.delete(cat);return n;});}} style={{accentColor:acc}}/>
+                    {cat}
+                  </label>
+                ))}
+                <button style={{...gbtn,fontSize:10,marginTop:8,width:"100%"}} onClick={()=>{setPieExcludeCats(new Set());setShowPieFilter(false);}}>Clear all</button>
+              </div>}
+            </div>
           </div>
           <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
             <div style={{position:"relative",flexShrink:0}}>
@@ -6447,25 +6432,24 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards}){
                     <div style={{width:10,height:10,borderRadius:3,background:s.color,flexShrink:0}}/>
                     <span style={{fontSize:12,color:txt}}>{s.cat}</span>
                   </div>
-                  <span style={{fontSize:12,fontWeight:600,color:txt,marginLeft:8}}>
-                    {pieMode==="pct"
-                      ? (s.pct*100).toFixed(0)+"%"
-                      : "₹"+Number(s.val).toLocaleString("en-IN")}
+                  <span style={{fontSize:12,fontWeight:600,color:txt,marginLeft:8,textAlign:"right"}}>
+                    <span>₹{Number(s.val).toLocaleString("en-IN")}</span>
+                    <span style={{color:mut,fontWeight:400,marginLeft:5}}>({(s.pct*100).toFixed(0)}%)</span>
                   </span>
                 </div>
               ))}
             </div>
           </div>
         </Card>}
-        <Card>
+        <Card style={{display:"flex",flexDirection:"column",height:"100%"}}>
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Statement</div>
           {barLatestMonth?(
-            <div style={{overflowX:"auto"}}>
-              <div style={{display:"flex",alignItems:"flex-end",gap:4,height:172,paddingBottom:0,position:"relative",borderBottom:`1px solid ${bdr}`}}>
+            <div style={{overflowX:"auto",height:"100%",display:"flex",flexDirection:"column",justifyContent:"flex-end"}}>
+              <div style={{display:"flex",alignItems:"flex-end",gap:4,minHeight:220,paddingBottom:0,position:"relative",borderBottom:`1px solid ${bdr}`}}>
                 {barMonths.map((mo,i)=>{
                   const val=barTotals[i];
                   const missing=!stmts.find(s=>s.statement_month===mo);
-                  const h=val>0?Math.max((val/barMax)*120,4):0;
+                  const h=val>0?Math.max((val/barMax)*180,4):0;
                   const label=MNAMES[parseInt(mo.split("-")[1])-1];
                   const isLatest=mo===barLatestMonth;
                   return(
