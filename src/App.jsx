@@ -4796,6 +4796,10 @@ function SpendUpload({db,owners=[]}){
       setRawRows(rows);
       setColWidths([]);
     }
+    // For XLSX files: re-run autoDetect to override stale DB values with correct ones
+    if(rawRows.length>0&&!rawText){
+      autoDetectXLSX(rawRows);
+    }
   };
 
   const autoDetectXLSX=rows=>{
