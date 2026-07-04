@@ -6208,6 +6208,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
   const now=new Date();
   const ytdStart=now.getFullYear()+"-01-01";
   const ytdSpend=txns.filter(t=>t.txn_date>=ytdStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
+  // Financial Year: 1 Apr to 31 Mar
+  const fyStartYear=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1;
+  const fyStart=fyStartYear+"-04-01";
+  const fySpend=txns.filter(t=>t.txn_date>=fyStart&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
   const lastStmt=stmts[0];
   const lastStmtSpend=txns.filter(t=>t.statement_month===lastStmt?.statement_month&&Number(t.amount||0)>0).reduce((a,t)=>a+Number(t.amount),0);
 
@@ -6550,21 +6554,23 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(180px,1fr))",gap:12,marginBottom:20}}>
         {[
           {label:"Amount Due",value:lastStmt?.total_due||0,color:lastStmt?.total_due>0?red:mut,note:!lastStmt?.total_due?"Not set — re-import stmt":null},
-          {label:"YTD Spends",value:ytdSpend},
           {label:"Last Statement"+(lastStmt?" ("+fmtMonth(lastStmt.statement_month)+")":""),value:lastStmtSpend,show:!!lastStmt},
+          {label:"Cal. YTD",value:ytdSpend},
+          {label:"FY to Date",value:fySpend},
           {label:"Billing YTD",value:billingYtdSpend,msg:billingYtdMsg},
-        ].map((s,i)=>(
+          {label:"Total Transactions",value:txns.length,plain:true},
+        ].filter(s=>s.show!==false&&s.value!==null).map((s,i)=>(
           <Card key={i} style={{padding:"14px 16px"}}>
             <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>{s.label}</div>
             {s.msg?<div style={{fontSize:11,color:acc}}>{s.msg}</div>:
-            <div style={{fontSize:18,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif"}}>₹{(s.value||0).toLocaleString("en-IN")}</div>}
+            s.plain
+              ?<div style={{fontSize:18,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif"}}>{s.value}</div>
+              :<div style={{fontSize:18,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif"}}>₹{(s.value||0).toLocaleString("en-IN")}</div>
+            }
             {s.note&&<div style={{fontSize:10,color:mut,marginTop:3}}>{s.note}</div>}
           </Card>
         ))}
-        <Card style={{padding:"14px 16px"}}>
-          <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6}}>Total Transactions</div>
-          <div style={{fontSize:18,fontWeight:700,color:txt,fontFamily:"'Manrope',sans-serif"}}>{txns.length}</div>
-        </Card>
+
       </div>
 
       {/* Charts row */}
