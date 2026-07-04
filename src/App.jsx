@@ -7893,7 +7893,6 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
                     ))}
                   </div>
                 )}
-                </div>
                 {!s.is_personal?<button onClick={()=>setSplits(prev=>{
                         const filtered=prev.filter((_,si)=>si!==i);
                         const othersTotal=filtered.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
