@@ -7121,7 +7121,6 @@ function SpendTransactions({db,owners}){
                   ))}
                 </div>
               </div>
-              </div>
               {!s.is_personal&&<button onClick={()=>removeSplit(i)} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
             </div>
           ))}
