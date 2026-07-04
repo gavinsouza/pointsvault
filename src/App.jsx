@@ -5062,9 +5062,26 @@ function SpendUpload({db,owners=[]}){
       return;
     }
     // CSV path
+    const isXLSX=file.name.match(/\.xlsx?$/i);
     const reader=new FileReader();
     reader.onload=ev=>{
       try{
+        if(isXLSX){
+          // Parse XLSX using SheetJS
+          const XLSX=window.XLSX;
+          if(!XLSX){setUploadError("XLSX library not loaded. Please refresh and try again.");return;}
+          const wb=XLSX.read(ev.target.result,{type:"array"});
+          const ws=wb.Sheets[wb.SheetNames[0]];
+          const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+          const rows=raw.map(row=>row.map(cell=>cell===null||cell===undefined?"":String(cell)));
+          if(!rows||rows.length===0){setUploadError("Could not parse any rows from XLSX file");return;}
+          setRawRows(rows);
+          setRawText("");
+          setColWidths([]);
+          if(manualDelim==="auto"&&rows.length>0) autoDetectXLSX(rows);
+          setStep(2);
+          return;
+        }
         const text=ev.target.result;
         if(!text||text.length===0){setUploadError("File appears to be empty");return;}
         const rows=parseCSV(text,manualDelim==="auto"?undefined:manualDelim);
@@ -5092,7 +5109,8 @@ function SpendUpload({db,owners=[]}){
       }
     };
     reader.onerror=()=>setUploadError("Could not read file");
-    reader.readAsText(file);
+    if(isXLSX) reader.readAsArrayBuffer(file);
+    else reader.readAsText(file);
   };
 
   if(step===1) return(
