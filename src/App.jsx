@@ -7107,9 +7107,20 @@ function SpendTransactions({db,owners}){
                   </select>
                 )}
               </div>
-              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                <span style={{fontSize:12,color:mut}}>₹</span>
-                <input type="number" style={{...inp,marginBottom:0,width:100,fontSize:12,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:12,color:mut}}>₹</span>
+                  <input type="number" style={{...inp,marginBottom:0,width:100,fontSize:12,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  {[25,50,75,100].map(pct=>(
+                    <button key={pct} onClick={()=>updSplit(i,"amount",((Number(showSplit?.amount||0)*pct/100)).toFixed(2))}
+                      style={{flex:1,padding:"2px 0",fontSize:10,fontWeight:600,background:surf2,border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+              </div>
               </div>
               {!s.is_personal&&<button onClick={()=>removeSplit(i)} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:16,padding:"0 4px",lineHeight:1}}>×</button>}
             </div>
@@ -7872,6 +7883,17 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
                   ):(
                     <input type="text" inputMode="decimal" style={{border:"none",background:"transparent",width:80,fontSize:13,fontWeight:600,color:txt,fontFamily:"'Manrope',sans-serif",outline:"none",textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
                   )}
+                </div>
+                {!s.is_personal&&(
+                  <div style={{display:"flex",gap:3,marginTop:3}}>
+                    {[25,50,75,100].map(pct=>(
+                      <button key={pct} onClick={()=>updSplit(i,"amount",((Number(showSplit?.amount||0)*pct/100)).toFixed(2))}
+                        style={{flex:1,padding:"2px 0",fontSize:10,fontWeight:600,background:surf2,border:`1px solid ${bdr}`,borderRadius:5,cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                )}
                 </div>
                 {!s.is_personal?<button onClick={()=>setSplits(prev=>{
                         const filtered=prev.filter((_,si)=>si!==i);
