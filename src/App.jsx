@@ -4108,7 +4108,7 @@ function SettingsDanger({db,owners,onReset}){
 
   const completeWipe=async()=>run(async()=>{
     // All tables now have user_id - delAll handles everything
-    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","spend_categories","master_partners","master_milestones","master_programs","master_cards"])await delAll(t);
+    for(const t of["point_transactions","transfer_log","vouchers","statements","spend_transactions","transaction_splits","ledger_entries","my_cards","my_programs","owners","people","csv_mappings","merchant_rules","spend_categories","master_partners","master_milestones","master_programs","master_cards"])await delAll(t);
     alert("Complete wipe done. App is factory fresh.");
     onReset&&onReset();
   });
