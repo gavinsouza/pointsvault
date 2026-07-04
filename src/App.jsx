@@ -4922,7 +4922,7 @@ function SpendUpload({db,owners=[]}){
       const ci=colIdx1based-1; // convert 1-based to 0-based
       return cn(row[ci]||"");
     };
-    // Compute values synchronously
+    // Compute values synchronously — only override if readCell returns a valid value
     let newTotalDue="";
     let newOpeningBal="";
     if(rawRows.length>tdr){
@@ -4934,8 +4934,9 @@ function SpendUpload({db,owners=[]}){
       if(!isNaN(ob)&&ob!==0) newOpeningBal=String(ob);
     }
     // Set all state at once then move to step 3
-    setTotalDue(newTotalDue);
-    setOpeningBal(newOpeningBal);
+    // Only override autoDetect values if we successfully read from row/col
+    if(newTotalDue) setTotalDue(newTotalDue);
+    if(newOpeningBal) setOpeningBal(newOpeningBal);
     setParsed(buildParsed());
     setStep(3);
   };
