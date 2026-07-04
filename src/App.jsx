@@ -452,9 +452,9 @@ const MAPPING_LIBRARY=[
    credit_ind_col:5,total_due_row:6,total_due_col:2,opening_bal_row:13,opening_bal_col:1},
   {lid:"ml_axis_xlsx",name:"Axis Bank XLSX",bank:"Axis Bank",
    description:"Axis Bank credit card statement (Excel XLSX format)",
-   delimiter:"auto",skip_rows:8,date_col:0,desc_col:1,amount_type:"debit_credit",
-   amount_col:-1,debit_col:3,credit_col:4,date_format:"DD/MM/YYYY",
-   credit_ind_col:-1,total_due_row:4,total_due_col:1,opening_bal_row:0,opening_bal_col:-1},
+   delimiter:"auto",skip_rows:6,date_col:0,desc_col:1,amount_type:"single",
+   amount_col:3,debit_col:-1,credit_col:-1,date_format:"DD MMM 'YY",
+   credit_ind_col:4,total_due_row:2,total_due_col:0,opening_bal_row:3,opening_bal_col:4},
 ];
 
 
@@ -4798,29 +4798,41 @@ function SpendUpload({db,owners=[]}){
   };
 
   const autoDetectXLSX=rows=>{
-    // Try to detect Axis Bank format: header row at row 7, data from row 8
-    // Row 4: Total Payment Due in col 0, Opening Balance in col 4
-    // Row 7: Date | Transaction Details | | Amount (INR) | Debit/Credit
-    const cleanNum=s=>(s||"").replace(/[₹,\s]/g,"").trim();
-    if(rows.length>7){
-      const r7=rows[6]||[]; // 0-indexed row 7
-      if(r7[0]&&r7[0].toString().toLowerCase().includes("date")){
-        // Axis format detected
-        setSkipRows(8);
-        setDateCol(0);
-        setDescCol(1);
-        setAmtCol(3);
+    // Axis Bank XLSX format (confirmed structure):
+    // Row 0: empty
+    // Row 1: address / card name
+    // Row 2: "Payment Summary"
+    // Row 3 (idx 2): col 0 = "Total Payment Due ₹ X" (label+value same cell)
+    // Row 4 (idx 3): col 4 = "Opening Balance ₹ X" (label+value same cell)
+    // Row 5: "Transaction Summary"
+    // Row 6 (idx 5): headers — Date, Transaction Details, ..., Amount (INR), Debit/Credit
+    // Row 7+ (idx 6+): data rows
+    const cleanNum=s=>{
+      // Extract number from strings like "Total Payment Due ₹ 5,09,590.47"
+      const m=(s||"").replace(/[₹,]/g,"").match(/\d+\.?\d*/g);
+      return m?m[m.length-1]:""; // take last number (the amount)
+    };
+    if(rows.length>6){
+      const r5=rows[5]||[]; // 0-indexed row 6 (headers)
+      if(r5[0]&&r5[0].toString().toLowerCase().includes("date")){
+        // Axis format confirmed
+        setSkipRows(6);      // skip 6 rows, data starts row 7 (idx 6)
+        setDateCol(0);        // col 1 = Date
+        setDescCol(1);        // col 2 = Transaction Details
+        setAmtCol(3);         // col 4 = Amount (INR)
         setAmtType("single");
-        setCreditIndCol(4); // "Debit" or "Credit"
+        setCreditIndCol(4);   // col 5 = Debit/Credit
         setDateFormat("DD MMM 'YY");
         setManualDelim("auto");
-        // Read billing fields from row 4 (index 3)
-        const r4=rows[3]||[];
-        const totalDueStr=cleanNum(r4[0]);
-        const openingBalStr=cleanNum(r4[4]);
+        // Extract total due from row 3 (idx 2), col 0: "Total Payment Due ₹ 5,09,590.47"
+        const r3=rows[2]||[];
+        const totalDueStr=cleanNum(r3[0]||"");
         if(totalDueStr) setTotalDue(totalDueStr);
+        // Extract opening balance from row 4 (idx 3), col 4: "Opening Balance ₹ 4,18,374.33"
+        const r4=rows[3]||[];
+        const openingBalStr=cleanNum(r4[4]||"");
         if(openingBalStr) setOpeningBal(openingBalStr);
-        setMappingExpanded(false); // keep collapsed, settings auto-set
+        setMappingExpanded(false);
       }
     }
   };
