@@ -454,7 +454,7 @@ const MAPPING_LIBRARY=[
    description:"Axis Bank credit card statement (Excel XLSX format)",
    delimiter:"auto",skip_rows:6,date_col:0,desc_col:1,amount_type:"single",
    amount_col:3,debit_col:-1,credit_col:-1,date_format:"DD MMM 'YY",
-   credit_ind_col:4,total_due_row:2,total_due_col:0,opening_bal_row:3,opening_bal_col:4},
+   credit_ind_col:4,total_due_row:3,total_due_col:1,opening_bal_row:4,opening_bal_col:5},
 ];
 
 
@@ -4748,7 +4748,8 @@ function SpendUpload({db,owners=[]}){
   const parseDate=(str,fmt)=>{
     str=(str||"").trim().replace(/^["']+|["']+$/g,"");
     str=str.split("T")[0]; // strip ISO time
-    str=str.split(" ")[0]; // strip space-separated time e.g. "04/05/2026 16:25:36"
+    // Only strip time if it looks like HH:MM:SS (don't strip Axis "19 Jun '26")
+    if(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/.test(str)) str=str.split(" ")[0];
     // Axis Bank format: "19 Jun '26" or "19 Jun 2026"
     const MONTHS={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
     const axisMatch=str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2,4})$/);
@@ -4827,11 +4828,11 @@ function SpendUpload({db,owners=[]}){
         // Extract total due from row 3 (idx 2), col 0: "Total Payment Due ₹ 5,09,590.47"
         const r3=rows[2]||[];
         const totalDueStr=cleanNum(r3[0]||"");
-        if(totalDueStr) setTotalDue(totalDueStr);
-        // Extract opening balance from row 4 (idx 3), col 4: "Opening Balance ₹ 4,18,374.33"
+        if(totalDueStr){setTotalDue(totalDueStr);setTotalDueRow("3");setTotalDueCol("1");}
+        // Extract opening balance from row 4 (idx 3), col 5: "Opening Balance ₹ 4,18,374.33"
         const r4=rows[3]||[];
         const openingBalStr=cleanNum(r4[4]||"");
-        if(openingBalStr) setOpeningBal(openingBalStr);
+        if(openingBalStr){setOpeningBal(openingBalStr);setOpeningBalRow("4");setOpeningBalCol("5");}
         setMappingExpanded(false);
       }
     }
@@ -4910,7 +4911,12 @@ function SpendUpload({db,owners=[]}){
     const tdc=parseInt(totalDueCol)||1;
     const obr=parseInt(openingBalRow)||0;
     const obc=parseInt(openingBalCol)||1;
-    const cn=s=>(s||"").replace(/[,₹|~'"]/g,"").trim();
+    const cn=s=>{
+      const cleaned=(s||"").replace(/[,₹|~'"]/g,"").trim();
+      const nums=cleaned.match(/\d+\.?\d*/g);
+      if(nums&&nums.length>0&&isNaN(parseFloat(cleaned))) return nums[nums.length-1];
+      return cleaned;
+    };
     const readCell=(rowIdx,colIdx1based)=>{
       const row=(rawRows[rowIdx]||[]);
       const ci=colIdx1based-1; // convert 1-based to 0-based
