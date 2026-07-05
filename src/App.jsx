@@ -409,6 +409,33 @@ function fmtMonth(ym){
   const months=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   return(months[parseInt(m)-1]||m)+" '"+y.slice(2);
 }
+// ── CSV Download utility ────────────────────────────────────────────────────
+function downloadCSV(filename, headers, rows){
+  const esc=v=>{
+    const s=String(v===null||v===undefined?"":v);
+    return s.includes(",")||s.includes('"')||s.includes("
+")?`"${s.replace(/"/g,'""')}"`:s;
+  };
+  const csv=[headers.map(esc).join(","),...rows.map(r=>r.map(esc).join(","))].join("
+");
+  const blob=new Blob(["﻿"+csv],{type:"text/csv;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;a.download=filename;a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
+// ── Download Modal component ────────────────────────────────────────────────
+function DownloadModal({show,onClose,title,children}){
+  if(!show) return null;
+  return(
+    <Modal show={show} onClose={onClose} title={title}>
+      {children}
+    </Modal>
+  );
+}
+
+
 
 function ordinal(n){const s=["th","st","nd","rd"],v=n%100;return n+(s[(v-20)%10]||s[v]||s[0]);}
 
@@ -2949,6 +2976,10 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
+  const [showDL,setShowDL]=useState(false);
+  const [dlFrom,setDlFrom]=useState("");
+  const [dlTo,setDlTo]=useState("");
+  const [dlType,setDlType]=useState("all"); // all|earn|redeem
   const [showPtsHistory,setShowPtsHistory]=useState(false);
   const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
   const [f,setF]=useState(tf);
@@ -3061,6 +3092,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("transfer")}>Transfer Points</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowDL(true)}>⬇ Download</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:card.owner_id,nickname:card.nickname||"",last4:card.last4||"",stmt_date:String(card.stmt_date||""),card_expiry:card.card_expiry||"",opening_balance:String(card.opening_balance||""),fee_override:card.fee_override||false,fee_override_value:String(card.fee_override_value||""),billing_year_start:card.billing_year_start||"",fee_charge_date:card.fee_charge_date||"",linked_program_id:card.linked_program_id||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
@@ -3147,6 +3179,37 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
           Override auto-transfer (log to card only)
         </label>}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
+      </Modal>
+      <Modal show={showDL} onClose={()=>setShowDL(false)} title="Download Points Statement">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>{lbl("From date")}<input type="date" style={inp} value={dlFrom} onChange={e=>setDlFrom(e.target.value)}/></div>
+            <div>{lbl("To date")}<input type="date" style={inp} value={dlTo} onChange={e=>setDlTo(e.target.value)}/></div>
+          </div>
+          <div>{lbl("Type")}
+            <select style={inp} value={dlType} onChange={e=>setDlType(e.target.value)}>
+              <option value="all">All transactions</option>
+              <option value="earn">Earn only (positive)</option>
+              <option value="redeem">Redeem only (negative)</option>
+            </select>
+          </div>
+          <button style={{...pbtn,justifyContent:"center"}} onClick={()=>{
+            const from=dlFrom?new Date(dlFrom):null;
+            const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+            const filtered=txns.filter(t=>{
+              if(t.description==="Opening balance") return false;
+              if(from&&new Date(t.txn_date)<from) return false;
+              if(to&&new Date(t.txn_date)>to) return false;
+              if(dlType==="earn"&&t.points<=0) return false;
+              if(dlType==="redeem"&&t.points>=0) return false;
+              return true;
+            }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+            let bal=card.opening_balance||0;
+            const rows=filtered.map(t=>{const op=bal;bal+=t.points;return[t.txn_date,t.description,t.points>0?"+"+t.points:t.points,bal];});
+            downloadCSV(`${card.nickname||master?.name||"card"}_points_${dlFrom||"all"}_to_${dlTo||"date"}.csv`,["Date","Description","Points","Balance"],rows);
+            setShowDL(false);
+          }}>⬇ Download CSV</button>
+        </div>
       </Modal>
       {showEdit&&<EditCardModal card={card} db={db} mCards={mCards} owners={owners} onSave={updated=>{
           if(updated){
@@ -3325,6 +3388,8 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
   const [showPtsHistory,setShowPtsHistory]=useState(false);
+  const [showDLProg,setShowDLProg]=useState(false);
+  const [dlFrom,setDlFrom]=useState(""); const [dlTo,setDlTo]=useState(""); const [dlType,setDlType]=useState("all");
   const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
@@ -3400,6 +3465,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
         <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",letterSpacing:"0.01em"}}>&#8592; Back</button>
         <div style={{display:"flex",gap:8,marginBottom:20}}>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("transfer")}>Transfer Points</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowDLProg(true)}>⬇ Download</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>{setEf({owner_id:prog.owner_id,nickname:prog.nickname||"",membership_number:prog.membership_number||"",tier:prog.tier||"",opening_balance:String(prog.opening_balance||""),expiry_date:prog.expiry_date||""});setShowEdit(true);}}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={del}>Delete</button>
         </div>
@@ -3468,7 +3534,38 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
         {lbl("Date")}<input style={inp} type="date" value={f.txn_date} onChange={up("txn_date")}/>
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
-      <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Program">
+      <Modal show={showDLProg} onClose={()=>setShowDLProg(false)} title="Download Points Statement">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>{lbl("From date")}<input type="date" style={inp} value={dlFrom} onChange={e=>setDlFrom(e.target.value)}/></div>
+            <div>{lbl("To date")}<input type="date" style={inp} value={dlTo} onChange={e=>setDlTo(e.target.value)}/></div>
+          </div>
+          <div>{lbl("Type")}
+            <select style={inp} value={dlType} onChange={e=>setDlType(e.target.value)}>
+              <option value="all">All transactions</option>
+              <option value="earn">Earn only (positive)</option>
+              <option value="redeem">Redeem only (negative)</option>
+            </select>
+          </div>
+          <button style={{...pbtn,justifyContent:"center"}} onClick={()=>{
+            const from=dlFrom?new Date(dlFrom):null;
+            const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+            const filtered=txns.filter(t=>{
+              if(t.description==="Opening balance") return false;
+              if(from&&new Date(t.txn_date)<from) return false;
+              if(to&&new Date(t.txn_date)>to) return false;
+              if(dlType==="earn"&&t.points<=0) return false;
+              if(dlType==="redeem"&&t.points>=0) return false;
+              return true;
+            }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+            let bal=prog.opening_balance||0;
+            const rows=filtered.map(t=>{const op=bal;bal+=t.points;return[t.txn_date,t.description,t.points>0?"+"+t.points:t.points,bal];});
+            downloadCSV(`${prog.nickname||master?.name||"prog"}_points.csv`,["Date","Description","Points","Balance"],rows);
+            setShowDLProg(false);
+          }}>⬇ Download CSV</button>
+        </div>
+      </Modal>
+            <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Program">
         {lbl("Owner")}<select style={inp} value={ef.owner_id||""} onChange={eup("owner_id")}><option value="">-- select --</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
         {lbl("Nickname")}<input style={inp} value={ef.nickname||""} onChange={eup("nickname")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
@@ -6094,6 +6191,11 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
   const [page,setPage]=useState(0);
   const [txnSearch,setTxnSearch]=useState("");
   const [txnSort,setTxnSort]=useState("date-desc");
+  const [showDL,setShowDL]=useState(false);
+  const [dlFrom,setDlFrom]=useState("");
+  const [dlTo,setDlTo]=useState("");
+  const [dlCat,setDlCat]=useState("all");
+  const [dlType,setDlType]=useState("all"); // all|debit|credit
   const [colW,setColW]=useState([90,200,120,90,140,90]); // date,desc,cat,amt,split,stmt
   const [pieMyShareOnly,setPieMyShareOnly]=useState(false);
   const [showTxns,setShowTxns]=useState(false);
@@ -6295,6 +6397,30 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
     />
   );
 
+  const doDownloadSpend=()=>{
+    const from=dlFrom?new Date(dlFrom):null;
+    const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+    const cats=new Set(stmts.map(s=>s.statement_month));
+    const filtered=txns.filter(t=>{
+      if(from&&new Date(t.txn_date)<from) return false;
+      if(to&&new Date(t.txn_date)>to) return false;
+      if(dlCat!=="all"&&(t.category||"Other")!==dlCat) return false;
+      if(dlType==="debit"&&Number(t.amount||0)<=0) return false;
+      if(dlType==="credit"&&Number(t.amount||0)>=0) return false;
+      return true;
+    }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+    const headers=["Date","Description","Category","Amount","Type","Statement Month","Card"];
+    const rows=filtered.map(t=>[
+      t.txn_date,t.description,t.category||"Other",
+      Number(t.amount||0).toFixed(2),
+      Number(t.amount||0)>0?"Debit":"Credit",
+      t.statement_month||"",mCard?.name||card.nickname||""
+    ]);
+    const fname=`${mCard?.name||card.nickname||"card"}_transactions_${dlFrom||"all"}_${dlTo||"date"}.csv`.replace(/\s+/g,"_");
+    downloadCSV(fname,headers,rows);
+    setShowDL(false);
+  };
+
   if(reassignTarget||reassignStatus!=="idle") return(
     <div>
       <Hdr title={"Reassign Statement — "+(reassignTarget?fmtMonth(reassignTarget.statement_month):"")} sub={reassignStatus==="loading"?"Reassigning…":reassignStatus==="done"?"Complete":"Choose a different card for this statement"}/>
@@ -6452,6 +6578,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
         <div style={{display:"flex",gap:8,marginBottom:20}}>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-upload")}>Upload Statement</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowDL(true)}>⬇ Download</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEditCard(true)}>Edit</button>
         </div>
       </div>
@@ -6731,6 +6858,45 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
         </>}
       </Card>
       {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
+
+      <Modal show={showDL} onClose={()=>setShowDL(false)} title="Download Transactions">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>{lbl("From date")}<input type="date" style={inp} value={dlFrom} onChange={e=>setDlFrom(e.target.value)}/></div>
+            <div>{lbl("To date")}<input type="date" style={inp} value={dlTo} onChange={e=>setDlTo(e.target.value)}/></div>
+          </div>
+          <div>{lbl("Category")}
+            <select style={inp} value={dlCat} onChange={e=>setDlCat(e.target.value)}>
+              <option value="all">All categories</option>
+              {allCategories.map(c=><option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+          <div>{lbl("Type")}
+            <select style={inp} value={dlType} onChange={e=>setDlType(e.target.value)}>
+              <option value="all">Debits + Credits</option>
+              <option value="debit">Debits only</option>
+              <option value="credit">Credits only</option>
+            </select>
+          </div>
+          <div style={{fontSize:12,color:mut}}>
+            {(()=>{
+              const from=dlFrom?new Date(dlFrom):null;
+              const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+              const count=txns.filter(t=>{
+                if(from&&new Date(t.txn_date)<from) return false;
+                if(to&&new Date(t.txn_date)>to) return false;
+                if(dlCat!=="all"&&(t.category||"Other")!==dlCat) return false;
+                if(dlType==="debit"&&Number(t.amount||0)<=0) return false;
+                if(dlType==="credit"&&Number(t.amount||0)>=0) return false;
+                return true;
+              }).length;
+              return `${count} transactions match`;
+            })()}
+          </div>
+          <button style={{...pbtn,justifyContent:"center"}} onClick={doDownloadSpend}>⬇ Download CSV</button>
+        </div>
+      </Modal>
+
     </div>
   );
 }
@@ -7158,6 +7324,8 @@ function SpendLedger({db,owners,onNavigate}){
   const [busy,setBusy]=useState(true);
   const [selPerson,setSelPerson]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
+  const [showDL,setShowDL]=useState(false);
+  const [dlFrom,setDlFrom]=useState(""); const [dlTo,setDlTo]=useState(""); const [dlPerson,setDlPerson]=useState("all"); const [dlDir,setDlDir]=useState("all");
   const [editEntry,setEditEntry]=useState(null);
   const [youPaid,setYouPaid]=useState("");
   const [theyPaid,setTheyPaid]=useState("");
@@ -7362,7 +7530,10 @@ function SpendLedger({db,owners,onNavigate}){
   return(
     <div>
       <Hdr title="Ledger" sub="Splits and reimbursements — track money owed between you and others"
-        action={<button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-overview")}>Overview</button>}
+        action={<div style={{display:"flex",gap:8}}>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>setShowDL(true)}>⬇ Download</button>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-overview")}>Overview</button>
+        </div>}
       />
       {people.length===0?<Empty icon="👥" msg="No people added yet — go to Setup → Master → People to add family or friends for splitting expenses"/>:(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:14}}>
@@ -7381,6 +7552,44 @@ function SpendLedger({db,owners,onNavigate}){
           })}
         </div>
       )}
+      <Modal show={showDL} onClose={()=>setShowDL(false)} title="Download Ledger">
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+            <div>{lbl("From date")}<input type="date" style={inp} value={dlFrom} onChange={e=>setDlFrom(e.target.value)}/></div>
+            <div>{lbl("To date")}<input type="date" style={inp} value={dlTo} onChange={e=>setDlTo(e.target.value)}/></div>
+          </div>
+          <div>{lbl("Person")}
+            <select style={inp} value={dlPerson} onChange={e=>setDlPerson(e.target.value)}>
+              <option value="all">All people</option>
+              {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>{lbl("Direction")}
+            <select style={inp} value={dlDir} onChange={e=>setDlDir(e.target.value)}>
+              <option value="all">Both directions</option>
+              <option value="owed_to_me">Owed to me</option>
+              <option value="i_owe">I owe</option>
+            </select>
+          </div>
+          <button style={{...pbtn,justifyContent:"center"}} onClick={()=>{
+            const from=dlFrom?new Date(dlFrom):null;
+            const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+            const filtered=entries.filter(e=>{
+              if(from&&new Date(e.entry_date)<from) return false;
+              if(to&&new Date(e.entry_date)>to) return false;
+              if(dlPerson!=="all"&&e.person_id!==dlPerson) return false;
+              if(dlDir!=="all"&&e.direction!==dlDir) return false;
+              return true;
+            }).sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
+            const rows=filtered.map(e=>{
+              const p=people.find(x=>x.id===e.person_id);
+              return[e.entry_date,p?.name||"Unknown",e.direction==="owed_to_me"?"Owed to me":"I owe",e.amount,e.description||"",e.entry_type||"manual",e.settled?"Settled":"Outstanding"];
+            });
+            downloadCSV(`ledger_${dlFrom||"all"}_to_${dlTo||"date"}.csv`,["Date","Person","Direction","Amount","Description","Type","Status"],rows);
+            setShowDL(false);
+          }}>⬇ Download CSV</button>
+        </div>
+      </Modal>
     </div>
   );
 }
