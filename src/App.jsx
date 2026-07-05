@@ -553,6 +553,11 @@ async function parseAmexPDF(file){
       return{y:Number(y),text:sorted.map(i=>i.t).join(" "),items:sorted};
     });
 
+  // DEBUG — log first 30 lines to console
+  console.log("=== AMEX PDF LINES ===");
+  lines.slice(0,30).forEach((l,i)=>console.log(`L${i}: y=${l.y} | ${JSON.stringify(l.text)}`));
+  console.log("=== END ===");
+
   const fullText=lines.map(l=>l.text).join("\n");
   if(!fullText.includes("American Express")) throw new Error("Not an Amex statement — please upload an American Express PDF");
 
