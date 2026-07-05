@@ -6920,7 +6920,7 @@ function SpendTransactions({db,owners}){
     const {data:existing}=await db.from("transaction_splits").filter("transaction_id",t.id);
     if(existing&&existing.length>0){
       const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
-      // Always ensure a "Mine" row exists — even if 100% was assigned to others
+      // Always ensure a "Mine" row exists — even if 100% was assigned to others or Mine=0 wasn't saved
       const hasMine=loaded.some(s=>s.is_personal);
       if(!hasMine){
         const othersTotal=loaded.reduce((a,s)=>a+Number(s.amount||0),0);
@@ -6939,12 +6939,15 @@ function SpendTransactions({db,owners}){
   });
   const updSplit=(i,k,v)=>setSplits(prev=>{
     const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
-    // Auto-recalculate "Mine" = total - sum of others
-    const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
-    const total=Number(showSplit?.amount||0);
-    // For credits (negative total), mine = total - others (can be negative)
-    const myAmt=total<0?Math.min(0,total-othersTotal):Math.max(0,total-othersTotal);
-    return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+    // Only auto-recalculate Mine when a non-personal row changes amount
+    const editingMine=prev[i]?.is_personal;
+    if(!editingMine&&k==="amount"){
+      const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
+      const total=Number(showSplit?.amount||0);
+      const myAmt=total<0?Math.min(0,total-othersTotal):Math.max(0,total-othersTotal);
+      return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+    }
+    return updated;
   });
   const removeSplit=i=>setSplits(prev=>prev.filter((_,si)=>si!==i));
   const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
@@ -6961,7 +6964,7 @@ function SpendTransactions({db,owners}){
     for(const e of (existingLedger||[])) await db.from("ledger_entries").delete(e.id);
     // Insert new splits + ledger entries
     for(const s of splits){
-      if(Number(s.amount)===0) continue;
+      if(Number(s.amount)===0&&!s.is_personal) continue; // skip zero non-personal rows, but always save Mine
       await db.from("transaction_splits").insert({
         transaction_id:showSplit.id,
         person_id:s.is_personal?null:(s.person_id||null),
@@ -7554,12 +7557,15 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   });
   const updSplit=(i,k,v)=>setSplits(prev=>{
     const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
-    // Auto-recalculate "Mine" = total - sum of others
-    const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
-    const total=Number(showSplit?.amount||0);
-    // For credits (negative total), mine = total - others (can be negative)
-    const myAmt=total<0?Math.min(0,total-othersTotal):Math.max(0,total-othersTotal);
-    return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+    // Only auto-recalculate Mine when a non-personal row changes amount
+    const editingMine=prev[i]?.is_personal;
+    if(!editingMine&&k==="amount"){
+      const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
+      const total=Number(showSplit?.amount||0);
+      const myAmt=total<0?Math.min(0,total-othersTotal):Math.max(0,total-othersTotal);
+      return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+    }
+    return updated;
   });
   const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
   const splitRemaining=showSplit?(Number(showSplit.amount)-splitTotal):0;
