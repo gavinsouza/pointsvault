@@ -7547,8 +7547,18 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   const openSplit=t=>{
     setShowSplit(t);
     const existing=txnSplitsMap[t.id];
-    if(existing&&existing.length>0) setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
-    else setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
+    if(existing&&existing.length>0){
+      const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
+      const hasMine=loaded.some(s=>s.is_personal);
+      if(!hasMine){
+        const othersTotal=loaded.reduce((a,s)=>a+Number(s.amount||0),0);
+        const myAmt=Number(t.amount)-othersTotal;
+        loaded.unshift({person_id:"",amount:myAmt,is_personal:true});
+      }
+      setSplits(loaded);
+    } else {
+      setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
+    }
   };
   const addSplit=()=>setSplits(prev=>{
     const newSplits=[...prev,{person_id:"",amount:0,is_personal:false}];
@@ -7580,7 +7590,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
     const {data:oldLedger}=await db.from("ledger_entries").filter("transaction_id",showSplit.id);
     for(const e of (oldLedger||[])) await db.from("ledger_entries").delete(e.id);
     for(const s of splits){
-      if(Number(s.amount)===0) continue;
+      if(Number(s.amount)===0&&!s.is_personal) continue; // skip zero non-personal rows, always save Mine
       await db.from("transaction_splits").insert({transaction_id:showSplit.id,person_id:s.is_personal?null:(s.person_id||null),amount:Number(s.amount),is_personal:s.is_personal,user_id:getCurrentUserId()});
       if(!s.is_personal&&s.person_id){
         await db.from("ledger_entries").insert({person_id:s.person_id,amount:Math.abs(Number(s.amount)),direction:Number(s.amount)<0?"i_owe":"owed_to_me",description:showSplit.description||"CC transaction",entry_date:showSplit.txn_date,entry_type:"transaction",transaction_id:showSplit.id,user_id:getCurrentUserId()});
