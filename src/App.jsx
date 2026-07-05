@@ -557,6 +557,9 @@ async function parseAmexPDF(file){
   console.log("=== AMEX PDF LINES ===");
   lines.slice(0,30).forEach((l,i)=>console.log(`L${i}: y=${l.y} | ${JSON.stringify(l.text)}`));
   console.log("=== END ===");
+  console.log("stmtMonth:", stmtMonth, "TXN_RE test:", TXN_RE.test("February 12 PayU*CRED 2.00"));
+  // Log all lines that match TXN_RE
+  lines.forEach((l,i)=>{if(TXN_RE.test(l.text)) console.log("TXN MATCH L"+i+":", JSON.stringify(l.text));});
 
   const fullText=lines.map(l=>l.text).join("\n");
   if(!fullText.includes("American Express")) throw new Error("Not an Amex statement — please upload an American Express PDF");
