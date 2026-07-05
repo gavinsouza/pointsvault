@@ -524,126 +524,102 @@ function printPDF({title, subtitle, period, columns, rows, totalsRow, footerNote
 async function parseAmexPDF(file){
   const MONTHS={january:"01",february:"02",march:"03",april:"04",may:"05",
     june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12"};
+  const TXN_DATE=/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\b/i;
 
+  // Load PDF
   const pdfjsLib=window.pdfjsLib;
-  if(!pdfjsLib) throw new Error("PDF.js not loaded — please refresh the page");
+  if(!pdfjsLib) throw new Error("PDF.js not loaded — please refresh");
   const arrayBuffer=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
-
-  // Extract raw text items from page 1 with position info
   const page=await pdf.getPage(1);
   const tc=await page.getTextContent();
-  const raw=tc.items.map(i=>({
-    t:i.str,
-    x:Math.round(i.transform[4]),
-    y:Math.round(i.transform[5]),
-  })).filter(i=>i.t.trim().length>0);
 
-  // Group into lines by Y (within 5px tolerance, PDF Y is bottom-up so sort desc)
+  // Group text items into lines by Y coordinate
   const byY={};
-  raw.forEach(item=>{
-    const key=Object.keys(byY).find(k=>Math.abs(Number(k)-item.y)<=5)||String(item.y);
+  tc.items.forEach(item=>{
+    if(!item.str.trim()) return;
+    const y=Math.round(item.transform[5]);
+    const key=Object.keys(byY).find(k=>Math.abs(Number(k)-y)<=5)||String(y);
     if(!byY[key]) byY[key]=[];
-    byY[key].push(item);
+    byY[key].push({t:item.str,x:Math.round(item.transform[4])});
   });
+
   const lines=Object.entries(byY)
     .sort((a,b)=>Number(b[0])-Number(a[0]))
     .map(([y,its])=>{
       const sorted=its.sort((a,b)=>a.x-b.x);
-      return{y:Number(y),text:sorted.map(i=>i.t).join(" "),items:sorted};
+      return{y:Number(y),text:sorted.map(i=>i.t).join(" ")};
     });
 
-  // DEBUG — log first 30 lines to console
-  console.log("=== AMEX PDF LINES ===");
-  lines.slice(0,30).forEach((l,i)=>console.log(`L${i}: y=${l.y} | ${JSON.stringify(l.text)}`));
-  console.log("=== END ===");
-  const TXN_RE=/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\b/i;
-  console.log("stmtMonth:", stmtMonth, "TXN_RE test:", TXN_RE.test("February 12 PayU*CRED 2.00"));
-  // Log all lines that match TXN_RE
-  lines.forEach((l,i)=>{if(TXN_RE.test(l.text)) console.log("TXN MATCH L"+i+":", JSON.stringify(l.text));});
-
   const fullText=lines.map(l=>l.text).join("\n");
-  if(!fullText.includes("American Express")) throw new Error("Not an Amex statement — please upload an American Express PDF");
+  if(!fullText.includes("American Express")) throw new Error("Not an Amex statement");
 
-  // ── Statement date & period ───────────────────────────────────────────────
-  const dateMatch=fullText.match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  const stmtDate=dateMatch?`${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`:"";
-  let stmtMonth=stmtDate.slice(0,7);
-  const periodMatch=fullText.match(/From\s+\w+\s+\d+\s+to\s+(\w+)\s+\d+,?\s*(\d{4})/i);
-  if(periodMatch){
-    const mon=MONTHS[periodMatch[1].toLowerCase()]||"01";
-    stmtMonth=`${periodMatch[2]}-${mon}`;
-  }
+  // DEBUG
+  console.log("=== AMEX LINES ===");
+  lines.slice(0,35).forEach((l,i)=>console.log("L"+i+": "+JSON.stringify(l.text)));
+  console.log("TXN_DATE test:", TXN_DATE.test("February 12 PayU*CRED Mumbai 2.00"));
+  lines.forEach((l,i)=>{if(TXN_DATE.test(l.text)) console.log("TXN L"+i+": "+JSON.stringify(l.text));});
+  console.log("=== END ===");
 
-  // ── Summary row ───────────────────────────────────────────────────────────
+  // Parse summary line: "0.00 - 2.00 + 21,002.00 = 21,000.00 1,050.00"
   let openingBal=0,newCredits=0,newDebits=0,closingBal=0,minPayment=0;
   for(const line of lines){
     if(line.text.includes(" - ")&&line.text.includes(" + ")&&line.text.includes(" = ")){
       const nums=(line.text.match(/[\d,]+\.\d{2}/g)||[]).map(n=>parseFloat(n.replace(/,/g,"")));
-      if(nums.length>=4)[openingBal,newCredits,newDebits,closingBal]=nums;
+      if(nums.length>=4){[openingBal,newCredits,newDebits,closingBal]=nums;}
       if(nums.length>=5) minPayment=nums[4];
       break;
     }
   }
-  // Min payment sometimes on a separate line
-  if(!minPayment){
-    const mpMatch=fullText.match(/Minimum Payment(?:\s+Rs?\.?)?\s*([\d,]+(?:\.\d{2})?)/i);
-    if(mpMatch) minPayment=parseFloat(mpMatch[1].replace(/,/g,""));
+
+  // Parse statement period
+  let stmtMonth="";
+  const dateMatch=fullText.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  if(dateMatch) stmtMonth=dateMatch[3]+"-"+dateMatch[2];
+  const periodMatch=fullText.match(/From\s+\w+\s+\d+\s+to\s+(\w+)\s+\d+,?\s*(\d{4})/i);
+  if(periodMatch){
+    const mon=MONTHS[periodMatch[1].toLowerCase()]||"01";
+    stmtMonth=periodMatch[2]+"-"+mon;
   }
 
-  // ── Transaction parsing ───────────────────────────────────────────────────
-  // Strategy: look for lines where the FIRST token is "Month Day"
-  // Amex format: "February 13" or "Feb 13" at start of line
-  const AMT_RE=/[\d,]+\.\d{2}$/;
+  const stmtMon=parseInt(stmtMonth.slice(5,7)||"1");
+  const stmtYr=parseInt(stmtMonth.slice(0,4)||String(new Date().getFullYear()));
 
-  const skipPatterns=["new domestic transactions","new international","other account transactions",
+  // Parse transactions
+  const SKIP=["new domestic transactions","new international","other account transactions",
     "total of other","payment received","card number","foreign spending","details"];
-
-  const stmtMon=parseInt(stmtMonth.slice(5,7)||"01");
-  const stmtYr=parseInt(stmtMonth.slice(0,4)||new Date().getFullYear());
-
   const transactions=[];
+
   for(let i=0;i<lines.length;i++){
     const line=lines[i];
-    const m=line.text.match(TXN_RE);
-    if(!m) continue;
+    const dm=line.text.match(TXN_DATE);
+    if(!dm) continue;
 
-    const mon=MONTHS[m[1].toLowerCase()]||"01";
-    const day=m[2].padStart(2,"0");
-    const txnMon=parseInt(mon);
-    // If txn month is much higher than stmt month, it's from previous year
-    const txnYr=(txnMon>stmtMon+1)?stmtYr-1:stmtYr;
-    const txnDate=`${txnYr}-${mon}-${day}`;
+    const monStr=MONTHS[dm[1].toLowerCase()]||"01";
+    const txnMon=parseInt(monStr);
+    const txnYr=txnMon>stmtMon+1?stmtYr-1:stmtYr;
+    const txnDate=txnYr+"-"+monStr+"-"+dm[2].padStart(2,"0");
 
-    // Build full text of this transaction (may span next line for CR)
     let txnText=line.text;
     let isCredit=false;
 
-    // Check if next line is just "CR" or starts with "Card Number"
+    // Check next line for CR
     if(i+1<lines.length){
-      const next=lines[i+1].text.trim();
-      if(next==="CR"||next.startsWith("CR ")){isCredit=true;i++;}
-      else if(next.startsWith("Card Number")) i++; // skip card number line
+      const nextTxt=lines[i+1].text.trim();
+      if(nextTxt==="CR"||nextTxt.startsWith("CR ")){isCredit=true;i++;}
+      else if(nextTxt.startsWith("Card Number")) i++;
     }
+    if(/\bCR\s*$/.test(txnText)){isCredit=true;txnText=txnText.replace(/\bCR\s*$/,"");}
 
-    // Also check if "CR" appears at end of this line
-    if(/CR\s*$/.test(txnText)){isCredit=true;txnText=txnText.replace(/CR\s*$/,"");}
+    // Extract last number as amount
+    const amts=txnText.match(/[\d,]+\.\d{2}/g);
+    if(!amts||!amts.length) continue;
+    const amount=parseFloat(amts[amts.length-1].replace(/,/g,""));
+    if(!amount) continue;
 
-    // Extract amount — last number on line
-    const amtMatch=txnText.match(/[\d,]+\.\d{2}(?:\s*CR)?$/);
-    if(!amtMatch) continue;
-    const amount=parseFloat(amtMatch[0].replace(/[,CR\s]/g,""));
-    if(!amount||amount===0) continue;
-
-    // Description = remove leading "Month Day" and trailing amount
-    let desc=txnText
-      .replace(TXN_RE,"")
-      .replace(/[\d,]+\.\d{2}\s*(CR)?\s*$/,"")
-      .trim();
-
-    // Skip header/summary rows
-    const descLower=desc.toLowerCase();
-    if(skipPatterns.some(p=>descLower.includes(p))) continue;
+    // Description
+    let desc=txnText.replace(TXN_DATE,"").replace(/[\d,]+\.\d{2}\s*$/,"").trim();
+    if(SKIP.some(p=>desc.toLowerCase().includes(p))) continue;
     if(desc.length<2) continue;
 
     transactions.push({
@@ -656,19 +632,11 @@ async function parseAmexPDF(file){
   }
 
   return{
-    bank:"American Express",
-    statement_month:stmtMonth,
-    statement_date:stmtDate,
-    opening_balance:openingBal,
-    new_credits:newCredits,
-    new_debits:newDebits,
-    closing_balance:closingBal,
-    min_payment:minPayment,
-    total_due:closingBal,
-    transactions,
+    bank:"American Express",statement_month:stmtMonth,statement_date:dateMatch?dateMatch[3]+"-"+dateMatch[2]+"-"+dateMatch[1]:"",
+    opening_balance:openingBal,new_credits:newCredits,new_debits:newDebits,
+    closing_balance:closingBal,min_payment:minPayment,total_due:closingBal,transactions,
   };
 }
-
 // ── Download Modal component ────────────────────────────────────────────────
 function DownloadModal({show,onClose,title,children}){
   if(!show) return null;
