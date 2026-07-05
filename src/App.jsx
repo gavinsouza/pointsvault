@@ -420,6 +420,105 @@ function downloadCSV(filename, headers, rows){
   setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
 
+// ── PDF Print utility ────────────────────────────────────────────────────────
+function printPDF({title, subtitle, period, columns, rows, totalsRow, footerNote}){
+  const id="pv-print-"+Date.now();
+  const colWidths=columns.map(c=>c.width||"auto").join(" ");
+  const thStyle="padding:10px 14px;text-align:left;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:#6b6b6b;border-bottom:2px solid #e8e6e1;";
+  const tdStyle="padding:10px 14px;font-size:12px;color:#1a1a1a;border-bottom:1px solid #f0ede8;";
+  const tdRStyle="padding:10px 14px;font-size:12px;color:#1a1a1a;border-bottom:1px solid #f0ede8;text-align:right;font-variant-numeric:tabular-nums;";
+  const redStyle="padding:10px 14px;font-size:12px;color:#9b2335;font-weight:600;border-bottom:1px solid #f0ede8;text-align:right;font-variant-numeric:tabular-nums;";
+  const greenStyle="padding:10px 14px;font-size:12px;color:#2d6a4f;font-weight:600;border-bottom:1px solid #f0ede8;text-align:right;font-variant-numeric:tabular-nums;";
+
+  const theadHtml=`<tr>${columns.map(c=>`<th style="${thStyle}${c.right?"text-align:right;":""}">${c.label}</th>`).join("")}</tr>`;
+  const tbodyHtml=rows.map((row,ri)=>{
+    const bg=ri%2===0?"#ffffff":"#faf9f7";
+    return`<tr style="background:${bg}">${row.map((cell,ci)=>{
+      const col=columns[ci];
+      const isAmt=col?.type==="amount";
+      const isNeg=isAmt&&typeof cell==="number"&&cell<0;
+      const isPos=isAmt&&typeof cell==="number"&&cell>0;
+      const style=isNeg?redStyle:isPos?greenStyle:col?.right?tdRStyle:tdStyle;
+      const display=isAmt&&typeof cell==="number"?(cell>=0?"₹"+cell.toLocaleString("en-IN"):"−₹"+Math.abs(cell).toLocaleString("en-IN")):cell;
+      return`<td style="${style}">${display??""}</td>`;
+    }).join("")}</tr>`;
+  }).join("");
+
+  const totalsHtml=totalsRow?`<tr style="background:#f5f3ef;border-top:2px solid #e8e6e1;">
+    ${totalsRow.map((cell,ci)=>{
+      const col=columns[ci];
+      const style=`padding:12px 14px;font-size:12px;font-weight:700;color:#1a1a1a;${col?.right?"text-align:right;":""}`;
+      return`<td style="${style}">${cell??""}</td>`;
+    }).join("")}</tr>`:"";
+
+  const now=new Date();
+  const generated=now.toLocaleDateString("en-IN",{day:"2-digit",month:"long",year:"numeric"})+" at "+now.toLocaleTimeString("en-IN",{hour:"2-digit",minute:"2-digit"});
+
+  const html=`<!DOCTYPE html><html>
+<head>
+  <meta charset="utf-8"/>
+  <title>${title}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:'Manrope',sans-serif;background:#fff;color:#1a1a1a;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{margin:28mm 20mm;size:A4 portrait;}
+    @media print{body{background:#fff;}}
+    .page{max-width:794px;margin:0 auto;padding:0;}
+    .header{padding:32px 0 24px;border-bottom:3px solid #1a1a1a;margin-bottom:24px;}
+    .header-top{display:flex;justify-content:space-between;align-items:flex-start;}
+    .brand{font-size:22px;font-weight:800;letter-spacing:-0.04em;color:#1a1a1a;}
+    .brand span{color:#b07d3a;}
+    .stmt-title{font-size:13px;font-weight:500;color:#6b6b6b;margin-top:4px;}
+    .stmt-period{font-size:11px;color:#9b9590;margin-top:2px;}
+    .meta-right{text-align:right;}
+    .meta-label{font-size:10px;color:#9b9590;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:2px;}
+    .meta-value{font-size:13px;font-weight:600;color:#1a1a1a;}
+    .subtitle{font-size:15px;font-weight:700;color:#1a1a1a;margin-bottom:16px;letter-spacing:-0.02em;}
+    table{width:100%;border-collapse:collapse;margin-bottom:0;}
+    .summary-grid{display:flex;gap:16px;margin-bottom:24px;flex-wrap:wrap;}
+    .summary-card{flex:1;min-width:120px;background:#f5f3ef;border-radius:10px;padding:14px 16px;}
+    .summary-label{font-size:9px;color:#9b9590;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;font-weight:600;}
+    .summary-value{font-size:16px;font-weight:700;color:#1a1a1a;font-variant-numeric:tabular-nums;}
+    .footer{margin-top:24px;padding-top:14px;border-top:1px solid #e8e6e1;display:flex;justify-content:space-between;align-items:center;}
+    .footer-note{font-size:9px;color:#b0aba5;font-style:italic;}
+    .footer-brand{font-size:9px;color:#b07d3a;font-weight:600;letter-spacing:0.04em;}
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="header">
+      <div class="header-top">
+        <div>
+          <div class="brand">Points<span>Vault</span></div>
+          <div class="stmt-title">${title}</div>
+          ${period?`<div class="stmt-period">${period}</div>`:""}
+        </div>
+        <div class="meta-right">
+          <div class="meta-label">Generated</div>
+          <div class="meta-value">${generated}</div>
+        </div>
+      </div>
+    </div>
+    ${subtitle?`<div class="subtitle">${subtitle}</div>`:""}
+    <table>
+      <thead>${theadHtml}</thead>
+      <tbody>${tbodyHtml}${totalsHtml}</tbody>
+    </table>
+    <div class="footer">
+      <div class="footer-note">${footerNote||""} · ${rows.length} record${rows.length!==1?"s":""}</div>
+      <div class="footer-brand">Statement generated via PointsVault</div>
+    </div>
+  </div>
+</body></html>`;
+
+  const w=window.open("","_blank","width=900,height=700");
+  if(!w){alert("Please allow pop-ups for PointsVault to generate PDF statements.");return;}
+  w.document.write(html);
+  w.document.close();
+  w.onload=()=>{w.focus();w.print();};
+}
+
 // ── Download Modal component ────────────────────────────────────────────────
 function DownloadModal({show,onClose,title,children}){
   if(!show) return null;
@@ -3203,7 +3302,29 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             const rows=filtered.map(t=>{const op=bal;bal+=t.points;return[t.txn_date,t.description,t.points>0?"+"+t.points:t.points,bal];});
             downloadCSV(`${card.nickname||master?.name||"card"}_points_${dlFrom||"all"}_to_${dlTo||"date"}.csv`,["Date","Description","Points","Balance"],rows);
             setShowDL(false);
-          }}>⬇ Download CSV</button>
+          }}>⬇ CSV</button>
+          <button style={{...gbtn,justifyContent:"center"}} onClick={()=>{
+            const from=dlFrom?new Date(dlFrom):null;
+            const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+            const filtered=txns.filter(t=>{
+              if(t.description==="Opening balance") return false;
+              if(from&&new Date(t.txn_date)<from) return false;
+              if(to&&new Date(t.txn_date)>to) return false;
+              if(dlType==="earn"&&t.points<=0) return false;
+              if(dlType==="redeem"&&t.points>=0) return false;
+              return true;
+            }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+            let bal=card.opening_balance||0;
+            const pdfRows=filtered.map(t=>{const op=bal;bal+=t.points;return[t.txn_date,t.description,t.points>0?"+"+t.points.toLocaleString("en-IN"):t.points.toLocaleString("en-IN"),bal.toLocaleString("en-IN")];});
+            printPDF({
+              title:`${card.nickname||master?.name||"Card"} — Points Statement`,
+              period:`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`,
+              subtitle:`${master?.points_currency||"Points"} · Opening balance: ${(card.opening_balance||0).toLocaleString("en-IN")}`,
+              columns:[{label:"Date",width:"90px"},{label:"Description"},{label:"Points",width:"90px",right:true},{label:"Balance",width:"100px",right:true}],
+              rows:pdfRows,
+              footerNote:`${master?.name||""} · ${owners.find(o=>o.id===card.owner_id)?.name||""}`
+            });
+          }}>⬇ PDF</button>
         </div>
       </Modal>
       {showEdit&&<EditCardModal card={card} db={db} mCards={mCards} owners={owners} onSave={updated=>{
@@ -3557,7 +3678,29 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
             const rows=filtered.map(t=>{const op=bal;bal+=t.points;return[t.txn_date,t.description,t.points>0?"+"+t.points:t.points,bal];});
             downloadCSV(`${prog.nickname||master?.name||"prog"}_points.csv`,["Date","Description","Points","Balance"],rows);
             setShowDLProg(false);
-          }}>⬇ Download CSV</button>
+          }}>⬇ CSV</button>
+          <button style={{...gbtn,justifyContent:"center"}} onClick={()=>{
+            const from=dlFrom?new Date(dlFrom):null;
+            const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+            const filtered=txns.filter(t=>{
+              if(t.description==="Opening balance") return false;
+              if(from&&new Date(t.txn_date)<from) return false;
+              if(to&&new Date(t.txn_date)>to) return false;
+              if(dlType==="earn"&&t.points<=0) return false;
+              if(dlType==="redeem"&&t.points>=0) return false;
+              return true;
+            }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+            let bal=prog.opening_balance||0;
+            const pdfRows=filtered.map(t=>{const op=bal;bal+=t.points;return[t.txn_date,t.description,t.points>0?"+"+t.points.toLocaleString("en-IN"):t.points.toLocaleString("en-IN"),bal.toLocaleString("en-IN")];});
+            printPDF({
+              title:`${prog.nickname||master?.name||"Program"} — Points Statement`,
+              period:`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`,
+              subtitle:`Opening balance: ${(prog.opening_balance||0).toLocaleString("en-IN")} points`,
+              columns:[{label:"Date",width:"90px"},{label:"Description"},{label:"Points",width:"90px",right:true},{label:"Balance",width:"100px",right:true}],
+              rows:pdfRows,
+              footerNote:`${master?.name||""} · ${owners.find(o=>o.id===prog.owner_id)?.name||""}`
+            });
+          }}>⬇ PDF</button>
         </div>
       </Modal>
             <Modal show={showEdit} onClose={()=>setShowEdit(false)} title="Edit Program">
@@ -6888,7 +7031,39 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
               return `${count} transactions match`;
             })()}
           </div>
-          <button style={{...pbtn,justifyContent:"center"}} onClick={doDownloadSpend}>⬇ Download CSV</button>
+          <div style={{display:"flex",gap:8}}>
+            <button style={{...pbtn,flex:1,justifyContent:"center"}} onClick={doDownloadSpend}>⬇ CSV</button>
+            <button style={{...gbtn,flex:1,justifyContent:"center"}} onClick={()=>{
+              const from=dlFrom?new Date(dlFrom):null;
+              const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+              const filtered=txns.filter(t=>{
+                if(from&&new Date(t.txn_date)<from) return false;
+                if(to&&new Date(t.txn_date)>to) return false;
+                if(dlCat!=="all"&&(t.category||"Other")!==dlCat) return false;
+                if(dlType==="debit"&&Number(t.amount||0)<=0) return false;
+                if(dlType==="credit"&&Number(t.amount||0)>=0) return false;
+                return true;
+              }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+              const totalAmt=filtered.reduce((a,t)=>a+Number(t.amount||0),0);
+              const owner=owners.find(o=>o.id===card.owner_id);
+              printPDF({
+                title:`${mCard?.name||card.nickname||"Card"} — Transaction Statement`,
+                period:`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`,
+                subtitle:`${card.last4?"···· "+card.last4+" · ":""}${owner?.name||""}`,
+                columns:[
+                  {label:"Date",width:"90px"},{label:"Description"},{label:"Category",width:"120px"},
+                  {label:"Amount",width:"110px",right:true,type:"amount"},{label:"Type",width:"65px"}
+                ],
+                rows:filtered.map(t=>[
+                  t.txn_date,t.description,t.category||"Other",
+                  Number(t.amount||0),Number(t.amount||0)>0?"Debit":"Credit"
+                ]),
+                totalsRow:["","","Total",totalAmt,""],
+                footerNote:`${mCard?.bank||""} · ${dlCat!=="all"?dlCat:"All categories"}`
+              });
+              setShowDL(false);
+            }}>⬇ PDF</button>
+          </div>
         </div>
       </Modal>
 
@@ -7582,7 +7757,38 @@ function SpendLedger({db,owners,onNavigate}){
             });
             downloadCSV(`ledger_${dlFrom||"all"}_to_${dlTo||"date"}.csv`,["Date","Person","Direction","Amount","Description","Type","Status"],rows);
             setShowDL(false);
-          }}>⬇ Download CSV</button>
+          }}>⬇ CSV</button>
+          <button style={{...gbtn,justifyContent:"center"}} onClick={()=>{
+            const from=dlFrom?new Date(dlFrom):null;
+            const to=dlTo?new Date(dlTo+" 23:59:59"):null;
+            const filtered=entries.filter(e=>{
+              if(from&&new Date(e.entry_date)<from) return false;
+              if(to&&new Date(e.entry_date)>to) return false;
+              if(dlPerson!=="all"&&e.person_id!==dlPerson) return false;
+              if(dlDir!=="all"&&e.direction!==dlDir) return false;
+              return true;
+            }).sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
+            const totalOwedToMe=filtered.filter(e=>e.direction==="owed_to_me").reduce((a,e)=>a+Number(e.amount||0),0);
+            const totalIOwe=filtered.filter(e=>e.direction==="i_owe").reduce((a,e)=>a+Number(e.amount||0),0);
+            printPDF({
+              title:"Ledger Statement",
+              period:`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`,
+              subtitle:dlPerson!=="all"?`Person: ${people.find(p=>p.id===dlPerson)?.name||""}`:undefined,
+              columns:[
+                {label:"Date",width:"90px"},{label:"Person",width:"110px"},
+                {label:"Direction",width:"100px"},{label:"Amount",width:"90px",right:true,type:"amount"},
+                {label:"Description"},{label:"Status",width:"80px"}
+              ],
+              rows:filtered.map(e=>{
+                const p=people.find(x=>x.id===e.person_id);
+                return[e.entry_date,p?.name||"Unknown",e.direction==="owed_to_me"?"Owed to me":"I owe",
+                  e.direction==="owed_to_me"?Number(e.amount):-Number(e.amount),
+                  e.description||"",e.settled?"Settled":"Outstanding"];
+              }),
+              totalsRow:["","","Net",(totalOwedToMe-totalIOwe),"",""],
+              footerNote:`Owed to me: ₹${totalOwedToMe.toLocaleString("en-IN")} · I owe: ₹${totalIOwe.toLocaleString("en-IN")}`
+            });
+          }}>⬇ PDF</button>
         </div>
       </Modal>
     </div>
