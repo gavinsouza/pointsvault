@@ -6919,7 +6919,15 @@ function SpendTransactions({db,owners}){
     setShowSplit(t);
     const {data:existing}=await db.from("transaction_splits").filter("transaction_id",t.id);
     if(existing&&existing.length>0){
-      setSplits(existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal})));
+      const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
+      // Always ensure a "Mine" row exists — even if 100% was assigned to others
+      const hasMine=loaded.some(s=>s.is_personal);
+      if(!hasMine){
+        const othersTotal=loaded.reduce((a,s)=>a+Number(s.amount||0),0);
+        const myAmt=Number(t.amount)-othersTotal;
+        loaded.unshift({person_id:"",amount:myAmt,is_personal:true});
+      }
+      setSplits(loaded);
     } else {
       setSplits([{person_id:"",amount:Number(t.amount),is_personal:true}]);
     }
