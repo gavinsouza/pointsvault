@@ -7217,7 +7217,7 @@ function SpendLedger({db,owners,onNavigate}){
     const yp=parseFloat(youPaid)||0; const tp=parseFloat(theyPaid)||0;
     if(yp===0&&tp===0) return alert("Enter either You Paid or They Paid amount");
     if(!selPerson) return;
-    const data={person_id:selPerson.id,amount:yp||tp,direction:yp>0?"owed_to_me":"i_owe",description:desc||"Manual entry",entry_date:entryDate,entry_type:"manual",payment_method:method};
+    const data={person_id:selPerson.id,amount:yp||tp,direction:yp>0?"owed_to_me":"i_owe",description:desc||"Manual entry",entry_date:entryDate,entry_type:"manual",payment_method:method,user_id:getCurrentUserId()};
     if(editEntry) await db.from("ledger_entries").update(editEntry.id,data);
     else await db.from("ledger_entries").insert(data);
     setShowAdd(false); setEditEntry(null);
