@@ -439,7 +439,8 @@ function printPDF({title, subtitle, period, columns, rows, totalsRow, footerNote
       const isNeg=isAmt&&typeof cell==="number"&&cell<0;
       const isPos=isAmt&&typeof cell==="number"&&cell>0;
       const style=isNeg?redStyle:isPos?greenStyle:col?.right?tdRStyle:tdStyle;
-      const display=isAmt&&typeof cell==="number"?(cell>=0?"₹"+cell.toLocaleString("en-IN"):"−₹"+Math.abs(cell).toLocaleString("en-IN")):cell;
+      const amt2=typeof cell==="number"?Math.round(cell*100)/100:cell;
+      const display=isAmt&&typeof cell==="number"?(amt2>=0?"₹"+amt2.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}):"−₹"+Math.abs(amt2).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})):cell;
       return`<td style="${style}">${display??""}</td>`;
     }).join("")}</tr>`;
   }).join("");
@@ -6334,6 +6335,8 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
   const [dlTo,setDlTo]=useState("");
   const [dlCat,setDlCat]=useState("all");
   const [dlType,setDlType]=useState("all"); // all|debit|credit
+  const [dlStmts,setDlStmts]=useState(new Set()); // selected stmt months, empty=all
+  const [dlStmtOpen,setDlStmtOpen]=useState(false);
   const [colW,setColW]=useState([90,200,120,90,140,90]); // date,desc,cat,amt,split,stmt
   const [pieMyShareOnly,setPieMyShareOnly]=useState(false);
   const [showTxns,setShowTxns]=useState(false);
@@ -6538,10 +6541,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
   const doDownloadSpend=()=>{
     const from=dlFrom?new Date(dlFrom):null;
     const to=dlTo?new Date(dlTo+" 23:59:59"):null;
-    const cats=new Set(stmts.map(s=>s.statement_month));
     const filtered=txns.filter(t=>{
-      if(from&&new Date(t.txn_date)<from) return false;
-      if(to&&new Date(t.txn_date)>to) return false;
+      if(dlStmts.size>0&&!dlStmts.has(t.statement_month)) return false;
+      if(dlStmts.size===0&&from&&new Date(t.txn_date)<from) return false;
+      if(dlStmts.size===0&&to&&new Date(t.txn_date)>to) return false;
       if(dlCat!=="all"&&(t.category||"Other")!==dlCat) return false;
       if(dlType==="debit"&&Number(t.amount||0)<=0) return false;
       if(dlType==="credit"&&Number(t.amount||0)>=0) return false;
@@ -6999,9 +7002,41 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
 
       <Modal show={showDL} onClose={()=>setShowDL(false)} title="Download Transactions">
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-            <div>{lbl("From date")}<input type="date" style={inp} value={dlFrom} onChange={e=>setDlFrom(e.target.value)}/></div>
-            <div>{lbl("To date")}<input type="date" style={inp} value={dlTo} onChange={e=>setDlTo(e.target.value)}/></div>
+          <div style={{position:"relative"}}>
+            {lbl("Statement month(s)")}
+            <button onClick={()=>setDlStmtOpen(v=>!v)}
+              style={{...gbtn,width:"100%",justifyContent:"space-between",fontSize:12}}>
+              <span>{dlStmts.size===0?"All statements":dlStmts.size+" selected"}</span><span>▾</span>
+            </button>
+            {dlStmtOpen&&(
+              <div style={{position:"absolute",top:"100%",left:0,right:0,zIndex:20,background:surf,
+                border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 0",
+                boxShadow:"0 4px 16px rgba(0,0,0,0.1)",maxHeight:200,overflowY:"auto",marginTop:4}}>
+                <div onClick={()=>{setDlStmts(new Set());setDlStmtOpen(false);}}
+                  style={{padding:"7px 14px",fontSize:12,cursor:"pointer",
+                  fontWeight:dlStmts.size===0?600:400,color:dlStmts.size===0?acc:txt}}>All statements</div>
+                <div style={{height:1,background:bdr,margin:"4px 0"}}/>
+                {stmts.map(s=>{
+                  const checked=dlStmts.has(s.statement_month);
+                  return(
+                    <div key={s.id} onClick={()=>{const n=new Set(dlStmts);checked?n.delete(s.statement_month):n.add(s.statement_month);setDlStmts(n);}}
+                      style={{padding:"7px 14px",fontSize:12,cursor:"pointer",display:"flex",alignItems:"center",gap:8,background:checked?acc+"10":"transparent"}}>
+                      <div style={{width:14,height:14,borderRadius:3,border:`1.5px solid ${bdr}`,background:checked?acc:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        {checked&&<span style={{color:"#fff",fontSize:9,fontWeight:700}}>✓</span>}
+                      </div>
+                      <span>{fmtMonth(s.statement_month)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div style={{opacity:dlStmts.size>0?0.4:1,pointerEvents:dlStmts.size>0?"none":"auto"}}>
+            {lbl("Or custom date range")}
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <input type="date" style={inp} value={dlFrom} onChange={e=>setDlFrom(e.target.value)} placeholder="From"/>
+              <input type="date" style={inp} value={dlTo} onChange={e=>setDlTo(e.target.value)} placeholder="To"/>
+            </div>
           </div>
           <div>{lbl("Category")}
             <select style={inp} value={dlCat} onChange={e=>setDlCat(e.target.value)}>
@@ -7037,8 +7072,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
               const from=dlFrom?new Date(dlFrom):null;
               const to=dlTo?new Date(dlTo+" 23:59:59"):null;
               const filtered=txns.filter(t=>{
-                if(from&&new Date(t.txn_date)<from) return false;
-                if(to&&new Date(t.txn_date)>to) return false;
+                if(dlStmts.size>0&&!dlStmts.has(t.statement_month)) return false;
+                if(dlStmts.size===0&&from&&new Date(t.txn_date)<from) return false;
+                if(dlStmts.size===0&&to&&new Date(t.txn_date)>to) return false;
                 if(dlCat!=="all"&&(t.category||"Other")!==dlCat) return false;
                 if(dlType==="debit"&&Number(t.amount||0)<=0) return false;
                 if(dlType==="credit"&&Number(t.amount||0)>=0) return false;
@@ -7046,9 +7082,10 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
               }).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
               const totalAmt=filtered.reduce((a,t)=>a+Number(t.amount||0),0);
               const owner=owners.find(o=>o.id===card.owner_id);
+              const periodStr=dlStmts.size>0?[...dlStmts].map(m=>fmtMonth(m)).join(", "):`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`;
               printPDF({
                 title:`${mCard?.name||card.nickname||"Card"} — Transaction Statement`,
-                period:`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`,
+                period:periodStr,
                 subtitle:`${card.last4?"···· "+card.last4+" · ":""}${owner?.name||""}`,
                 columns:[
                   {label:"Date",width:"90px"},{label:"Description"},{label:"Category",width:"120px"},
@@ -7770,23 +7807,35 @@ function SpendLedger({db,owners,onNavigate}){
             }).sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
             const totalOwedToMe=filtered.filter(e=>e.direction==="owed_to_me").reduce((a,e)=>a+Number(e.amount||0),0);
             const totalIOwe=filtered.filter(e=>e.direction==="i_owe").reduce((a,e)=>a+Number(e.amount||0),0);
+            // Build running balance exactly like the app
+            const personName=dlPerson!=="all"?people.find(p=>p.id===dlPerson)?.name||"All":null;
+            const sortedForPDF=[...filtered].sort((a,b)=>new Date(a.entry_date)-new Date(b.entry_date));
+            let runBal=0;
+            const pdfRows=sortedForPDF.map(e=>{
+              const yp=e.direction==="owed_to_me"?Number(e.amount||0):0;
+              const tp=e.direction==="i_owe"?Number(e.amount||0):0;
+              runBal+=yp-tp;
+              const pName=people.find(x=>x.id===e.person_id)?.name||"";
+              const src=e.entry_type==="split"?"Split":"Manual";
+              return[fmtDate(e.entry_date),e.description||"",dlPerson==="all"?pName:src,
+                yp>0?"₹"+yp.toLocaleString("en-IN"):"—",
+                tp>0?"₹"+tp.toLocaleString("en-IN"):"—",
+                "₹"+runBal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})];
+            });
             printPDF({
-              title:"Ledger Statement",
+              title:"Ledger Statement"+(personName?" — "+personName:""),
               period:`${dlFrom||"All time"} to ${dlTo||new Date().toISOString().slice(0,10)}`,
-              subtitle:dlPerson!=="all"?`Person: ${people.find(p=>p.id===dlPerson)?.name||""}`:undefined,
+              subtitle:personName?`Running balance: ₹${Math.abs(runBal).toLocaleString("en-IN")} ${runBal>=0?"owed to you":"you owe"}`:undefined,
               columns:[
-                {label:"Date",width:"90px"},{label:"Person",width:"110px"},
-                {label:"Direction",width:"100px"},{label:"Amount",width:"90px",right:true,type:"amount"},
-                {label:"Description"},{label:"Status",width:"80px"}
+                {label:"Date",width:"80px"},{label:"Description"},
+                {label:dlPerson==="all"?"Person":"Source",width:"80px"},
+                {label:"You Paid",width:"80px",right:true},
+                {label:"They Paid",width:"80px",right:true},
+                {label:"Balance",width:"90px",right:true}
               ],
-              rows:filtered.map(e=>{
-                const p=people.find(x=>x.id===e.person_id);
-                return[e.entry_date,p?.name||"Unknown",e.direction==="owed_to_me"?"Owed to me":"I owe",
-                  e.direction==="owed_to_me"?Number(e.amount):-Number(e.amount),
-                  e.description||"",e.settled?"Settled":"Outstanding"];
-              }),
-              totalsRow:["","","Net",(totalOwedToMe-totalIOwe),"",""],
-              footerNote:`Owed to me: ₹${totalOwedToMe.toLocaleString("en-IN")} · I owe: ₹${totalIOwe.toLocaleString("en-IN")}`
+              rows:pdfRows,
+              totalsRow:["","","","₹"+totalOwedToMe.toLocaleString("en-IN"),"₹"+totalIOwe.toLocaleString("en-IN"),"₹"+Math.abs(totalOwedToMe-totalIOwe).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})],
+              footerNote:`Owed to me: ₹${totalOwedToMe.toLocaleString("en-IN")} · I owe: ₹${totalIOwe.toLocaleString("en-IN")} · Net: ₹${(totalOwedToMe-totalIOwe).toLocaleString("en-IN")}`
             });
           }}>⬇ PDF</button>
         </div>
