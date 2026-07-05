@@ -5022,7 +5022,9 @@ function SpendUpload({db,owners=[]}){
   const [amexResult,setAmexResult]=useState(null);
   const [amexFile,setAmexFile]=useState(null);
   const [amexParsing,setAmexParsing]=useState(false);
-  const [amexError,setAmexError]=useState(""); // 1=upload 2=map 3=preview 4=done
+  const [amexError,setAmexError]=useState("");
+  const [allCards,setAllCards]=useState([]);
+  const [allMCards,setAllMCards]=useState([]); // 1=upload 2=map 3=preview 4=done
   const [rawRows,setRawRows]=useState([]);
   const [fileName,setFileName]=useState("");
   const [mappings,setMappings]=useState([]);
@@ -5063,6 +5065,10 @@ function SpendUpload({db,owners=[]}){
   const [selMapping,setSelMapping]=useState("");
   const [mappingExpanded,setMappingExpanded]=useState(false);
 
+    useEffect(()=>{
+    db.from("my_cards").select().then(r=>setAllCards(r.data||[]));
+    db.from("master_cards").select().then(r=>setAllMCards(r.data||[]));
+  },[db]);
   useEffect(()=>{
     (async()=>{
       const [c,mc,p,r,dbRules,dbCats]=await Promise.all([
