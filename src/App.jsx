@@ -553,8 +553,7 @@ async function parseAmexPDF(file){
       return{y:Number(y),text:sorted.map(i=>i.t).join(" "),items:sorted};
     });
 
-  const fullText=lines.map(l=>l.text).join("
-");
+  const fullText=lines.map(l=>l.text).join("\n");
   if(!fullText.includes("American Express")) throw new Error("Not an Amex statement — please upload an American Express PDF");
 
   // ── Statement date & period ───────────────────────────────────────────────
