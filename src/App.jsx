@@ -520,6 +520,171 @@ function printPDF({title, subtitle, period, columns, rows, totalsRow, footerNote
   w.onload=()=>{w.focus();w.print();};
 }
 
+// ── Amex PDF Parser ──────────────────────────────────────────────────────────
+async function parseAmexPDF(file){
+  const MONTHS={january:"01",february:"02",march:"03",april:"04",may:"05",
+    june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12"};
+  const MONTH_ABBR={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",
+    jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+
+  // Extract all text from PDF via PDF.js
+  const pdfjsLib=window.pdfjsLib;
+  if(!pdfjsLib) throw new Error("PDF.js not loaded");
+  const arrayBuffer=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+  
+  // Get text from page 1 only (transactions are on page 1)
+  const page=await pdf.getPage(1);
+  const textContent=await page.getTextContent();
+  
+  // Build lines by grouping items with similar Y positions
+  const items=textContent.items.map(i=>({
+    text:i.str.trim(),
+    x:Math.round(i.transform[4]),
+    y:Math.round(i.transform[5]),
+    width:i.width,
+  })).filter(i=>i.text.length>0);
+
+  // Group by Y position (within 3px = same line)
+  const lineMap={};
+  items.forEach(item=>{
+    const yKey=Object.keys(lineMap).find(k=>Math.abs(Number(k)-item.y)<4);
+    const key=yKey||String(item.y);
+    if(!lineMap[key]) lineMap[key]=[];
+    lineMap[key].push(item);
+  });
+  // Sort lines top to bottom (PDF Y is bottom-up so sort descending)
+  const lines=Object.entries(lineMap)
+    .sort((a,b)=>Number(b[0])-Number(a[0]))
+    .map(([y,items])=>({
+      y:Number(y),
+      text:items.sort((a,b)=>a.x-b.x).map(i=>i.text).join(" "),
+      items:items.sort((a,b)=>a.x-b.x),
+      maxX:Math.max(...items.map(i=>i.x+(i.width||0))),
+    }));
+
+  // Detect Amex format
+  const fullText=lines.map(l=>l.text).join(" ");
+  if(!fullText.includes("American Express")) throw new Error("Not an Amex statement");
+
+  // Parse statement date & membership number
+  const dateMatch=fullText.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const stmtDate=dateMatch?`${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`:"";
+  const stmtYearMonth=stmtDate.slice(0,7); // YYYY-MM
+
+  // Parse summary: "29,910.93 - 30,000.00 + 20,000.00 = 19,910.93  996.00"
+  const numRe=/[\d,]+\.\d{2}/g;
+  let openingBal=0,newCredits=0,newDebits=0,closingBal=0,minPayment=0;
+  for(const line of lines){
+    // Summary line contains - and + and = 
+    if(line.text.includes(" - ") && line.text.includes(" + ") && line.text.includes(" = ")){
+      const nums=(line.text.match(numRe)||[]).map(n=>parseFloat(n.replace(/,/g,"")));
+      if(nums.length>=5){
+        [openingBal,newCredits,newDebits,closingBal,minPayment]=nums;
+      } else if(nums.length>=4){
+        [openingBal,newCredits,newDebits,closingBal]=nums;
+      }
+      break;
+    }
+  }
+
+  // Parse statement period
+  let stmtMonth=stmtYearMonth;
+  const periodMatch=fullText.match(/From\s+\w+\s+\d+\s+to\s+(\w+)\s+(\d+),\s*(\d{4})/i);
+  if(periodMatch){
+    const mon=MONTHS[periodMatch[1].toLowerCase()]||"01";
+    stmtMonth=`${periodMatch[3]}-${mon}`;
+  }
+
+  // Parse transactions
+  // Pattern: line starting with "Month Day" (e.g. "May 2", "March 06")
+  const TXN_DATE_RE=/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i;
+  const AMT_RE=/^[\d,]+\.\d{2}$/;
+  
+  const transactions=[];
+  let i=0;
+  while(i<lines.length){
+    const line=lines[i];
+    const m=line.text.match(TXN_DATE_RE);
+    if(m){
+      const mon=MONTHS[m[1].toLowerCase()]||"01";
+      const day=m[2].padStart(2,"0");
+      // Find year from stmt period
+      const yr=stmtMonth.slice(0,4);
+      // If month > stmtMonth month, it's previous year
+      const stmtMon=parseInt(stmtMonth.slice(5,7));
+      const txnMon=parseInt(mon);
+      const txnYr=(txnMon>stmtMon+1)?String(parseInt(yr)-1):yr;
+      const txnDate=`${txnYr}-${mon}-${day}`;
+
+      // Get the rightmost number on this line = amount
+      const allNums=line.items.filter(it=>AMT_RE.test(it.text.replace(/,/g,"")));
+      let amount=0;
+      let isCredit=false;
+      
+      if(allNums.length>0){
+        // Take the rightmost number
+        const amtItem=allNums.reduce((a,b)=>b.x>a.x?b:a);
+        amount=parseFloat(amtItem.text.replace(/,/g,""));
+      }
+      
+      // Description = text between date and amount
+      // Remove the date portion and the amount
+      let desc=line.text.replace(TXN_DATE_RE,"").trim();
+      // Remove trailing amount
+      desc=desc.replace(/[\d,]+\.\d{2}\s*$/, "").trim();
+      // Remove "CR" if present
+      if(desc.endsWith(" CR")||desc.endsWith("
+CR")){
+        desc=desc.replace(/\s*CR\s*$/,"").trim();
+        isCredit=true;
+      }
+      
+      // Check next line for "CR" marker
+      if(i+1<lines.length){
+        const nextLine=lines[i+1].text.trim();
+        if(nextLine==="CR"){
+          isCredit=true;
+          i++; // skip CR line
+        } else if(nextLine.startsWith("Card Number")){
+          // Payment line - skip card number line
+          i++;
+        }
+      }
+      
+      // Skip subtotal/summary lines
+      const skipPatterns=["new domestic transactions","other account transactions","total of other",
+        "new international transactions","payment received. thank you"];
+      const descLower=desc.toLowerCase();
+      const isSkip=skipPatterns.some(p=>descLower.includes(p))||amount===0;
+      
+      if(!isSkip&&desc.length>0&&amount>0){
+        transactions.push({
+          txn_date:txnDate,
+          description:desc.replace(/\s+/g," ").trim(),
+          amount:isCredit?-amount:amount,
+          is_credit:isCredit,
+          statement_month:stmtMonth,
+        });
+      }
+    }
+    i++;
+  }
+
+  return{
+    bank:"American Express",
+    statement_month:stmtMonth,
+    statement_date:stmtDate,
+    opening_balance:openingBal,
+    new_credits:newCredits,
+    new_debits:newDebits,
+    closing_balance:closingBal,
+    min_payment:minPayment,
+    total_due:closingBal,
+    transactions,
+  };
+}
+
 // ── Download Modal component ────────────────────────────────────────────────
 function DownloadModal({show,onClose,title,children}){
   if(!show) return null;
@@ -1868,6 +2033,8 @@ function LibraryImport({db, onClose, onDone, userId}){
         <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
         <button style={{...pbtn,opacity:allFuzzyAnswered?1:0.4}} onClick={()=>allFuzzyAnswered&&setStep(2)}>Continue →</button>
       </div>
+      </div>
+      )}
     </div>
   );
 
@@ -4853,7 +5020,12 @@ async function parseXLSXFile(file){
 }
 
 function SpendUpload({db,owners=[]}){
-  const [step,setStep]=useState(1); // 1=upload 2=map 3=preview 4=done
+  const [step,setStep]=useState(1);
+  const [uploadMode,setUploadMode]=useState("csv"); // csv | amex
+  const [amexResult,setAmexResult]=useState(null);
+  const [amexFile,setAmexFile]=useState(null);
+  const [amexParsing,setAmexParsing]=useState(false);
+  const [amexError,setAmexError]=useState(""); // 1=upload 2=map 3=preview 4=done
   const [rawRows,setRawRows]=useState([]);
   const [fileName,setFileName]=useState("");
   const [mappings,setMappings]=useState([]);
@@ -5309,6 +5481,135 @@ function SpendUpload({db,owners=[]}){
   if(step===1) return(
     <div>
       <Hdr title="CC Statement Upload" sub="Import your bank statement to log credit card transactions automatically"/>
+      <div style={{display:"flex",gap:8,marginBottom:16,maxWidth:520}}>
+        <button onClick={()=>{setUploadMode("csv");setAmexResult(null);setAmexError("");}}
+          style={{flex:1,padding:"10px",borderRadius:10,border:`2px solid ${uploadMode==="csv"?txt:bdr}`,
+          background:uploadMode==="csv"?txt:surf,color:uploadMode==="csv"?"#fff":mut,
+          fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+          CSV / Excel
+        </button>
+        <button onClick={()=>{setUploadMode("amex");setAmexResult(null);setAmexError("");}}
+          style={{flex:1,padding:"10px",borderRadius:10,border:`2px solid ${uploadMode==="amex"?txt:bdr}`,
+          background:uploadMode==="amex"?txt:surf,color:uploadMode==="amex"?"#fff":mut,
+          fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+          Amex PDF
+        </button>
+      </div>
+      {uploadMode==="amex"?(
+      <div style={{maxWidth:520}}>
+        <Card>
+          <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:12}}>Upload American Express Statement PDF</div>
+          <div style={{fontSize:12,color:mut,marginBottom:16,lineHeight:1.6}}>
+            Supports American Express Membership Rewards credit card statements. Upload the PDF directly — no manual column mapping needed.
+          </div>
+          {lbl("Select card to assign transactions to")}
+          <select style={inp} value={selCard} onChange={e=>setSelCard(e.target.value)}>
+            <option value="">-- select card --</option>
+            {(()=>{const grouped={};allCards.forEach(c=>{const o=owners.find(x=>x.id===c.owner_id);const n=o?.name||"Unknown";if(!grouped[n])grouped[n]=[];grouped[n].push(c);});return Object.entries(grouped).map(([ownerName,cards])=>(<optgroup key={ownerName} label={ownerName}>{cards.map(c=>{const m=allMCards.find(x=>x.id===c.master_id);return<option key={c.id} value={c.id}>{c.nickname||m?.name}{c.last4?" ·· "+c.last4:""}</option>;})}</optgroup>));})()}
+          </select>
+          {lbl("Statement month")}
+          <div style={{display:"flex",gap:8,marginBottom:12}}>
+            <select style={{...inp,flex:1,marginBottom:0}} value={modalMonth} onChange={e=>setModalMonth(e.target.value)}>
+              <option value="">Month</option>
+              {["01","02","03","04","05","06","07","08","09","10","11","12"].map((m,i)=>(
+                <option key={m} value={m}>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i]}</option>
+              ))}
+            </select>
+            <select style={{...inp,flex:1,marginBottom:0}} value={modalYear} onChange={e=>setModalYear(e.target.value)}>
+              <option value="">Year</option>
+              {Array.from({length:6},(_,i)=>String(new Date().getFullYear()-i)).map(y=><option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          {lbl("Amex PDF file")}
+          <input type="file" accept=".pdf" style={{display:"block",width:"100%",padding:"8px",marginBottom:12,fontSize:12}}
+            onChange={async e=>{
+              const f=e.target.files?.[0];
+              if(!f) return;
+              setAmexFile(f);setAmexError("");setAmexResult(null);
+              setAmexParsing(true);
+              try{
+                const result=await parseAmexPDF(f);
+                // Override statement month with user selection if provided
+                if(modalYear&&modalMonth) result.statement_month=`${modalYear}-${modalMonth}`;
+                setAmexResult(result);
+              }catch(err){
+                setAmexError("Could not parse PDF: "+err.message+". Make sure it's an Amex Membership Rewards statement.");
+              }
+              setAmexParsing(false);
+            }}/>
+          {amexParsing&&<div style={{color:mut,fontSize:12,marginBottom:8}}>Parsing PDF…</div>}
+          {amexError&&<div style={{color:red,fontSize:12,marginBottom:8}}>{amexError}</div>}
+          {amexResult&&(
+            <div>
+              <div style={{background:surf2,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+                <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em"}}>Statement Summary</div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,fontSize:12}}>
+                  <div><span style={{color:mut}}>Period: </span><span style={{fontWeight:600}}>{fmtMonth(amexResult.statement_month)}</span></div>
+                  <div><span style={{color:mut}}>Transactions: </span><span style={{fontWeight:600}}>{amexResult.transactions.length}</span></div>
+                  <div><span style={{color:mut}}>Opening Bal: </span><span style={{fontWeight:600}}>₹{amexResult.opening_balance.toLocaleString("en-IN")}</span></div>
+                  <div><span style={{color:mut}}>Closing Bal: </span><span style={{fontWeight:600}}>₹{amexResult.closing_balance.toLocaleString("en-IN")}</span></div>
+                  <div><span style={{color:mut}}>New Debits: </span><span style={{fontWeight:600,color:red}}>₹{amexResult.new_debits.toLocaleString("en-IN")}</span></div>
+                  <div><span style={{color:mut}}>Min Payment: </span><span style={{fontWeight:600}}>₹{amexResult.min_payment.toLocaleString("en-IN")}</span></div>
+                </div>
+              </div>
+              <div style={{fontSize:11,color:mut,marginBottom:8}}>Preview (first 5 transactions):</div>
+              <div style={{fontSize:11,background:surf2,borderRadius:8,padding:8,marginBottom:12,maxHeight:160,overflowY:"auto"}}>
+                {amexResult.transactions.slice(0,5).map((t,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"3px 0",borderBottom:`1px solid ${bdr}`}}>
+                    <span style={{color:mut}}>{t.txn_date}</span>
+                    <span style={{flex:1,marginLeft:8,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description}</span>
+                    <span style={{color:t.amount<0?grn:txt,fontWeight:600,marginLeft:8}}>{t.amount<0?"−":""}₹{Math.abs(t.amount).toLocaleString("en-IN")}</span>
+                  </div>
+                ))}
+                {amexResult.transactions.length>5&&<div style={{color:mut,marginTop:4}}>…and {amexResult.transactions.length-5} more</div>}
+              </div>
+              <button style={{...pbtn,width:"100%",justifyContent:"center"}}
+                onClick={async()=>{
+                  if(!selCard) return alert("Please select a card first");
+                  if(!amexResult.statement_month) return alert("Please select statement month");
+                  let imported=0;let skipped=0;
+                  // Create statement record
+                  const stmtMonth=modalYear&&modalMonth?`${modalYear}-${modalMonth}`:amexResult.statement_month;
+                  const {data:stmtData}=await db.from("statements").insert({
+                    card_id:selCard,
+                    statement_month:stmtMonth,
+                    transaction_count:amexResult.transactions.filter(t=>t.amount>0).length,
+                    total_spend:amexResult.transactions.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0),
+                    file_name:amexFile?.name||"amex_statement.pdf",
+                    total_due:amexResult.total_due,
+                    opening_balance:amexResult.opening_balance,
+                    user_id:getCurrentUserId(),
+                  });
+                  const stmtId=stmtData&&stmtData[0]?.id;
+                  for(const t of amexResult.transactions){
+                    const txnData={
+                      card_id:selCard,
+                      txn_date:t.txn_date,
+                      description:t.description,
+                      amount:Math.abs(t.amount),
+                      category:"Other",
+                      is_reimbursable:false,
+                      raw_description:t.description,
+                      imported_from:amexFile?.name||"amex_pdf",
+                      statement_month:stmtMonth,
+                      user_id:getCurrentUserId(),
+                    };
+                    if(stmtId) txnData.statement_id=stmtId;
+                    const {error}=await db.from("spend_transactions").insert(txnData);
+                    if(error){console.error(error);skipped++;}
+                    else imported++;
+                  }
+                  alert(`Imported ${imported} transactions${skipped>0?`, ${skipped} skipped`:""}. Statement month: ${fmtMonth(stmtMonth)}.`);
+                  setAmexResult(null);setAmexFile(null);setAmexError("");
+                  onNavigate&&onNavigate("spend-cards");
+                }}>
+                Import {amexResult.transactions.length} Transactions →
+              </button>
+            </div>
+          )}
+        </Card>
+      </div>
+      ):(
       <div style={{maxWidth:520}}>
         <Card>
           <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:16}}>Select your CSV file</div>
