@@ -5529,7 +5529,7 @@ function SpendUpload({db,owners=[]}){
                   const {data:stmtData}=await db.from("statements").insert({
                     card_id:selCard,
                     statement_month:stmtMonth,
-                    transaction_count:amexResult.transactions.filter(t=>t.amount>0).length,
+                    transaction_count:amexResult.transactions.length,
                     total_spend:amexResult.transactions.filter(t=>t.amount>0).reduce((a,t)=>a+t.amount,0),
                     file_name:amexFile?.name||"amex_statement.pdf",
                     total_due:amexResult.total_due,
@@ -5542,7 +5542,7 @@ function SpendUpload({db,owners=[]}){
                       card_id:selCard,
                       txn_date:t.txn_date,
                       description:t.description,
-                      amount:Math.abs(t.amount),
+                      amount:t.amount, // negative = credit, positive = debit
                       category:"Other",
                       is_reimbursable:false,
                       raw_description:t.description,
