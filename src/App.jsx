@@ -2032,8 +2032,6 @@ function LibraryImport({db, onClose, onDone, userId}){
         <button style={gbtn} onClick={()=>setStep(1)}>← Back</button>
         <button style={{...pbtn,opacity:allFuzzyAnswered?1:0.4}} onClick={()=>allFuzzyAnswered&&setStep(2)}>Continue →</button>
       </div>
-      </div>
-      )}
     </div>
   );
 
@@ -5627,6 +5625,7 @@ function SpendUpload({db,owners=[]}){
 
         </Card>
       </div>
+      )}
     </div>
   );
 
