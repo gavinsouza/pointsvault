@@ -634,8 +634,7 @@ async function parseAmexPDF(file){
       // Remove trailing amount
       desc=desc.replace(/[\d,]+\.\d{2}\s*$/, "").trim();
       // Remove "CR" if present
-      if(desc.endsWith(" CR")||desc.endsWith("
-CR")){
+      if(desc.endsWith(" CR")||desc.endsWith("\nCR")||desc.endsWith("\nCR")){
         desc=desc.replace(/\s*CR\s*$/,"").trim();
         isCredit=true;
       }
