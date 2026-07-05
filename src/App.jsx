@@ -524,150 +524,130 @@ function printPDF({title, subtitle, period, columns, rows, totalsRow, footerNote
 async function parseAmexPDF(file){
   const MONTHS={january:"01",february:"02",march:"03",april:"04",may:"05",
     june:"06",july:"07",august:"08",september:"09",october:"10",november:"11",december:"12"};
-  const MONTH_ABBR={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",
-    jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
 
-  // Extract all text from PDF via PDF.js
   const pdfjsLib=window.pdfjsLib;
-  if(!pdfjsLib) throw new Error("PDF.js not loaded");
+  if(!pdfjsLib) throw new Error("PDF.js not loaded — please refresh the page");
   const arrayBuffer=await file.arrayBuffer();
   const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
-  
-  // Get text from page 1 only (transactions are on page 1)
+
+  // Extract raw text items from page 1 with position info
   const page=await pdf.getPage(1);
-  const textContent=await page.getTextContent();
-  
-  // Build lines by grouping items with similar Y positions
-  const items=textContent.items.map(i=>({
-    text:i.str.trim(),
+  const tc=await page.getTextContent();
+  const raw=tc.items.map(i=>({
+    t:i.str,
     x:Math.round(i.transform[4]),
     y:Math.round(i.transform[5]),
-    width:i.width,
-  })).filter(i=>i.text.length>0);
+  })).filter(i=>i.t.trim().length>0);
 
-  // Group by Y position (within 3px = same line)
-  const lineMap={};
-  items.forEach(item=>{
-    const yKey=Object.keys(lineMap).find(k=>Math.abs(Number(k)-item.y)<4);
-    const key=yKey||String(item.y);
-    if(!lineMap[key]) lineMap[key]=[];
-    lineMap[key].push(item);
+  // Group into lines by Y (within 5px tolerance, PDF Y is bottom-up so sort desc)
+  const byY={};
+  raw.forEach(item=>{
+    const key=Object.keys(byY).find(k=>Math.abs(Number(k)-item.y)<=5)||String(item.y);
+    if(!byY[key]) byY[key]=[];
+    byY[key].push(item);
   });
-  // Sort lines top to bottom (PDF Y is bottom-up so sort descending)
-  const lines=Object.entries(lineMap)
+  const lines=Object.entries(byY)
     .sort((a,b)=>Number(b[0])-Number(a[0]))
-    .map(([y,items])=>({
-      y:Number(y),
-      text:items.sort((a,b)=>a.x-b.x).map(i=>i.text).join(" "),
-      items:items.sort((a,b)=>a.x-b.x),
-      maxX:Math.max(...items.map(i=>i.x+(i.width||0))),
-    }));
+    .map(([y,its])=>{
+      const sorted=its.sort((a,b)=>a.x-b.x);
+      return{y:Number(y),text:sorted.map(i=>i.t).join(" "),items:sorted};
+    });
 
-  // Detect Amex format
-  const fullText=lines.map(l=>l.text).join(" ");
-  if(!fullText.includes("American Express")) throw new Error("Not an Amex statement");
+  const fullText=lines.map(l=>l.text).join("
+");
+  if(!fullText.includes("American Express")) throw new Error("Not an Amex statement — please upload an American Express PDF");
 
-  // Parse statement date & membership number
+  // ── Statement date & period ───────────────────────────────────────────────
   const dateMatch=fullText.match(/(\d{2})\/(\d{2})\/(\d{4})/);
   const stmtDate=dateMatch?`${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`:"";
-  const stmtYearMonth=stmtDate.slice(0,7); // YYYY-MM
+  let stmtMonth=stmtDate.slice(0,7);
+  const periodMatch=fullText.match(/From\s+\w+\s+\d+\s+to\s+(\w+)\s+\d+,?\s*(\d{4})/i);
+  if(periodMatch){
+    const mon=MONTHS[periodMatch[1].toLowerCase()]||"01";
+    stmtMonth=`${periodMatch[2]}-${mon}`;
+  }
 
-  // Parse summary: "29,910.93 - 30,000.00 + 20,000.00 = 19,910.93  996.00"
-  const numRe=/[\d,]+\.\d{2}/g;
+  // ── Summary row ───────────────────────────────────────────────────────────
   let openingBal=0,newCredits=0,newDebits=0,closingBal=0,minPayment=0;
   for(const line of lines){
-    // Summary line contains - and + and = 
-    if(line.text.includes(" - ") && line.text.includes(" + ") && line.text.includes(" = ")){
-      const nums=(line.text.match(numRe)||[]).map(n=>parseFloat(n.replace(/,/g,"")));
-      if(nums.length>=5){
-        [openingBal,newCredits,newDebits,closingBal,minPayment]=nums;
-      } else if(nums.length>=4){
-        [openingBal,newCredits,newDebits,closingBal]=nums;
-      }
+    if(line.text.includes(" - ")&&line.text.includes(" + ")&&line.text.includes(" = ")){
+      const nums=(line.text.match(/[\d,]+\.\d{2}/g)||[]).map(n=>parseFloat(n.replace(/,/g,"")));
+      if(nums.length>=4)[openingBal,newCredits,newDebits,closingBal]=nums;
+      if(nums.length>=5) minPayment=nums[4];
       break;
     }
   }
-
-  // Parse statement period
-  let stmtMonth=stmtYearMonth;
-  const periodMatch=fullText.match(/From\s+\w+\s+\d+\s+to\s+(\w+)\s+(\d+),\s*(\d{4})/i);
-  if(periodMatch){
-    const mon=MONTHS[periodMatch[1].toLowerCase()]||"01";
-    stmtMonth=`${periodMatch[3]}-${mon}`;
+  // Min payment sometimes on a separate line
+  if(!minPayment){
+    const mpMatch=fullText.match(/Minimum Payment(?:\s+Rs?\.?)?\s*([\d,]+(?:\.\d{2})?)/i);
+    if(mpMatch) minPayment=parseFloat(mpMatch[1].replace(/,/g,""));
   }
 
-  // Parse transactions
-  // Pattern: line starting with "Month Day" (e.g. "May 2", "March 06")
-  const TXN_DATE_RE=/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})/i;
-  const AMT_RE=/^[\d,]+\.\d{2}$/;
-  
-  const transactions=[];
-  let i=0;
-  while(i<lines.length){
-    const line=lines[i];
-    const m=line.text.match(TXN_DATE_RE);
-    if(m){
-      const mon=MONTHS[m[1].toLowerCase()]||"01";
-      const day=m[2].padStart(2,"0");
-      // Find year from stmt period
-      const yr=stmtMonth.slice(0,4);
-      // If month > stmtMonth month, it's previous year
-      const stmtMon=parseInt(stmtMonth.slice(5,7));
-      const txnMon=parseInt(mon);
-      const txnYr=(txnMon>stmtMon+1)?String(parseInt(yr)-1):yr;
-      const txnDate=`${txnYr}-${mon}-${day}`;
+  // ── Transaction parsing ───────────────────────────────────────────────────
+  // Strategy: look for lines where the FIRST token is "Month Day"
+  // Amex format: "February 13" or "Feb 13" at start of line
+  const MON_FULL="(?:January|February|March|April|May|June|July|August|September|October|November|December)";
+  const TXN_RE=new RegExp(`^(${MON_FULL})\s+(\d{1,2})\b`,"i");
+  const AMT_RE=/[\d,]+\.\d{2}$/;
+  const AMT_ANYWHERE=/[\d,]+\.\d{2}/g;
 
-      // Get the rightmost number on this line = amount
-      const allNums=line.items.filter(it=>AMT_RE.test(it.text.replace(/,/g,"")));
-      let amount=0;
-      let isCredit=false;
-      
-      if(allNums.length>0){
-        // Take the rightmost number
-        const amtItem=allNums.reduce((a,b)=>b.x>a.x?b:a);
-        amount=parseFloat(amtItem.text.replace(/,/g,""));
-      }
-      
-      // Description = text between date and amount
-      // Remove the date portion and the amount
-      let desc=line.text.replace(TXN_DATE_RE,"").trim();
-      // Remove trailing amount
-      desc=desc.replace(/[\d,]+\.\d{2}\s*$/, "").trim();
-      // Remove "CR" if present
-      if(desc.endsWith(" CR")||desc.endsWith("\nCR")||desc.endsWith("\nCR")){
-        desc=desc.replace(/\s*CR\s*$/,"").trim();
-        isCredit=true;
-      }
-      
-      // Check next line for "CR" marker
-      if(i+1<lines.length){
-        const nextLine=lines[i+1].text.trim();
-        if(nextLine==="CR"){
-          isCredit=true;
-          i++; // skip CR line
-        } else if(nextLine.startsWith("Card Number")){
-          // Payment line - skip card number line
-          i++;
-        }
-      }
-      
-      // Skip subtotal/summary lines
-      const skipPatterns=["new domestic transactions","other account transactions","total of other",
-        "new international transactions","payment received. thank you"];
-      const descLower=desc.toLowerCase();
-      const isSkip=skipPatterns.some(p=>descLower.includes(p))||amount===0;
-      
-      if(!isSkip&&desc.length>0&&amount>0){
-        transactions.push({
-          txn_date:txnDate,
-          description:desc.replace(/\s+/g," ").trim(),
-          amount:isCredit?-amount:amount,
-          is_credit:isCredit,
-          statement_month:stmtMonth,
-        });
-      }
+  const skipPatterns=["new domestic transactions","new international","other account transactions",
+    "total of other","payment received","card number","foreign spending","details"];
+
+  const stmtMon=parseInt(stmtMonth.slice(5,7)||"01");
+  const stmtYr=parseInt(stmtMonth.slice(0,4)||new Date().getFullYear());
+
+  const transactions=[];
+  for(let i=0;i<lines.length;i++){
+    const line=lines[i];
+    const m=line.text.match(TXN_RE);
+    if(!m) continue;
+
+    const mon=MONTHS[m[1].toLowerCase()]||"01";
+    const day=m[2].padStart(2,"0");
+    const txnMon=parseInt(mon);
+    // If txn month is much higher than stmt month, it's from previous year
+    const txnYr=(txnMon>stmtMon+1)?stmtYr-1:stmtYr;
+    const txnDate=`${txnYr}-${mon}-${day}`;
+
+    // Build full text of this transaction (may span next line for CR)
+    let txnText=line.text;
+    let isCredit=false;
+
+    // Check if next line is just "CR" or starts with "Card Number"
+    if(i+1<lines.length){
+      const next=lines[i+1].text.trim();
+      if(next==="CR"||next.startsWith("CR ")){isCredit=true;i++;}
+      else if(next.startsWith("Card Number")) i++; // skip card number line
     }
-    i++;
+
+    // Also check if "CR" appears at end of this line
+    if(/CR\s*$/.test(txnText)){isCredit=true;txnText=txnText.replace(/CR\s*$/,"");}
+
+    // Extract amount — last number on line
+    const amtMatch=txnText.match(/[\d,]+\.\d{2}(?:\s*CR)?$/);
+    if(!amtMatch) continue;
+    const amount=parseFloat(amtMatch[0].replace(/[,CR\s]/g,""));
+    if(!amount||amount===0) continue;
+
+    // Description = remove leading "Month Day" and trailing amount
+    let desc=txnText
+      .replace(TXN_RE,"")
+      .replace(/[\d,]+\.\d{2}\s*(CR)?\s*$/,"")
+      .trim();
+
+    // Skip header/summary rows
+    const descLower=desc.toLowerCase();
+    if(skipPatterns.some(p=>descLower.includes(p))) continue;
+    if(desc.length<2) continue;
+
+    transactions.push({
+      txn_date:txnDate,
+      description:desc.replace(/\s+/g," ").trim(),
+      amount:isCredit?-amount:amount,
+      is_credit:isCredit,
+      statement_month:stmtMonth,
+    });
   }
 
   return{
