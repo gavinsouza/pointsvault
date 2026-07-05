@@ -557,6 +557,7 @@ async function parseAmexPDF(file){
   console.log("=== AMEX PDF LINES ===");
   lines.slice(0,30).forEach((l,i)=>console.log(`L${i}: y=${l.y} | ${JSON.stringify(l.text)}`));
   console.log("=== END ===");
+  const TXN_RE=/^(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})\b/i;
   console.log("stmtMonth:", stmtMonth, "TXN_RE test:", TXN_RE.test("February 12 PayU*CRED 2.00"));
   // Log all lines that match TXN_RE
   lines.forEach((l,i)=>{if(TXN_RE.test(l.text)) console.log("TXN MATCH L"+i+":", JSON.stringify(l.text));});
@@ -593,10 +594,7 @@ async function parseAmexPDF(file){
   // ── Transaction parsing ───────────────────────────────────────────────────
   // Strategy: look for lines where the FIRST token is "Month Day"
   // Amex format: "February 13" or "Feb 13" at start of line
-  const MON_FULL="(?:January|February|March|April|May|June|July|August|September|October|November|December)";
-  const TXN_RE=new RegExp(`^(${MON_FULL})\s+(\d{1,2})\b`,"i");
   const AMT_RE=/[\d,]+\.\d{2}$/;
-  const AMT_ANYWHERE=/[\d,]+\.\d{2}/g;
 
   const skipPatterns=["new domestic transactions","new international","other account transactions",
     "total of other","payment received","card number","foreign spending","details"];
