@@ -6543,14 +6543,14 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
     const sorted=(tData.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
     setTxns(sorted);
     setStmts((sData.data||[]).sort((a,b)=>(b.stmt_to||"").localeCompare(a.stmt_to||"")));
-    // Recompute balance
+    // Recompute balance from scratch — always write to DB
     const ob=account.opening_balance||0;
     const credits=sorted.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
     const debits=sorted.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
     const newBal=ob+credits-debits;
-    if(Math.abs(newBal-(account.current_balance||0))>0.01){
-      await db.from("bank_accounts").update(account.id,{current_balance:newBal});
-    }
+    await db.from("bank_accounts").update(account.id,{current_balance:newBal});
+    // Update local account reference so stat chips show correct value
+    account.current_balance=newBal;
     setBusy(false);
   },[db,account.id,account.opening_balance,account.current_balance]);
   useEffect(()=>{load();},[load]);
