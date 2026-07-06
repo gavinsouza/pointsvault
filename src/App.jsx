@@ -6519,7 +6519,8 @@ function AddBankAccountModal({db,owners,onSave,onClose}){
 }
 
 // ── BankAccountDetail dashboard ────────────────────────────────────────────
-function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
+function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onNavigate}){
+  const [accountData,setAccountData]=useState(initAccount);
   const [txns,setTxns]=useState([]);
   const [stmts,setStmts]=useState([]);
   const [selStmt,setSelStmt]=useState(null);
@@ -6531,32 +6532,32 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
   const [editTxn,setEditTxn]=useState(null);
   const [showEdit,setShowEdit]=useState(false);
 
-  const owner=owners.find(o=>o.id===account.owner_id);
-  const isCash=account.account_type==="cash";
+  const owner=owners.find(o=>o.id===accountData.owner_id);
+  const isCash=accountData.account_type==="cash";
 
   const load=useCallback(async()=>{
     setBusy(true);
     const [tData,sData]=await Promise.all([
-      db.from("bank_transactions").filter("account_id",account.id),
-      db.from("bank_statements").filter("account_id",account.id),
+      db.from("bank_transactions").filter("account_id",accountData.id),
+      db.from("bank_statements").filter("account_id",accountData.id),
     ]);
     const sorted=(tData.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
     setTxns(sorted);
     setStmts((sData.data||[]).sort((a,b)=>(b.stmt_to||"").localeCompare(a.stmt_to||"")));
     // Recompute balance from scratch — always write to DB
-    const ob=account.opening_balance||0;
+    const ob=accountData.opening_balance||0;
     const credits=sorted.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
     const debits=sorted.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
     const newBal=ob+credits-debits;
-    await db.from("bank_accounts").update(account.id,{current_balance:newBal});
+    await db.from("bank_accounts").update(accountData.id,{current_balance:newBal});
     // Update local account reference so stat chips show correct value
-    account.current_balance=newBal;
+    accountData.current_balance=newBal;
     setBusy(false);
-  },[db,account.id,account.opening_balance,account.current_balance]);
+  },[db,accountData.id,accountData.opening_balance,accountData.current_balance]);
   useEffect(()=>{load();},[load]);
 
   // Running balance — computed chronologically from opening balance
-  const ob=account.opening_balance||0;
+  const ob=accountData.opening_balance||0;
   const chronological=[...txns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
   let runBal=ob;
   const balanceMap={};
@@ -6572,7 +6573,7 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
   const fySpend=spendTxns.filter(t=>t.txn_date>=fyStart).reduce((s,t)=>s+Math.abs(t.amount),0);
   const ytdSpend=spendTxns.filter(t=>t.txn_date>=ytdStart).reduce((s,t)=>s+Math.abs(t.amount),0);
   const totalCredits=txns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
-  const currentBal=account.current_balance||0;
+  const currentBal=accountData.current_balance||0;
 
   // Filter & sort
   const filtered=txns.filter(t=>{
@@ -6599,7 +6600,7 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
   // Statement detail view
   if(selStmt) return(
     <BankStatementDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)}
-      account={account} db={db} owners={owners}
+      account={accountData} db={db} owners={owners}
       onBack={()=>{setSelStmt(null);load();}}/>
   );
 
@@ -6613,11 +6614,11 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEdit(true)}>Edit</button>
           <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={async()=>{
             if(!confirm("Delete this account and all its transactions? This cannot be undone.")) return;
-            const txnRows=(await db.from("bank_transactions").filter("account_id",account.id)).data||[];
+            const txnRows=(await db.from("bank_transactions").filter("account_id",accountData.id)).data||[];
             for(const t of txnRows) await db.from("bank_transactions").delete(t.id);
-            const stmtRows=(await db.from("bank_statements").filter("account_id",account.id)).data||[];
+            const stmtRows=(await db.from("bank_statements").filter("account_id",accountData.id)).data||[];
             for(const s of stmtRows) await db.from("bank_statements").delete(s.id);
-            await db.from("bank_accounts").delete(account.id);
+            await db.from("bank_accounts").delete(accountData.id);
             onBack&&onBack();
           }}>Delete</button>
         </div>
@@ -6630,13 +6631,13 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
             {isCash?"💵":"🏦"}
           </div>
           <div>
-            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{account.nickname||account.bank_name}</div>
-            <div style={{fontSize:13,color:mut,marginTop:2}}>{isCash?"Cash":account.bank_name}{account.last4?" ···· "+account.last4:""}{owner?" · "+owner.name:""}</div>
+            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{accountData.nickname||accountData.bank_name}</div>
+            <div style={{fontSize:13,color:mut,marginTop:2}}>{isCash?"Cash":accountData.bank_name}{accountData.last4?" ···· "+accountData.last4:""}{owner?" · "+owner.name:""}</div>
           </div>
         </div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
           {[
-            {label:"Current Balance",value:(account.currency!=="INR"?account.currency+" ":"")+currentBal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),plain:true,color:currentBal>=0?txt:red},
+            {label:"Current Balance",value:(accountData.currency!=="INR"?accountData.currency+" ":"")+currentBal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),plain:true,color:currentBal>=0?txt:red},
             {label:"This Month Spend",value:"₹"+monthSpend.toLocaleString("en-IN",{minimumFractionDigits:2})},
             {label:"FY to Date",value:"₹"+fySpend.toLocaleString("en-IN",{minimumFractionDigits:2})},
             {label:"Cal. YTD",value:"₹"+ytdSpend.toLocaleString("en-IN",{minimumFractionDigits:2})},
@@ -6667,7 +6668,7 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
                 {s.closing_balance!=null&&<div style={{fontSize:13,fontWeight:600,color:txt}}>₹{Number(s.closing_balance).toLocaleString("en-IN",{minimumFractionDigits:2})}</div>}
                 <button style={{...dbtn,fontSize:10,padding:"3px 10px",marginTop:4}} onClick={async e=>{e.stopPropagation();
                   if(!confirm("Delete this statement and its transactions?")) return;
-                  const stmtTxns=(await db.from("bank_transactions").filter("account_id",account.id)).data?.filter(t=>t.statement_id===s.id)||[];
+                  const stmtTxns=(await db.from("bank_transactions").filter("account_id",accountData.id)).data?.filter(t=>t.statement_id===s.id)||[];
                   for(const t of stmtTxns) await db.from("bank_transactions").delete(t.id);
                   await db.from("bank_statements").delete(s.id);
                   load();
@@ -6749,7 +6750,13 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
 
       {showAdd&&<AddBankTxnModal db={db} account={account} allAccounts={allAccounts} onSave={()=>{setShowAdd(false);load();}} onClose={()=>setShowAdd(false)}/>}
       {editTxn&&<AddBankTxnModal db={db} account={account} allAccounts={allAccounts} existing={editTxn} onSave={()=>{setEditTxn(null);load();}} onClose={()=>setEditTxn(null)}/>}
-      {showEdit&&<EditBankAccountModal db={db} account={account} owners={owners} onSave={()=>{setShowEdit(false);load();}} onClose={()=>setShowEdit(false)}/>}
+      {showEdit&&<EditBankAccountModal db={db} account={account} owners={owners} onSave={async()=>{
+              setShowEdit(false);
+              // Reload account data from DB to get updated opening balance
+              const {data}=await db.from("bank_accounts").filter("id",accountData.id);
+              if(data&&data[0]) setAccountData(data[0]);
+              load();
+            }} onClose={()=>setShowEdit(false)}/>}
     </div>
   );
 }
@@ -6854,8 +6861,9 @@ function EditBankAccountModal({db,account,owners,onSave,onClose}){
 }
 
 // ── BankStatementDetail ────────────────────────────────────────────────────
-function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
-  const [localTxns,setLocalTxns]=useState(txns);
+function BankStatementDetail({stmt,txns:initTxns,account,db,owners,onBack}){
+  const [localTxns,setLocalTxns]=useState(initTxns||[]);
+  const [busy,setBusy]=useState(true);
   const [editTxn,setEditTxn]=useState(null);
   const [search,setSearch]=useState("");
   const [typeF,setTypeF]=useState("all");
@@ -6867,17 +6875,21 @@ function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
     db.from("people").select().then(r=>setPeople(r.data||[]));
   },[db]);
 
-  const reload=async()=>{
+  const reload=useCallback(async()=>{
+    setBusy(true);
     const {data}=await db.from("bank_transactions").filter("account_id",account.id);
-    setLocalTxns((data||[]).filter(t=>t.statement_id===stmt.id).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
-  };
-
+    setLocalTxns((data||[]).filter(t=>t.statement_id===stmt.id).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)));
+    setBusy(false);
+  },[db,account.id,stmt.id]);
+  useEffect(()=>{reload();},[reload]);
   // Running balance for statement — from account opening balance
   const stmtOb=account.opening_balance||0;
   const stmtChron=[...localTxns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
   let stmtRunBal=stmtOb;
   const stmtBalMap={};
   stmtChron.forEach(t=>{stmtRunBal+=t.amount;stmtBalMap[t.id]=stmtRunBal;});
+
+  if(busy) return <div style={{color:mut,padding:32,textAlign:"center"}}>Loading…</div>;
 
   const filtered=localTxns.filter(t=>{
     if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
