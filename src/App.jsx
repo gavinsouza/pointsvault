@@ -6944,6 +6944,46 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
     }
     setShowSplit(null);reload();
   };
+
+  const reload=useCallback(async()=>{
+    setBusy(true);
+    try{
+      const {data}=await db.from("bank_transactions").filter("account_id",account?.id);
+      setLocalTxns((data||[]).filter(t=>t.statement_id===stmt?.id).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)));
+    }catch(e){console.error("BSD reload:",e);}
+    setBusy(false);
+  },[db,account?.id,stmt?.id]);
+  useEffect(()=>{reload();},[reload]);
+
+  if(busy) return(
+    <div>
+      <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif"}}>&#8592; Back</button>
+      <div style={{color:mut,padding:32,textAlign:"center"}}>Loading…</div>
+    </div>
+  );
+
+  // Opening balance from previous statement or account opening balance
+  const stmtOb=(()=>{
+    if(!stmt?.stmt_from) return account?.opening_balance||0;
+    const prevStmts=(allStmts||[])
+      .filter(s=>s.id!==stmt.id&&s.stmt_to&&s.stmt_to<stmt.stmt_from&&s.closing_balance!=null)
+      .sort((a,b)=>b.stmt_to.localeCompare(a.stmt_to));
+    return prevStmts.length>0?Number(prevStmts[0].closing_balance):account?.opening_balance||0;
+  })();
+
+  const stmtChron=[...localTxns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+  let stmtRunBal=stmtOb;
+  const stmtBalMap={};
+  stmtChron.forEach(t=>{stmtRunBal+=t.amount;stmtBalMap[t.id]=stmtRunBal;});
+
+  const filtered=localTxns.filter(t=>{
+    if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
+    if(search&&!(t.narration||"").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const totalDebits=localTxns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalCredits=localTxns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
