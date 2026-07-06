@@ -5992,8 +5992,10 @@ const NAV=[
   {section:"Spend Tracker", items:[
     {id:"spend-overview",   label:"Overview"},
     {id:"spend-cards",      label:"My Cards"},
+    {id:"bank-accounts",    label:"My Accounts"},
     {id:"spend-ledger",     label:"Ledger"},
     {id:"spend-upload",     label:"CC Statement Upload", beta:true},
+    {id:"bank-upload",      label:"Bank Statement Upload", beta:true},
   ]},
   {section:"Points & Miles", items:[
     {id:"overview",         label:"Overview"},
@@ -6298,10 +6300,692 @@ export default function App(){
         {tab==="spend-upload"      &&<SpendUpload db={db} owners={owners}/>}
         {tab==="spend-overview"    &&<SpendOverview db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="spend-cards"       &&<SpendCards db={db} owners={owners} onNavigate={setTab}/>}
+        {tab==="bank-accounts"     &&<BankAccounts db={db} owners={owners} onNavigate={setTab}/>}
+        {tab==="bank-upload"       &&<BankUpload db={db} owners={owners} onNavigate={setTab}/>}
         {tab==="spend-ledger"      &&<SpendLedger db={db} owners={owners} onNavigate={setTab}/>}
       </main>
     </div>
   );
+}
+
+
+
+// ── BANK ACCOUNTS MODULE ─────────────────────────────────────────────────────
+
+// Transaction type config
+const TXN_TYPES=[
+  {id:"spend",     label:"Spend",         color:"#9b2335"},
+  {id:"income",    label:"Income",        color:"#2d6a4f"},
+  {id:"self_transfer", label:"Self Transfer", color:"#7c6fcd"},
+  {id:"cc_payment",label:"CC Payment",   color:"#b07d3a"},
+  {id:"refund",    label:"Refund",        color:"#2980b9"},
+];
+
+const CURRENCIES=["INR","USD","EUR","GBP","THB"];
+
+// ── Auto-detect transaction type from narration ────────────────────────────
+function autoDetectTxnType(narration, amount, isCredit, myCards=[], myAccounts=[]){
+  const n=(narration||"").toLowerCase();
+  if(isCredit) return "income"; // default credits to income, user can change
+  // CC Payment detection
+  const ccPatterns=["creditcard payment","credit card payment","cc payment","amex","autopay","payment to card"];
+  if(ccPatterns.some(p=>n.includes(p))) return "cc_payment";
+  // Self transfer patterns
+  const stPatterns=["ib funds transfer","neft dr","neft cr","imps","rtgs","ft - cr","ft - dr","self transfer"];
+  if(stPatterns.some(p=>n.includes(p))) return "self_transfer";
+  return "spend";
+}
+
+// ── BankAccounts list page ─────────────────────────────────────────────────
+function BankAccounts({db,owners,onNavigate}){
+  const [accounts,setAccounts]=useState([]);
+  const [mAccounts,setMAccounts]=useState([]); // master bank list
+  const [txns,setTxns]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [selAccount,setSelAccount]=useState(null);
+  const [showAdd,setShowAdd]=useState(false);
+  const [viewMode,setViewMode]=useState(()=>localStorage.getItem("pv_bankaccts_view")||"grid");
+  const [search,setSearch]=useState("");
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const [a,t]=await Promise.all([
+      db.from("bank_accounts").select(),
+      db.from("bank_transactions").select(),
+    ]);
+    setAccounts(a.data||[]);
+    setTxns(t.data||[]);
+    setBusy(false);
+  },[db]);
+  useEffect(()=>{load();},[load]);
+
+  if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
+
+  if(selAccount){
+    const acct=accounts.find(a=>a.id===selAccount);
+    if(!acct) return null;
+    return <BankAccountDetail account={acct} db={db} owners={owners} allAccounts={accounts}
+      onBack={()=>{setSelAccount(null);load();}} onNavigate={onNavigate}/>;
+  }
+
+  const filtered=accounts.filter(a=>{
+    if(!search) return true;
+    return (a.nickname||a.bank_name||"").toLowerCase().includes(search.toLowerCase());
+  });
+
+  const totalBalance=accounts.reduce((sum,a)=>sum+(a.current_balance||0),0);
+
+  return(
+    <div>
+      <Hdr title="My Accounts" sub="Bank and cash accounts"
+        action={<div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{display:"flex",border:`1px solid ${bdr}`,borderRadius:8,overflow:"hidden"}}>
+            <button onClick={()=>{setViewMode("grid");localStorage.setItem("pv_bankaccts_view","grid");}}
+              style={{padding:"6px 10px",border:"none",background:viewMode==="grid"?txt:surf,color:viewMode==="grid"?"#fff":mut,cursor:"pointer",fontSize:13}}>⊞</button>
+            <button onClick={()=>{setViewMode("list");localStorage.setItem("pv_bankaccts_view","list");}}
+              style={{padding:"6px 10px",border:"none",background:viewMode==="list"?txt:surf,color:viewMode==="list"?"#fff":mut,cursor:"pointer",fontSize:13}}>☰</button>
+          </div>
+          <button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("spend-overview")}>Overview</button>
+          <button style={pbtn} onClick={()=>setShowAdd(true)}>+ Add Account</button>
+        </div>}/>
+
+      <div style={{display:"flex",gap:8,marginBottom:16,alignItems:"center"}}>
+        <div style={{position:"relative",flex:1,maxWidth:320}}>
+          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:13}}>🔍</span>
+          <input style={{...inp,marginBottom:0,paddingLeft:32}} placeholder="Search accounts..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+        <div style={{fontSize:13,color:mut,marginLeft:"auto"}}>Total balance: <strong style={{color:txt}}>₹{totalBalance.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</strong></div>
+      </div>
+
+      {filtered.length===0?<Empty icon="🏦" msg={search?"No accounts match":"No accounts yet — add a bank or cash account"}/>:
+      viewMode==="grid"?(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
+          {filtered.map(a=>{
+            const owner=owners.find(o=>o.id===a.owner_id);
+            const acctTxns=txns.filter(t=>t.account_id===a.id);
+            const totalDebits=acctTxns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+            const totalCredits=acctTxns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+            const isCash=a.account_type==="cash";
+            return(
+              <div key={a.id} onClick={()=>setSelAccount(a.id)}
+                style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",transition:"box-shadow 0.2s"}}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)"}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
+                  <div style={{width:48,height:48,borderRadius:12,background:isCash?"#f5f0e8":"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+                    {isCash?"💵":a.bank_name==="HDFC Bank"?"🏦":a.bank_name==="Axis Bank"?"🏦":"🏦"}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nickname||a.bank_name||"Account"}</div>
+                    <div style={{fontSize:11,color:mut,marginTop:2}}>{isCash?"Cash":a.bank_name}{a.last4?" ···· "+a.last4:""}{owner?" · "+owner.name:""}</div>
+                  </div>
+                  {a.currency&&a.currency!=="INR"&&<div style={{fontSize:10,fontWeight:600,color:acc,background:acc+"15",padding:"2px 8px",borderRadius:10}}>{a.currency}</div>}
+                </div>
+                <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,marginBottom:4,fontFamily:"'Manrope',sans-serif"}}>{a.currency&&a.currency!=="INR"?a.currency+" ":""}{(a.current_balance||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:12}}>Current Balance</div>
+                <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:mut}}>
+                  <span style={{color:red}}>↓ ₹{totalDebits.toLocaleString("en-IN")}</span>
+                  <span>{acctTxns.length} txns</span>
+                  <span style={{color:grn}}>↑ ₹{totalCredits.toLocaleString("en-IN")}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(a=>{
+            const owner=owners.find(o=>o.id===a.owner_id);
+            const isCash=a.account_type==="cash";
+            return(
+              <div key={a.id} onClick={()=>setSelAccount(a.id)}
+                style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s"}}
+                onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)"}
+                onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
+                <div style={{width:40,height:40,borderRadius:10,background:isCash?"#f5f0e8":"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                  {isCash?"💵":"🏦"}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{a.nickname||a.bank_name}</div>
+                  <div style={{fontSize:11,color:mut}}>{isCash?"Cash":a.bank_name}{a.last4?" ···· "+a.last4:""}{owner?" · "+owner.name:""}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{a.currency&&a.currency!=="INR"?a.currency+" ":""}{(a.current_balance||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+                  <div style={{fontSize:10,color:mut}}>Current balance</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showAdd&&<AddBankAccountModal db={db} owners={owners} onSave={()=>{setShowAdd(false);load();}} onClose={()=>setShowAdd(false)}/>}
+    </div>
+  );
+}
+
+// ── AddBankAccountModal ────────────────────────────────────────────────────
+function AddBankAccountModal({db,owners,onSave,onClose}){
+  const eF={account_type:"bank",bank_name:"HDFC Bank",nickname:"",last4:"",owner_id:"",currency:"INR",opening_balance:"",current_balance:""};
+  const [f,setF]=useState(eF);
+  const [saving,setSaving]=useState(false);
+  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+  const BANKS=["HDFC Bank","Axis Bank","SBI","ICICI Bank","Kotak Bank","Other"];
+
+  const save=async()=>{
+    if(!f.owner_id) return alert("Select an owner");
+    if(f.account_type==="bank"&&!f.bank_name) return alert("Select a bank");
+    setSaving(true);
+    const ob=parseFloat(f.opening_balance)||0;
+    const p={
+      account_type:f.account_type,
+      bank_name:f.account_type==="cash"?"Cash":f.bank_name,
+      nickname:f.nickname,
+      last4:f.last4,
+      owner_id:f.owner_id,
+      currency:f.currency,
+      opening_balance:ob,
+      current_balance:ob,
+      user_id:getCurrentUserId(),
+    };
+    await db.from("bank_accounts").insert(p);
+    setSaving(false);
+    onSave&&onSave();
+  };
+
+  return(
+    <Modal show={true} onClose={onClose} title="Add Account">
+      <div style={{marginBottom:10}}>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
+          {["bank","cash"].map(t=>(
+            <button key={t} onClick={()=>setF(p=>({...p,account_type:t,currency:t==="cash"?p.currency:"INR"}))}
+              style={{flex:1,padding:"8px",borderRadius:10,border:`2px solid ${f.account_type===t?txt:bdr}`,
+              background:f.account_type===t?txt:surf,color:f.account_type===t?"#fff":mut,
+              fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"'Manrope',sans-serif",textTransform:"capitalize"}}>
+              {t==="bank"?"🏦 Bank Account":"💵 Cash"}
+            </button>
+          ))}
+        </div>
+        {f.account_type==="bank"&&<>{lbl("Bank")}<select style={inp} value={f.bank_name} onChange={up("bank_name")}>{BANKS.map(b=><option key={b}>{b}</option>)}</select></>}
+        {lbl("Nickname (optional)")}<input style={inp} value={f.nickname} onChange={up("nickname")} placeholder={f.account_type==="bank"?f.bank_name+" Savings":"Cash Wallet"}/>
+        {f.account_type==="bank"&&<>{lbl("Last 4 digits (optional)")}<input style={inp} value={f.last4} onChange={up("last4")} placeholder="e.g. 4118" maxLength={4}/></>}
+        {lbl("Owner")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}><option value="">-- select --</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
+        {lbl("Currency")}<select style={inp} value={f.currency} onChange={up("currency")}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select>
+        {lbl("Opening Balance")}<input type="number" style={inp} value={f.opening_balance} onChange={up("opening_balance")} placeholder="0.00"/>
+      </div>
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Add Account"}</button>
+    </Modal>
+  );
+}
+
+// ── BankAccountDetail dashboard ────────────────────────────────────────────
+function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
+  const [txns,setTxns]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [search,setSearch]=useState("");
+  const [typeF,setTypeF]=useState("all");
+  const [sortCol,setSortCol]=useState("date-desc");
+  const [showAdd,setShowAdd]=useState(false);
+  const [editTxn,setEditTxn]=useState(null);
+  const [showEdit,setShowEdit]=useState(false);
+  const [showSugg,setShowSugg]=useState(false);
+  const [suggestions,setSuggestions]=useState([]);
+
+  const owner=owners.find(o=>o.id===account.owner_id);
+  const isCash=account.account_type==="cash";
+
+  const load=useCallback(async()=>{
+    setBusy(true);
+    const {data}=await db.from("bank_transactions").filter("account_id",account.id);
+    const sorted=(data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
+    setTxns(sorted);
+    // Recompute balance
+    const ob=account.opening_balance||0;
+    const credits=sorted.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+    const debits=sorted.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+    const newBal=ob+credits-debits;
+    if(Math.abs(newBal-(account.current_balance||0))>0.01){
+      await db.from("bank_accounts").update(account.id,{current_balance:newBal});
+    }
+    setBusy(false);
+  },[db,account.id,account.opening_balance,account.current_balance]);
+  useEffect(()=>{load();},[load]);
+
+  // Stats
+  const now=new Date();
+  const fyStart=(now.getMonth()>=3?now.getFullYear():now.getFullYear()-1)+"-04-01";
+  const ytdStart=now.getFullYear()+"-01-01";
+  const thisMonth=now.toISOString().slice(0,7);
+  const spendTxns=txns.filter(t=>t.txn_type==="spend"||(!t.txn_type&&t.amount<0));
+  const monthSpend=spendTxns.filter(t=>t.txn_date?.startsWith(thisMonth)).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const fySpend=spendTxns.filter(t=>t.txn_date>=fyStart).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const ytdSpend=spendTxns.filter(t=>t.txn_date>=ytdStart).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalCredits=txns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+  const currentBal=account.current_balance||0;
+
+  // Filter & sort
+  const filtered=txns.filter(t=>{
+    if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
+    if(search){
+      const s=search.toLowerCase();
+      if(!(t.narration||"").toLowerCase().includes(s)) return false;
+    }
+    return true;
+  }).sort((a,b)=>{
+    if(sortCol==="date-desc") return new Date(b.txn_date)-new Date(a.txn_date);
+    if(sortCol==="date-asc") return new Date(a.txn_date)-new Date(b.txn_date);
+    if(sortCol==="amount-desc") return Math.abs(b.amount)-Math.abs(a.amount);
+    if(sortCol==="amount-asc") return Math.abs(a.amount)-Math.abs(b.amount);
+    return 0;
+  });
+
+  const delTxn=async id=>{
+    if(!confirm("Delete this transaction?")) return;
+    await db.from("bank_transactions").delete(id);
+    load();
+  };
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif"}}>&#8592; My Accounts</button>
+        <div style={{display:"flex",gap:8,marginBottom:20}}>
+          {!isCash&&<button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("bank-upload")}>Upload Statement</button>}
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Transaction</button>
+          <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEdit(true)}>Edit</button>
+        </div>
+      </div>
+
+      {/* Header card */}
+      <Card style={{marginBottom:20}}>
+        <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:16}}>
+          <div style={{width:64,height:64,borderRadius:16,background:isCash?"#f5f0e8":"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,flexShrink:0}}>
+            {isCash?"💵":"🏦"}
+          </div>
+          <div>
+            <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{account.nickname||account.bank_name}</div>
+            <div style={{fontSize:13,color:mut,marginTop:2}}>{isCash?"Cash":account.bank_name}{account.last4?" ···· "+account.last4:""}{owner?" · "+owner.name:""}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {[
+            {label:"Current Balance",value:(account.currency!=="INR"?account.currency+" ":"")+currentBal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),plain:true,color:currentBal>=0?txt:red},
+            {label:"This Month Spend",value:"₹"+monthSpend.toLocaleString("en-IN",{minimumFractionDigits:2})},
+            {label:"FY to Date",value:"₹"+fySpend.toLocaleString("en-IN",{minimumFractionDigits:2})},
+            {label:"Cal. YTD",value:"₹"+ytdSpend.toLocaleString("en-IN",{minimumFractionDigits:2})},
+            {label:"Total Credits",value:"₹"+totalCredits.toLocaleString("en-IN",{minimumFractionDigits:2}),color:grn},
+            {label:"Transactions",value:txns.length,plain:true},
+          ].map((s,i)=>(
+            <div key={i} style={{background:surf2,borderRadius:12,padding:"14px 18px",minWidth:110,border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{s.label}</div>
+              <div className="pv-num" style={{fontSize:15,fontWeight:700,color:s.color||txt,fontFamily:"'Manrope',sans-serif"}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Transactions */}
+      <Card>
+        <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{position:"relative",flex:1,minWidth:160}}>
+            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:12}}>🔍</span>
+            <input style={{...inp,marginBottom:0,paddingLeft:28,fontSize:12}} placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          </div>
+          <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={typeF} onChange={e=>setTypeF(e.target.value)}>
+            <option value="all">All types</option>
+            {TXN_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+          <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={sortCol} onChange={e=>setSortCol(e.target.value)}>
+            <option value="date-desc">Newest first</option>
+            <option value="date-asc">Oldest first</option>
+            <option value="amount-desc">Largest first</option>
+            <option value="amount-asc">Smallest first</option>
+          </select>
+        </div>
+        {busy?<div style={{color:mut,padding:20,textAlign:"center"}}>Loading…</div>:
+        filtered.length===0?<Empty msg="No transactions found"/>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",color:mut}}>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Date</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Narration</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Type</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Category</th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Amount</th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Balance</th>
+                <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>✎</th>
+              </tr></thead>
+              <tbody>
+                {filtered.map((t,i)=>{
+                  const typ=TXN_TYPES.find(x=>x.id===(t.txn_type||"spend"));
+                  const isCredit=t.amount>0;
+                  return(
+                    <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:i%2===0?"transparent":surf2}}>
+                      <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.txn_date)}</td>
+                      <td style={{padding:"9px 10px",color:txt,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narration}</td>
+                      <td style={{padding:"9px 10px"}}>
+                        <span style={{fontSize:10,fontWeight:600,color:typ?.color||mut,background:(typ?.color||mut)+"18",padding:"2px 8px",borderRadius:8}}>{typ?.label||"Spend"}</span>
+                      </td>
+                      <td style={{padding:"9px 10px",color:mut,fontSize:11}}>{t.category||"—"}</td>
+                      <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:isCredit?grn:red,whiteSpace:"nowrap"}}>
+                        {isCredit?"+":"-"}₹{Math.abs(t.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                      </td>
+                      <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,whiteSpace:"nowrap"}}>
+                        {t.balance!=null?"₹"+Number(t.balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}):"—"}
+                      </td>
+                      <td style={{padding:"9px 4px",textAlign:"center"}}>
+                        <button onClick={e=>{e.stopPropagation();setEditTxn(t);}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>✎</button>
+                        <button onClick={e=>{e.stopPropagation();delTxn(t.id);}} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:13,padding:"2px 4px"}}>×</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {showAdd&&<AddBankTxnModal db={db} account={account} allAccounts={allAccounts} onSave={()=>{setShowAdd(false);load();}} onClose={()=>setShowAdd(false)}/>}
+      {editTxn&&<AddBankTxnModal db={db} account={account} allAccounts={allAccounts} existing={editTxn} onSave={()=>{setEditTxn(null);load();}} onClose={()=>setEditTxn(null)}/>}
+      {showEdit&&<EditBankAccountModal db={db} account={account} owners={owners} onSave={()=>{setShowEdit(false);load();}} onClose={()=>setShowEdit(false)}/>}
+    </div>
+  );
+}
+
+// ── AddBankTxnModal ────────────────────────────────────────────────────────
+function AddBankTxnModal({db,account,allAccounts,existing,onSave,onClose}){
+  const eF={
+    narration:existing?.narration||"",
+    amount:existing?Math.abs(existing.amount):"",
+    txn_date:existing?.txn_date||new Date().toISOString().split("T")[0],
+    txn_type:existing?.txn_type||"spend",
+    is_credit:existing?(existing.amount>0):false,
+    category:existing?.category||"Other",
+    linked_account_id:existing?.linked_account_id||"",
+  };
+  const [f,setF]=useState(eF);
+  const [saving,setSaving]=useState(false);
+  const up=k=>e=>setF(p=>({...p,[k]:typeof e==="object"&&e.target?e.target.value:e}));
+  const SPEND_CATS=["Food & Dining","Shopping","Utilities","Transport","Healthcare","Entertainment","Travel","Fuel","Insurance","Education","Rent","Groceries","Other"];
+
+  const save=async()=>{
+    if(!f.narration) return alert("Enter a description");
+    if(!f.amount) return alert("Enter an amount");
+    setSaving(true);
+    const amt=parseFloat(f.amount)||0;
+    const signedAmt=(f.txn_type==="income"||f.is_credit)?amt:-amt;
+    const data={
+      account_id:account.id,
+      narration:f.narration,
+      amount:signedAmt,
+      txn_date:f.txn_date,
+      txn_type:f.txn_type,
+      category:f.txn_type==="spend"?f.category:null,
+      linked_account_id:f.linked_account_id||null,
+      user_id:getCurrentUserId(),
+    };
+    if(existing) await db.from("bank_transactions").update(existing.id,data);
+    else await db.from("bank_transactions").insert(data);
+    setSaving(false);
+    onSave&&onSave();
+  };
+
+  return(
+    <Modal show={true} onClose={onClose} title={existing?"Edit Transaction":"Add Transaction"}>
+      {lbl("Date")}<input type="date" style={inp} value={f.txn_date} onChange={up("txn_date")}/>
+      {lbl("Description")}<input style={inp} value={f.narration} onChange={up("narration")} placeholder="e.g. Swiggy order"/>
+      {lbl("Type")}
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap"}}>
+        {TXN_TYPES.map(t=>(
+          <button key={t.id} onClick={()=>setF(p=>({...p,txn_type:t.id,is_credit:t.id==="income"||t.id==="refund"}))}
+            style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${f.txn_type===t.id?t.color:bdr}`,
+            background:f.txn_type===t.id?t.color:"transparent",color:f.txn_type===t.id?"#fff":mut,
+            fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {f.txn_type==="spend"&&<>{lbl("Category")}<select style={inp} value={f.category} onChange={up("category")}>{SPEND_CATS.map(c=><option key={c}>{c}</option>)}</select></>}
+      {(f.txn_type==="self_transfer"||f.txn_type==="cc_payment")&&<>
+        {lbl(f.txn_type==="cc_payment"?"CC Account":"Transfer to/from Account")}
+        <select style={inp} value={f.linked_account_id} onChange={up("linked_account_id")}>
+          <option value="">-- select account --</option>
+          {allAccounts.filter(a=>a.id!==account.id).map(a=><option key={a.id} value={a.id}>{a.nickname||a.bank_name}</option>)}
+        </select>
+      </>}
+      {lbl("Amount (₹)")}<input type="number" style={inp} value={f.amount} onChange={up("amount")} placeholder="0.00"/>
+      <div style={{display:"flex",gap:8,marginBottom:12}}>
+        {["Debit (out)","Credit (in)"].map((label,i)=>(
+          <button key={i} onClick={()=>setF(p=>({...p,is_credit:i===1}))}
+            style={{flex:1,padding:"8px",borderRadius:10,border:`2px solid ${f.is_credit===(i===1)?txt:bdr}`,
+            background:f.is_credit===(i===1)?txt:surf,color:f.is_credit===(i===1)?"#fff":mut,
+            fontWeight:600,fontSize:12,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":existing?"Save Changes":"Add Transaction"}</button>
+    </Modal>
+  );
+}
+
+// ── EditBankAccountModal ───────────────────────────────────────────────────
+function EditBankAccountModal({db,account,owners,onSave,onClose}){
+  const [f,setF]=useState({nickname:account.nickname||"",last4:account.last4||"",owner_id:account.owner_id||"",currency:account.currency||"INR",opening_balance:String(account.opening_balance||0)});
+  const [saving,setSaving]=useState(false);
+  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+  const save=async()=>{
+    setSaving(true);
+    await db.from("bank_accounts").update(account.id,{nickname:f.nickname,last4:f.last4,owner_id:f.owner_id,currency:f.currency,opening_balance:parseFloat(f.opening_balance)||0});
+    setSaving(false);onSave&&onSave();
+  };
+  return(
+    <Modal show={true} onClose={onClose} title="Edit Account">
+      {lbl("Nickname")}<input style={inp} value={f.nickname} onChange={up("nickname")}/>
+      {account.account_type==="bank"&&<>{lbl("Last 4 digits")}<input style={inp} value={f.last4} onChange={up("last4")} maxLength={4}/></>}
+      {lbl("Owner")}<select style={inp} value={f.owner_id} onChange={up("owner_id")}><option value="">--</option>{owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}</select>
+      {lbl("Currency")}<select style={inp} value={f.currency} onChange={up("currency")}>{CURRENCIES.map(c=><option key={c}>{c}</option>)}</select>
+      {lbl("Opening Balance")}<input type="number" style={inp} value={f.opening_balance} onChange={up("opening_balance")}/>
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Save"}</button>
+    </Modal>
+  );
+}
+
+// ── BankUpload page ────────────────────────────────────────────────────────
+function BankUpload({db,owners,onNavigate}){
+  const [accounts,setAccounts]=useState([]);
+  const [selAccount,setSelAccount]=useState("");
+  const [bank,setBank]=useState(""); // hdfc|axis|manual
+  const [file,setFile]=useState(null);
+  const [parsed,setParsed]=useState(null);
+  const [importing,setImporting]=useState(false);
+  const [error,setError]=useState("");
+  const [msg,setMsg]=useState("");
+
+  useEffect(()=>{
+    db.from("bank_accounts").select().then(r=>{
+      const accts=(r.data||[]).filter(a=>a.account_type==="bank");
+      setAccounts(accts);
+    });
+  },[db]);
+
+  const processFile=async f=>{
+    if(!f) return;
+    setFile(f);setError("");setParsed(null);setMsg("");
+    const isXLS=f.name.match(/\.xls?$/i);
+    if(!isXLS){setError("Please upload an XLS or XLSX file");return;}
+    try{
+      const XLSX=window.XLSX;
+      if(!XLSX){setError("XLSX library not loaded");return;}
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf,{type:"array"});
+      const ws=wb.Sheets[wb.SheetNames[0]];
+      const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
+      const rows=raw.map(row=>row.map(cell=>String(cell===null||cell===undefined?"":cell).trim()));
+      
+      let result=null;
+      // Auto-detect bank
+      const fullText=rows.slice(0,20).map(r=>r.join(" ")).join(" ").toLowerCase();
+      if(fullText.includes("hdfc bank")||fullText.includes("narration")&&fullText.includes("withdrawal amt")){
+        setBank("hdfc");result=parseHDFCStatement(rows);
+      } else if(fullText.includes("axis bank")||fullText.includes("particulars")&&fullText.includes("sol")){
+        setBank("axis");result=parseAxisStatement(rows);
+      } else {
+        setError("Could not auto-detect bank. Currently supports HDFC and Axis bank statements.");
+        return;
+      }
+      
+      if(result&&result.transactions.length>0){
+        setParsed(result);
+      } else {
+        setError("No transactions found in file. Check that it is a valid bank statement.");
+      }
+    }catch(err){
+      setError("Error reading file: "+err.message);
+    }
+  };
+
+  const doImport=async()=>{
+    if(!selAccount) return alert("Select an account");
+    if(!parsed) return;
+    setImporting(true);
+    let added=0,skipped=0;
+    for(const t of parsed.transactions){
+      const txnType=autoDetectTxnType(t.narration,t.amount,t.amount>0);
+      const data={
+        account_id:selAccount,
+        narration:t.narration,
+        amount:t.amount,
+        txn_date:t.txn_date,
+        balance:t.balance||null,
+        txn_type:txnType,
+        category:txnType==="spend"?"Other":null,
+        ref_no:t.ref_no||null,
+        user_id:getCurrentUserId(),
+      };
+      const {error:e}=await db.from("bank_transactions").insert(data);
+      if(e){console.error(e);skipped++;}else added++;
+    }
+    // Update account balance
+    if(parsed.closing_balance){
+      await db.from("bank_accounts").update(selAccount,{current_balance:parsed.closing_balance});
+    }
+    setImporting(false);
+    setMsg(`Imported ${added} transactions${skipped>0?`, ${skipped} failed`:""}.`);
+    setParsed(null);setFile(null);
+  };
+
+  return(
+    <div>
+      <Hdr title="Bank Statement Upload" sub="Import your bank statement transactions automatically"
+        action={<button style={{...gbtn,fontSize:12}} onClick={()=>onNavigate&&onNavigate("bank-accounts")}>My Accounts</button>}/>
+      <div style={{maxWidth:560}}>
+        <Card style={{marginBottom:16}}>
+          {lbl("Account")}
+          <select style={inp} value={selAccount} onChange={e=>setSelAccount(e.target.value)}>
+            <option value="">-- select bank account --</option>
+            {accounts.map(a=><option key={a.id} value={a.id}>{a.nickname||a.bank_name}{a.last4?" ···· "+a.last4:""}</option>)}
+          </select>
+          {lbl("Statement file (XLS/XLSX)")}
+          <input type="file" accept=".xls,.xlsx" style={{display:"block",width:"100%",padding:"10px",marginBottom:12,fontSize:12,border:`1px solid ${bdr}`,borderRadius:10,background:surf2}}
+            onChange={e=>processFile(e.target.files?.[0])}/>
+          {error&&<div style={{color:red,fontSize:12,marginBottom:8}}>✗ {error}</div>}
+          {bank&&!error&&<div style={{fontSize:11,color:grn,marginBottom:8}}>✓ Detected: {bank==="hdfc"?"HDFC Bank":"Axis Bank"} statement</div>}
+        </Card>
+
+        {parsed&&(
+          <Card style={{marginBottom:16}}>
+            <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>Statement Summary</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12,marginBottom:16}}>
+              <div><span style={{color:mut}}>Bank: </span><strong>{bank==="hdfc"?"HDFC Bank":"Axis Bank"}</strong></div>
+              <div><span style={{color:mut}}>Transactions: </span><strong>{parsed.transactions.length}</strong></div>
+              <div><span style={{color:mut}}>Total Debits: </span><strong style={{color:red}}>₹{parsed.total_debits?.toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>
+              <div><span style={{color:mut}}>Total Credits: </span><strong style={{color:grn}}>₹{parsed.total_credits?.toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>
+              {parsed.closing_balance&&<div><span style={{color:mut}}>Closing Balance: </span><strong>₹{parsed.closing_balance?.toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>}
+            </div>
+            <div style={{fontSize:11,color:mut,marginBottom:8}}>Preview (first 5):</div>
+            <div style={{background:surf2,borderRadius:8,padding:"8px",marginBottom:16,maxHeight:180,overflowY:"auto",fontSize:11}}>
+              {parsed.transactions.slice(0,5).map((t,i)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${bdr}`}}>
+                  <span style={{color:mut,flexShrink:0,marginRight:8}}>{t.txn_date}</span>
+                  <span style={{flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narration}</span>
+                  <span style={{color:t.amount>0?grn:red,fontWeight:600,marginLeft:8,flexShrink:0}}>{t.amount>0?"+":"-"}₹{Math.abs(t.amount).toLocaleString("en-IN")}</span>
+                </div>
+              ))}
+            </div>
+            <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:importing?0.5:1}} disabled={importing||!selAccount} onClick={doImport}>
+              {importing?"Importing…":`Import ${parsed.transactions.length} Transactions →`}
+            </button>
+          </Card>
+        )}
+        {msg&&<div style={{color:grn,fontSize:13,padding:"10px 14px",background:grn+"12",borderRadius:10}}>{msg}</div>}
+      </div>
+    </div>
+  );
+}
+
+// ── HDFC Bank statement parser ─────────────────────────────────────────────
+function parseHDFCStatement(rows){
+  // Row 20 = headers: Date,Narration,Chq./Ref.No.,Value Dt,Withdrawal Amt.,Deposit Amt.,Closing Balance
+  // Data starts row 22
+  const txns=[];
+  let closingBal=null;
+
+  for(let i=22;i<rows.length;i++){
+    const row=rows[i];
+    if(!row[0]||row[0].startsWith("*")) continue;
+    // Date format DD/MM/YY or DD/MM/YYYY
+    const dateStr=row[0].trim();
+    const dm=dateStr.match(/^(\d{2})\/(\d{2})\/(\d{2,4})$/);
+    if(!dm) continue;
+    const yr=dm[3].length===2?"20"+dm[3]:dm[3];
+    const txnDate=`${yr}-${dm[2]}-${dm[1]}`;
+    const narration=(row[1]||"").trim();
+    const withdrawal=parseFloat((row[4]||"").replace(/,/g,""))||0;
+    const deposit=parseFloat((row[5]||"").replace(/,/g,""))||0;
+    const balance=parseFloat((row[6]||"").replace(/,/g,""))||null;
+    if(!narration) continue;
+    const amount=deposit>0?deposit:-withdrawal;
+    if(amount===0) continue;
+    txns.push({txn_date:txnDate,narration,amount,balance,ref_no:(row[2]||"").trim()});
+    if(balance) closingBal=balance;
+  }
+
+  const totalDebits=txns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalCredits=txns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+  return{transactions:txns,closing_balance:closingBal,total_debits:totalDebits,total_credits:totalCredits};
+}
+
+// ── Axis Bank statement parser ─────────────────────────────────────────────
+function parseAxisStatement(rows){
+  // Row 17 = headers: SRL NO,Tran Date,CHQNO,PARTICULARS,DR,CR,BAL,SOL
+  // Data starts row 18
+  const txns=[];
+  let closingBal=null;
+
+  for(let i=18;i<rows.length;i++){
+    const row=rows[i];
+    if(!row[0]||isNaN(parseInt(row[0]))) continue; // SRL NO must be a number
+    // Date format DD-MM-YYYY
+    const dateStr=(row[1]||"").trim();
+    const dm=dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if(!dm) continue;
+    const txnDate=`${dm[3]}-${dm[2]}-${dm[1]}`;
+    const narration=(row[3]||"").trim();
+    const dr=parseFloat((row[4]||"").replace(/,/g,"").trim())||0;
+    const cr=parseFloat((row[5]||"").replace(/,/g,"").trim())||0;
+    const balance=parseFloat((row[6]||"").replace(/,/g,"").trim())||null;
+    if(!narration) continue;
+    const amount=cr>0?cr:-dr;
+    if(amount===0) continue;
+    txns.push({txn_date:txnDate,narration,amount,balance,ref_no:(row[2]||"").trim()});
+    if(balance) closingBal=balance;
+  }
+
+  const totalDebits=txns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalCredits=txns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+  return{transactions:txns,closing_balance:closingBal,total_debits:totalDebits,total_credits:totalCredits};
 }
 
 
