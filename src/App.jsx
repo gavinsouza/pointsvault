@@ -6874,6 +6874,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
   const [typeF,setTypeF]=useState("all");
   const [showSplit,setShowSplit]=useState(null);
   const [splits,setSplits]=useState([]);
+  const [splitsMap,setSplitsMap]=useState({});
   const [people,setPeople]=useState([]);
   const [cats,setCats]=useState([]);
 
@@ -6884,7 +6885,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
 
   const openSplit=async t=>{
     setShowSplit(t);
-    const {data:existing}=await db.from("bank_transaction_splits").filter("transaction_id",t.id);
+    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",t.id);
     if(existing&&existing.length>0){
       const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
       const hasMine=loaded.some(s=>s.is_personal);
@@ -6916,13 +6917,13 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
     if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to "+inrFmt(Math.abs(Number(showSplit.amount))));
     const unassigned=splits.filter(s=>!s.is_personal&&!s.person_id);
     if(unassigned.length>0) return alert("Please select a person for each split row, or remove the empty row.");
-    const {data:existingSplits}=await db.from("bank_transaction_splits").filter("transaction_id",showSplit.id);
-    for(const s of(existingSplits||[])) await db.from("bank_transaction_splits").delete(s.id);
+    const {data:existingSplits}=await db.from("transaction_splits").filter("transaction_id",showSplit.id);
+    for(const s of(existingSplits||[])) await db.from("transaction_splits").delete(s.id);
     const {data:existingLedger}=await db.from("ledger_entries").filter("transaction_id",showSplit.id);
     for(const e of(existingLedger||[])) await db.from("ledger_entries").delete(e.id);
     for(const s of splits){
       if(Number(s.amount)===0&&!s.is_personal) continue;
-      await db.from("bank_transaction_splits").insert({
+      await db.from("transaction_splits").insert({
         transaction_id:showSplit.id,
         person_id:s.is_personal?null:(s.person_id||null),
         amount:Number(s.amount),
@@ -6942,14 +6943,22 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
         });
       }
     }
-    setShowSplit(null);reload();
+    setShowSplit(null);reload(); // reload refreshes splitsMap too
   };
 
   const reload=useCallback(async()=>{
     setBusy(true);
     try{
       const {data}=await db.from("bank_transactions").filter("account_id",account?.id);
-      setLocalTxns((data||[]).filter(t=>t.statement_id===stmt?.id).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)));
+      const stmtTxns=(data||[]).filter(t=>t.statement_id===stmt?.id).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date));
+      setLocalTxns(stmtTxns);
+      // Load splits for these transactions
+      if(stmtTxns.length>0){
+        const {data:sp}=await db.from("transaction_splits").select();
+        const map={};
+        (sp||[]).forEach(s=>{if(!map[s.transaction_id])map[s.transaction_id]=[];map[s.transaction_id].push(s);});
+        setSplitsMap(map);
+      }
     }catch(e){console.error("BSD reload:",e);}
     setBusy(false);
   },[db,account?.id,stmt?.id]);
@@ -7075,7 +7084,15 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
                         {"₹"+(stmtBalMap[t.id]||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
                       </td>
                       <td style={{padding:"9px 4px",textAlign:"center"}}>
-                        <button onClick={()=>openSplit(t)} style={{...gbtn,fontSize:10,padding:"2px 8px"}}>Split</button>
+                        {splitsMap[t.id]?(
+                          <div style={{fontSize:10,color:acc,lineHeight:1.6,marginBottom:4}}>
+                            {splitsMap[t.id].map((sp,si)=>{
+                              const pName=sp.is_personal?"Me":people.find(p=>p.id===sp.person_id)?.name||"?";
+                              return<span key={si} style={{display:"inline-block",background:acc+"12",border:`1px solid ${acc}33`,borderRadius:6,padding:"1px 6px",marginRight:3,whiteSpace:"nowrap"}}>{pName}: ₹{Number(sp.amount).toLocaleString("en-IN")}</span>;
+                            })}
+                          </div>
+                        ):null}
+                        <button onClick={()=>openSplit(t)} style={{...gbtn,fontSize:10,padding:"2px 8px"}}>{splitsMap[t.id]?"Edit Split":"Split"}</button>
                       </td>
                     </tr>
                   );
