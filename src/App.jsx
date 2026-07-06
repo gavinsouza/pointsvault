@@ -6555,6 +6555,13 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
   },[db,account.id,account.opening_balance,account.current_balance]);
   useEffect(()=>{load();},[load]);
 
+  // Running balance — computed chronologically from opening balance
+  const ob=account.opening_balance||0;
+  const chronological=[...txns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
+  let runBal=ob;
+  const balanceMap={};
+  chronological.forEach(t=>{runBal+=t.amount;balanceMap[t.id]=runBal;});
+
   // Stats
   const now=new Date();
   const fyStart=(now.getMonth()>=3?now.getFullYear():now.getFullYear()-1)+"-04-01";
@@ -6717,7 +6724,7 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
                         {isCredit?"+":"-"}₹{Math.abs(t.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
                       </td>
                       <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,whiteSpace:"nowrap"}}>
-                        {t.balance!=null?"₹"+Number(t.balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}):"—"}
+                        {"₹"+(balanceMap[t.id]||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
                       </td>
                       <td style={{padding:"9px 4px",textAlign:"center"}}>
                         <button onClick={e=>{e.stopPropagation();setEditTxn(t);}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>✎</button>
@@ -6726,6 +6733,14 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
                     </tr>
                   );
                 })}
+                <tr style={{background:surf2,borderBottom:`1px solid ${bdr}`}}>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
+                  <td colSpan={2}/>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td/>
+                </tr>
               </tbody>
             </table>
           </div>
@@ -6857,6 +6872,13 @@ function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
     setLocalTxns((data||[]).filter(t=>t.statement_id===stmt.id).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
   };
 
+  // Running balance for statement — from account opening balance
+  const stmtOb=account.opening_balance||0;
+  const stmtChron=[...localTxns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
+  let stmtRunBal=stmtOb;
+  const stmtBalMap={};
+  stmtChron.forEach(t=>{stmtRunBal+=t.amount;stmtBalMap[t.id]=stmtRunBal;});
+
   const filtered=localTxns.filter(t=>{
     if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
     if(search&&!(t.narration||"").toLowerCase().includes(search.toLowerCase())) return false;
@@ -6986,7 +7008,7 @@ function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
                         {isCredit?"+":"-"}₹{Math.abs(t.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
                       </td>
                       <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,whiteSpace:"nowrap"}}>
-                        {t.balance!=null?"₹"+Number(t.balance).toLocaleString("en-IN",{minimumFractionDigits:2}):"—"}
+                        {"₹"+(stmtBalMap[t.id]||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
                       </td>
                       <td style={{padding:"9px 4px",textAlign:"center"}}>
                         <button onClick={()=>openSplit(t)} style={{...gbtn,fontSize:10,padding:"2px 8px"}}>Split</button>
@@ -6994,6 +7016,14 @@ function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
                     </tr>
                   );
                 })}
+                <tr style={{background:surf2,borderBottom:`1px solid ${bdr}`}}>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
+                  <td colSpan={2}/>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{stmtOb.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td/>
+                </tr>
               </tbody>
             </table>
           </div>
