@@ -6527,7 +6527,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
   const [busy,setBusy]=useState(true);
   const [search,setSearch]=useState("");
   const [typeF,setTypeF]=useState("all");
-  const [sortCol,setSortCol]=useState("date-desc");
+  const [sortCol,setSortCol]=useState("date-asc");
   const [showAdd,setShowAdd]=useState(false);
   const [editTxn,setEditTxn]=useState(null);
   const [showEdit,setShowEdit]=useState(false);
@@ -6659,7 +6659,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {stmts.map(s=>(
             <div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:surf2,borderRadius:10,cursor:"pointer",border:`1px solid ${bdr}`}}
-              onClick={()=>setSelStmt(s)}>
+              onClick={()=>{console.log('Opening stmt:',s);setSelStmt(s);}}>
               <div>
                 <div style={{fontSize:13,fontWeight:600,color:txt}}>{s.label||"Statement"}</div>
                 <div style={{fontSize:11,color:mut,marginTop:2}}>{s.transaction_count||0} transactions · ₹{(s.total_debits||0).toLocaleString("en-IN")} debits</div>
@@ -6877,11 +6877,26 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,onBack}){
 
   const reload=useCallback(async()=>{
     setBusy(true);
-    const {data}=await db.from("bank_transactions").filter("account_id",account.id);
-    setLocalTxns((data||[]).filter(t=>t.statement_id===stmt.id).sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)));
+    try{
+      const acctId=account?.id||account?.account_id;
+      const stmtId=stmt?.id;
+      console.log("BSD reload: acctId=",acctId,"stmtId=",stmtId);
+      if(acctId){
+        const {data}=await db.from("bank_transactions").filter("account_id",acctId);
+        const filtered=(data||[]).filter(t=>!stmtId||t.statement_id===stmtId);
+        setLocalTxns(filtered.sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)));
+      }
+    }catch(e){console.error("BSD reload error:",e);}
     setBusy(false);
-  },[db,account.id,stmt.id]);
+  },[db,account?.id,stmt?.id]);
   useEffect(()=>{reload();},[reload]);
+  if(busy) return(
+    <div>
+      <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif"}}>&#8592; Back</button>
+      <div style={{color:mut,padding:32,textAlign:"center"}}>Loading…</div>
+    </div>
+  );
+
   // Running balance for statement — from account opening balance
   const stmtOb=account.opening_balance||0;
   const stmtChron=[...localTxns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
@@ -6889,7 +6904,6 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,onBack}){
   const stmtBalMap={};
   stmtChron.forEach(t=>{stmtRunBal+=t.amount;stmtBalMap[t.id]=stmtRunBal;});
 
-  if(busy) return <div style={{color:mut,padding:32,textAlign:"center"}}>Loading…</div>;
 
   const filtered=localTxns.filter(t=>{
     if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
@@ -7932,7 +7946,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {stmts.map(s=>(
             <Card key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8,border:`1px solid ${bdr}`}}>
-              <div style={{cursor:"pointer"}} onClick={()=>setSelStmt(s)}>
+              <div style={{cursor:"pointer"}} onClick={()=>{console.log('Opening stmt:',s);setSelStmt(s);}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                   <div style={{fontSize:14,fontWeight:700,color:acc,textDecoration:"underline",textDecorationStyle:"dotted"}}>{fmtMonth(s.statement_month)}</div>
                   {(()=>{const assignedCard=allCards.find(c=>c.id===s.card_id);const assignedMC=assignedCard&&allMCards.find(m=>m.id===assignedCard.master_id);return assignedCard&&assignedCard.id!==card.id?<span style={{fontSize:10,color:grn,fontWeight:600,background:grn+"12",padding:"2px 8px",borderRadius:10}}>→ {assignedMC?.name||assignedCard.nickname||"Other card"}</span>:null;})()}
