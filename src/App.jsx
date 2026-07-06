@@ -7010,7 +7010,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,onBack}){
                   <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
                   <td colSpan={2}/>
                   <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{stmtOb.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
                   <td/>
                 </tr>
                 {filtered.map((t,i)=>{
