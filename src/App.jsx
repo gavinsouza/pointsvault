@@ -8869,7 +8869,9 @@ function SpendLedger({db,owners,onNavigate}){
   const [entries,setEntries]=useState([]);
   const [cards,setCards]=useState([]);
   const [mCards,setMCards]=useState([]);
-  const [txnMap,setTxnMap]=useState({}); // transaction_id -> {statement_month, card_id}
+  const [txnMap,setTxnMap]=useState({}); // transaction_id -> {statement_month, card_id, account_id, stmt_label}
+  const [bankAccounts,setBankAccounts]=useState([]);
+  const [bankStmts,setBankStmts]=useState([]);
   const [busy,setBusy]=useState(true);
   const [selPerson,setSelPerson]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
@@ -8884,23 +8886,28 @@ function SpendLedger({db,owners,onNavigate}){
   const [search,setSearch]=useState("");
   const [filterMethod,setFilterMethod]=useState("all");
   const [sortKey,setSortKey]=useState("date");
-  const [sortDir,setSortDir]=useState("asc");
+  const [sortDir,setSortDir]=useState("desc");
   const [ledgerPage,setLedgerPage]=useState(0);
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [p,e,c,mc,t]=await Promise.all([
+    const [p,e,c,mc,t,ba,bs,bt]=await Promise.all([
       db.from("people").select(),
       db.from("ledger_entries").select(),
       db.from("my_cards").select(),
       db.from("master_cards").select(),
       db.from("spend_transactions").select(),
+      db.from("bank_accounts").select(),
+      db.from("bank_statements").select(),
+      db.from("bank_transactions").select(),
     ]);
     setPeople(p.data||[]); setEntries(e.data||[]);
     setCards(c.data||[]); setMCards(mc.data||[]);
-    // Build txn lookup map
+    setBankAccounts(ba.data||[]); setBankStmts(bs.data||[]);
+    // Build txn lookup map — CC + bank transactions
     const map={};
-    (t.data||[]).forEach(t=>{map[t.id]={statement_month:t.statement_month,card_id:t.card_id};});
+    (t.data||[]).forEach(t=>{map[t.id]={type:"cc",statement_month:t.statement_month,card_id:t.card_id};});
+    (bt.data||[]).forEach(t=>{map[t.id]={type:"bank",account_id:t.account_id,statement_id:t.statement_id};});
     setTxnMap(map);
     setBusy(false);
   },[db]);
@@ -8910,6 +8917,13 @@ function SpendLedger({db,owners,onNavigate}){
     if(e.entry_type==="transaction"&&e.transaction_id){
       const txn=txnMap[e.transaction_id];
       if(txn){
+        if(txn.type==="bank"){
+          const acct=bankAccounts.find(a=>a.id===txn.account_id);
+          const stmt=bankStmts.find(s=>s.id===txn.statement_id);
+          const acctName=acct?.nickname||acct?.bank_name||"Bank Account";
+          return stmt?.label?`${acctName} · ${stmt.label}`:acctName;
+        }
+        // CC transaction
         const card=cards.find(c=>c.id===txn.card_id);
         const mc=card&&mCards.find(m=>m.id===card.master_id);
         const cardName=card?.nickname||mc?.name||"Card";
