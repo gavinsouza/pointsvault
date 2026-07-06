@@ -6600,7 +6600,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
   // Statement detail view
   if(selStmt) return(
     <BankStatementDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)}
-      account={accountData} db={db} owners={owners}
+      account={accountData} db={db} owners={owners} allStmts={stmts}
       onBack={()=>{setSelStmt(null);load();}}/>
   );
 
@@ -6861,7 +6861,7 @@ function EditBankAccountModal({db,account,owners,onSave,onClose}){
 }
 
 // ── BankStatementDetail ────────────────────────────────────────────────────
-function BankStatementDetail({stmt,txns:initTxns,account,db,owners,onBack}){
+function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],onBack}){
   const [localTxns,setLocalTxns]=useState(initTxns||[]);
   const [busy,setBusy]=useState(true);
   const [editTxn,setEditTxn]=useState(null);
@@ -6898,7 +6898,16 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,onBack}){
   );
 
   // Running balance for statement — from account opening balance
-  const stmtOb=account.opening_balance||0;
+  // Opening balance = closing balance of previous statement (by stmt_to date)
+  // or account opening balance if this is the first statement
+  const stmtOb=(()=>{
+    if(!stmt?.stmt_from) return account.opening_balance||0;
+    const prevStmts=allStmts
+      .filter(s=>s.id!==stmt.id&&s.stmt_to&&s.stmt_to<stmt.stmt_from&&s.closing_balance!=null)
+      .sort((a,b)=>b.stmt_to.localeCompare(a.stmt_to));
+    if(prevStmts.length>0) return Number(prevStmts[0].closing_balance);
+    return account.opening_balance||0;
+  })();
   const stmtChron=[...localTxns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
   let stmtRunBal=stmtOb;
   const stmtBalMap={};
