@@ -6314,11 +6314,12 @@ export default function App(){
 
 // Transaction type config
 const TXN_TYPES=[
-  {id:"spend",     label:"Spend",         color:"#9b2335"},
-  {id:"income",    label:"Income",        color:"#2d6a4f"},
+  {id:"spend",         label:"Spend",         color:"#9b2335"},
+  {id:"income",        label:"Income",        color:"#2d6a4f"},
   {id:"self_transfer", label:"Self Transfer", color:"#7c6fcd"},
-  {id:"cc_payment",label:"CC Payment",   color:"#b07d3a"},
-  {id:"refund",    label:"Refund",        color:"#2980b9"},
+  {id:"cc_payment",    label:"CC Payment",    color:"#b07d3a"},
+  {id:"refund",        label:"Refund",        color:"#2980b9"},
+  {id:"other",         label:"Other",         color:"#8a8883"},
 ];
 
 const CURRENCIES=["INR","USD","EUR","GBP","THB"];
@@ -6763,6 +6764,10 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
 
 // ── AddBankTxnModal ────────────────────────────────────────────────────────
 function AddBankTxnModal({db,account,allAccounts,existing,onSave,onClose}){
+  const [cats,setCats]=useState([]);
+  useEffect(()=>{
+    db.from("spend_categories").select().then(r=>setCats((r.data||[]).sort((a,b)=>a.name.localeCompare(b.name))));
+  },[db]);
   const eF={
     narration:existing?.narration||"",
     amount:existing?Math.abs(existing.amount):"",
@@ -6775,7 +6780,7 @@ function AddBankTxnModal({db,account,allAccounts,existing,onSave,onClose}){
   const [f,setF]=useState(eF);
   const [saving,setSaving]=useState(false);
   const up=k=>e=>setF(p=>({...p,[k]:typeof e==="object"&&e.target?e.target.value:e}));
-  const SPEND_CATS=["Food & Dining","Shopping","Utilities","Transport","Healthcare","Entertainment","Travel","Fuel","Insurance","Education","Rent","Groceries","Other"];
+  const SPEND_CATS=cats.length>0?cats.map(c=>c.name):["Food & Dining","Shopping","Utilities","Transport","Healthcare","Entertainment","Travel","Other"];
 
   const save=async()=>{
     if(!f.narration) return alert("Enter a description");
@@ -6870,9 +6875,11 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
   const [showSplit,setShowSplit]=useState(null);
   const [splits,setSplits]=useState([]);
   const [people,setPeople]=useState([]);
+  const [cats,setCats]=useState([]);
 
   useEffect(()=>{
     db.from("people").select().then(r=>setPeople(r.data||[]));
+    db.from("spend_categories").select().then(r=>setCats((r.data||[]).sort((a,b)=>a.name.localeCompare(b.name))));
   },[db]);
 
   const reload=useCallback(async()=>{
@@ -6925,7 +6932,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
 
   const openSplit=async t=>{
     setShowSplit(t);
-    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",t.id);
+    const {data:existing}=await db.from("bank_transaction_splits").filter("transaction_id",t.id);
     if(existing&&existing.length>0){
       const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
       const hasMine=loaded.some(s=>s.is_personal);
@@ -6937,12 +6944,12 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
   };
 
   const saveSplit=async()=>{
-    await db.from("transaction_splits").filter("transaction_id",showSplit.id).then(async r=>{
-      for(const s of(r.data||[])) await db.from("transaction_splits").delete(s.id);
+    await db.from("bank_transaction_splits").filter("transaction_id",showSplit.id).then(async r=>{
+      for(const s of(r.data||[])) await db.from("bank_transaction_splits").delete(s.id);
     });
     for(const s of splits){
       if(Number(s.amount)===0&&!s.is_personal) continue;
-      await db.from("transaction_splits").insert({
+      await db.from("bank_transaction_splits").insert({
         transaction_id:showSplit.id,
         person_id:s.is_personal?null:s.person_id||null,
         amount:Number(s.amount),
@@ -7031,8 +7038,9 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
                       <td style={{padding:"9px 10px",color:txt,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.narration}>{t.narration}</td>
                       <td style={{padding:"9px 10px"}}>
                         <select value={t.txn_type||"spend"} onChange={async e=>{
-                          await db.from("bank_transactions").update(t.id,{txn_type:e.target.value});
-                          reload();
+                          const val=e.target.value;
+                          await db.from("bank_transactions").update(t.id,{txn_type:val});
+                          setLocalTxns(prev=>prev.map(x=>x.id===t.id?{...x,txn_type:val}:x));
                         }} style={{fontSize:10,padding:"2px 6px",borderRadius:6,border:`1px solid ${bdr}`,background:surf,color:txt,fontFamily:"'Manrope',sans-serif"}}>
                           {TXN_TYPES.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}
                         </select>
@@ -7040,10 +7048,11 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
                       <td style={{padding:"9px 10px"}}>
                         {(t.txn_type||"spend")==="spend"&&(
                           <select value={t.category||"Other"} onChange={async e=>{
-                            await db.from("bank_transactions").update(t.id,{category:e.target.value});
-                            reload();
+                            const val=e.target.value;
+                            await db.from("bank_transactions").update(t.id,{category:val});
+                            setLocalTxns(prev=>prev.map(x=>x.id===t.id?{...x,category:val}:x));
                           }} style={{fontSize:10,padding:"2px 6px",borderRadius:6,border:`1px solid ${bdr}`,background:surf,color:txt,fontFamily:"'Manrope',sans-serif"}}>
-                            {["Food & Dining","Shopping","Utilities","Transport","Healthcare","Entertainment","Travel","Fuel","Insurance","Education","Rent","Groceries","Other"].map(c=><option key={c}>{c}</option>)}
+                            {(cats.length>0?cats.map(c=>c.name):["Food & Dining","Shopping","Utilities","Transport","Healthcare","Entertainment","Travel","Other"]).map(c=><option key={c}>{c}</option>)}
                           </select>
                         )}
                       </td>
