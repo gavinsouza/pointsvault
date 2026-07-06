@@ -6882,96 +6882,68 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
     db.from("spend_categories").select().then(r=>setCats((r.data||[]).sort((a,b)=>a.name.localeCompare(b.name))));
   },[db]);
 
-  const reload=useCallback(async()=>{
-    setBusy(true);
-    try{
-      const acctId=account?.id||account?.account_id;
-      const stmtId=stmt?.id;
-      console.log("BSD reload: acctId=",acctId,"stmtId=",stmtId);
-      if(acctId){
-        const {data}=await db.from("bank_transactions").filter("account_id",acctId);
-        const filtered=(data||[]).filter(t=>!stmtId||t.statement_id===stmtId);
-        setLocalTxns(filtered.sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)));
-      }
-    }catch(e){console.error("BSD reload error:",e);}
-    setBusy(false);
-  },[db,account?.id,stmt?.id]);
-  useEffect(()=>{reload();},[reload]);
-  if(busy) return(
-    <div>
-      <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif"}}>&#8592; Back</button>
-      <div style={{color:mut,padding:32,textAlign:"center"}}>Loading…</div>
-    </div>
-  );
-
-  // Running balance for statement — from account opening balance
-  // Opening balance = closing balance of previous statement (by stmt_to date)
-  // or account opening balance if this is the first statement
-  const stmtOb=(()=>{
-    if(!stmt?.stmt_from) return account.opening_balance||0;
-    const prevStmts=allStmts
-      .filter(s=>s.id!==stmt.id&&s.stmt_to&&s.stmt_to<stmt.stmt_from&&s.closing_balance!=null)
-      .sort((a,b)=>b.stmt_to.localeCompare(a.stmt_to));
-    if(prevStmts.length>0) return Number(prevStmts[0].closing_balance);
-    return account.opening_balance||0;
-  })();
-  const stmtChron=[...localTxns].sort((a,b)=>new Date(a.txn_date)-new Date(b.txn_date)||(a.created_at||"").localeCompare(b.created_at||""));
-  let stmtRunBal=stmtOb;
-  const stmtBalMap={};
-  stmtChron.forEach(t=>{stmtRunBal+=t.amount;stmtBalMap[t.id]=stmtRunBal;});
-
-
-  const filtered=localTxns.filter(t=>{
-    if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
-    if(search&&!(t.narration||"").toLowerCase().includes(search.toLowerCase())) return false;
-    return true;
-  });
-
-  const totalDebits=localTxns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
-  const totalCredits=localTxns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
-
   const openSplit=async t=>{
     setShowSplit(t);
     const {data:existing}=await db.from("bank_transaction_splits").filter("transaction_id",t.id);
     if(existing&&existing.length>0){
       const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
       const hasMine=loaded.some(s=>s.is_personal);
-      if(!hasMine) loaded.unshift({person_id:"",amount:0,is_personal:true});
+      if(!hasMine){
+        const othersTotal=loaded.reduce((a,s)=>a+Number(s.amount||0),0);
+        loaded.unshift({person_id:"",amount:Math.abs(Number(t.amount))-othersTotal,is_personal:true});
+      }
       setSplits(loaded);
     } else {
-      setSplits([{person_id:"",amount:Math.abs(t.amount),is_personal:true}]);
+      setSplits([{person_id:"",amount:Math.abs(Number(t.amount)),is_personal:true}]);
     }
   };
-
-  const saveSplit=async()=>{
-    await db.from("bank_transaction_splits").filter("transaction_id",showSplit.id).then(async r=>{
-      for(const s of(r.data||[])) await db.from("bank_transaction_splits").delete(s.id);
-    });
-    for(const s of splits){
-      if(Number(s.amount)===0&&!s.is_personal) continue;
-      await db.from("bank_transaction_splits").insert({
-        transaction_id:showSplit.id,
-        person_id:s.is_personal?null:s.person_id||null,
-        amount:Number(s.amount),
-        is_personal:s.is_personal,
-        user_id:getCurrentUserId(),
-      });
-    }
-    setShowSplit(null);reload();
-  };
-
+  const addSplit=()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}]);
+  const removeSplit=i=>setSplits(prev=>prev.filter((_,si)=>si!==i));
   const updSplit=(i,k,v)=>setSplits(prev=>{
     const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
     const editingMine=prev[i]?.is_personal;
     if(!editingMine&&k==="amount"){
       const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
-      const total=Math.abs(showSplit?.amount||0);
-      const myAmt=Math.max(0,total-othersTotal);
-      return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+      const total=Math.abs(Number(showSplit?.amount||0));
+      return updated.map(s=>s.is_personal?{...s,amount:Math.max(0,total-othersTotal)}:s);
     }
     return updated;
   });
+  const splitTotal=splits.reduce((a,s)=>a+Number(s.amount||0),0);
+  const splitRemaining=showSplit?(Math.abs(Number(showSplit.amount))-splitTotal):0;
 
+  const saveSplit=async()=>{
+    if(Math.abs(splitRemaining)>0.01) return alert("Splits must add up to "+inrFmt(Math.abs(Number(showSplit.amount))));
+    const unassigned=splits.filter(s=>!s.is_personal&&!s.person_id);
+    if(unassigned.length>0) return alert("Please select a person for each split row, or remove the empty row.");
+    const {data:existingSplits}=await db.from("bank_transaction_splits").filter("transaction_id",showSplit.id);
+    for(const s of(existingSplits||[])) await db.from("bank_transaction_splits").delete(s.id);
+    const {data:existingLedger}=await db.from("ledger_entries").filter("transaction_id",showSplit.id);
+    for(const e of(existingLedger||[])) await db.from("ledger_entries").delete(e.id);
+    for(const s of splits){
+      if(Number(s.amount)===0&&!s.is_personal) continue;
+      await db.from("bank_transaction_splits").insert({
+        transaction_id:showSplit.id,
+        person_id:s.is_personal?null:(s.person_id||null),
+        amount:Number(s.amount),
+        is_personal:s.is_personal,
+        user_id:getCurrentUserId(),
+      });
+      if(!s.is_personal&&s.person_id){
+        await db.from("ledger_entries").insert({
+          person_id:s.person_id,
+          amount:Number(s.amount),
+          direction:"owed_to_me",
+          description:showSplit.narration||"Bank transaction",
+          entry_date:showSplit.txn_date,
+          entry_type:"transaction",
+          transaction_id:showSplit.id,
+          user_id:getCurrentUserId(),
+        });
+      }
+    }
+    setShowSplit(null);reload();
+  };
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -7074,51 +7046,52 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
         )}
       </Card>
 
-      {/* Split modal */}
-      {showSplit&&(
-        <Modal show={true} onClose={()=>setShowSplit(null)} title="Split Transaction">
-          <div style={{fontWeight:600,color:txt,marginBottom:4}}>{showSplit.narration}</div>
-          <div style={{fontSize:13,color:mut,marginBottom:16}}>Total: <strong>₹{Math.abs(showSplit.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>
-          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
-            {splits.map((s,i)=>(
-              <div key={i} style={{background:surf2,borderRadius:10,padding:"10px 12px",border:`1px solid ${bdr}`}}>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  {s.is_personal
-                    ?<div style={{flex:1,fontSize:13,fontWeight:600,color:acc}}>Mine (personal)</div>
-                    :<select style={{...inp,marginBottom:0,flex:1,fontSize:12}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
-                      <option value="">-- select person --</option>
-                      {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
-                    </select>
-                  }
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontSize:12,color:mut}}>₹</span>
-                    <input type="number" style={{...inp,marginBottom:0,width:90,fontSize:13,fontWeight:600,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
-                  </div>
-                  {!s.is_personal&&<button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:16,padding:"0 4px"}}>×</button>}
-                </div>
-                {!s.is_personal&&(
-                  <div style={{display:"flex",gap:3,marginTop:6}}>
-                    {[25,50,75,100].map(pct=>(
-                      <button key={pct} onClick={()=>updSplit(i,"amount",((Math.abs(showSplit?.amount||0)*pct/100)).toFixed(2))}
-                        style={{flex:1,padding:"2px 0",fontSize:10,fontWeight:600,background:surf,border:`1px solid ${bdr}`,borderRadius:5,cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>
-                        {pct}%
-                      </button>
-                    ))}
-                  </div>
+      {/* Split Modal */}
+      <Modal show={!!showSplit} onClose={()=>setShowSplit(null)} title="Split Transaction">
+        {showSplit&&<>
+          <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{showSplit.narration}</div>
+          <div style={{fontSize:12,color:mut,marginBottom:16}}>Total: ₹{Math.abs(Number(showSplit.amount)).toLocaleString("en-IN",{minimumFractionDigits:2})}</div>
+          {splits.map((s,i)=>(
+            <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:8,padding:"10px 12px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
+              <div style={{flex:1}}>
+                {s.is_personal?(
+                  <span style={{fontSize:12,fontWeight:600,color:txt}}>Mine (personal)</span>
+                ):(
+                  <select style={{...inp,marginBottom:0,fontSize:12}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
+                    <option value="">Select person…</option>
+                    {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
                 )}
               </div>
-            ))}
+              <div style={{display:"flex",flexDirection:"column",gap:4}}>
+                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                  <span style={{fontSize:12,color:mut}}>₹</span>
+                  <input type="number" style={{...inp,marginBottom:0,width:100,fontSize:12,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+                </div>
+                <div style={{display:"flex",gap:4}}>
+                  {[25,50,75,100].map(pct=>(
+                    <button key={pct} onClick={()=>updSplit(i,"amount",((Math.abs(Number(showSplit?.amount||0))*pct/100)).toFixed(2))}
+                      style={{flex:1,padding:"2px 0",fontSize:10,fontWeight:600,background:surf2,border:`1px solid ${bdr}`,borderRadius:6,cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>
+                      {pct}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {!s.is_personal&&<button onClick={()=>removeSplit(i)} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:18,padding:"0 4px",lineHeight:1}}>×</button>}
+            </div>
+          ))}
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            <button style={{...gbtn,fontSize:12}} onClick={addSplit}>+ Add person</button>
+            <div style={{flex:1,textAlign:"right",fontSize:12,color:Math.abs(splitRemaining)<0.01?grn:red}}>
+              {Math.abs(splitRemaining)<0.01?"✓ Balanced":splitRemaining>0?`-₹${splitRemaining.toLocaleString("en-IN",{minimumFractionDigits:2})} unallocated`:`+₹${Math.abs(splitRemaining).toLocaleString("en-IN",{minimumFractionDigits:2})} over`}
+            </div>
           </div>
-          <button style={{...gbtn,width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}])}>+ Add person</button>
-          <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={saveSplit}>Save Split</button>
-        </Modal>
-      )}
+          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:Math.abs(splitRemaining)<0.01?1:0.5}} onClick={saveSplit}>Save Split</button>
+        </>}
+      </Modal>
     </div>
   );
 }
-
-
-// ── BankUpload page ────────────────────────────────────────────────────────
 function BankUpload({db,owners,onNavigate}){
   const [accounts,setAccounts]=useState([]);
   const [selAccount,setSelAccount]=useState("");
