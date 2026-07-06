@@ -6709,6 +6709,14 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
                 <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>✎</th>
               </tr></thead>
               <tbody>
+                <tr style={{background:surf2,borderBottom:`2px solid ${bdr}`}}>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
+                  <td colSpan={2}/>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td/>
+                </tr>
                 {filtered.map((t,i)=>{
                   const typ=TXN_TYPES.find(x=>x.id===(t.txn_type||"spend"));
                   const isCredit=t.amount>0;
@@ -6733,14 +6741,6 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
                     </tr>
                   );
                 })}
-                <tr style={{background:surf2,borderBottom:`1px solid ${bdr}`}}>
-                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
-                  <td colSpan={2}/>
-                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                  <td/>
-                </tr>
               </tbody>
             </table>
           </div>
@@ -6979,6 +6979,14 @@ function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
                 <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>Split</th>
               </tr></thead>
               <tbody>
+                <tr style={{background:surf2,borderBottom:`2px solid ${bdr}`}}>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
+                  <td colSpan={2}/>
+                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                  <td/>
+                </tr>
                 {filtered.map((t,i)=>{
                   const typ=TXN_TYPES.find(x=>x.id===(t.txn_type||"spend"));
                   const isCredit=t.amount>0;
@@ -7016,14 +7024,6 @@ function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
                     </tr>
                   );
                 })}
-                <tr style={{background:surf2,borderBottom:`1px solid ${bdr}`}}>
-                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
-                  <td colSpan={2}/>
-                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{stmtOb.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                  <td/>
-                </tr>
               </tbody>
             </table>
           </div>
