@@ -6521,6 +6521,8 @@ function AddBankAccountModal({db,owners,onSave,onClose}){
 // ── BankAccountDetail dashboard ────────────────────────────────────────────
 function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
   const [txns,setTxns]=useState([]);
+  const [stmts,setStmts]=useState([]);
+  const [selStmt,setSelStmt]=useState(null);
   const [busy,setBusy]=useState(true);
   const [search,setSearch]=useState("");
   const [typeF,setTypeF]=useState("all");
@@ -6528,17 +6530,19 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
   const [showAdd,setShowAdd]=useState(false);
   const [editTxn,setEditTxn]=useState(null);
   const [showEdit,setShowEdit]=useState(false);
-  const [showSugg,setShowSugg]=useState(false);
-  const [suggestions,setSuggestions]=useState([]);
 
   const owner=owners.find(o=>o.id===account.owner_id);
   const isCash=account.account_type==="cash";
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const {data}=await db.from("bank_transactions").filter("account_id",account.id);
-    const sorted=(data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
+    const [tData,sData]=await Promise.all([
+      db.from("bank_transactions").filter("account_id",account.id),
+      db.from("bank_statements").filter("account_id",account.id),
+    ]);
+    const sorted=(tData.data||[]).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date));
     setTxns(sorted);
+    setStmts((sData.data||[]).sort((a,b)=>(b.stmt_to||"").localeCompare(a.stmt_to||"")));
     // Recompute balance
     const ob=account.opening_balance||0;
     const credits=sorted.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
@@ -6585,6 +6589,13 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
     load();
   };
 
+  // Statement detail view
+  if(selStmt) return(
+    <BankStatementDetail stmt={selStmt} txns={txns.filter(t=>t.statement_id===selStmt.id)}
+      account={account} db={db} owners={owners}
+      onBack={()=>{setSelStmt(null);load();}}/>
+  );
+
   return(
     <div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
@@ -6593,6 +6604,15 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
           {!isCash&&<button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>onNavigate&&onNavigate("bank-upload")}>Upload Statement</button>}
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowAdd(true)}>+ Add Transaction</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEdit(true)}>Edit</button>
+          <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={async()=>{
+            if(!confirm("Delete this account and all its transactions? This cannot be undone.")) return;
+            const txnRows=(await db.from("bank_transactions").filter("account_id",account.id)).data||[];
+            for(const t of txnRows) await db.from("bank_transactions").delete(t.id);
+            const stmtRows=(await db.from("bank_statements").filter("account_id",account.id)).data||[];
+            for(const s of stmtRows) await db.from("bank_statements").delete(s.id);
+            await db.from("bank_accounts").delete(account.id);
+            onBack&&onBack();
+          }}>Delete</button>
         </div>
       </div>
 
@@ -6625,6 +6645,32 @@ function BankAccountDetail({account,db,owners,allAccounts,onBack,onNavigate}){
       </Card>
 
       {/* Transactions */}
+      {/* Statements */}
+      {stmts.length>0&&<Card style={{marginBottom:16}}>
+        <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Statements ({stmts.length})</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {stmts.map(s=>(
+            <div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:surf2,borderRadius:10,cursor:"pointer",border:`1px solid ${bdr}`}}
+              onClick={()=>setSelStmt(s)}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:txt}}>{s.label||"Statement"}</div>
+                <div style={{fontSize:11,color:mut,marginTop:2}}>{s.transaction_count||0} transactions · ₹{(s.total_debits||0).toLocaleString("en-IN")} debits</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                {s.closing_balance!=null&&<div style={{fontSize:13,fontWeight:600,color:txt}}>₹{Number(s.closing_balance).toLocaleString("en-IN",{minimumFractionDigits:2})}</div>}
+                <button style={{...dbtn,fontSize:10,padding:"3px 10px",marginTop:4}} onClick={async e=>{e.stopPropagation();
+                  if(!confirm("Delete this statement and its transactions?")) return;
+                  const stmtTxns=(await db.from("bank_transactions").filter("account_id",account.id)).data?.filter(t=>t.statement_id===s.id)||[];
+                  for(const t of stmtTxns) await db.from("bank_transactions").delete(t.id);
+                  await db.from("bank_statements").delete(s.id);
+                  load();
+                }}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>}
+
       <Card>
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
           <div style={{position:"relative",flex:1,minWidth:160}}>
@@ -6792,16 +6838,224 @@ function EditBankAccountModal({db,account,owners,onSave,onClose}){
   );
 }
 
+// ── BankStatementDetail ────────────────────────────────────────────────────
+function BankStatementDetail({stmt,txns,account,db,owners,onBack}){
+  const [localTxns,setLocalTxns]=useState(txns);
+  const [editTxn,setEditTxn]=useState(null);
+  const [search,setSearch]=useState("");
+  const [typeF,setTypeF]=useState("all");
+  const [showSplit,setShowSplit]=useState(null);
+  const [splits,setSplits]=useState([]);
+  const [people,setPeople]=useState([]);
+
+  useEffect(()=>{
+    db.from("people").select().then(r=>setPeople(r.data||[]));
+  },[db]);
+
+  const reload=async()=>{
+    const {data}=await db.from("bank_transactions").filter("account_id",account.id);
+    setLocalTxns((data||[]).filter(t=>t.statement_id===stmt.id).sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
+  };
+
+  const filtered=localTxns.filter(t=>{
+    if(typeF!=="all"&&(t.txn_type||"spend")!==typeF) return false;
+    if(search&&!(t.narration||"").toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
+
+  const totalDebits=localTxns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalCredits=localTxns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+
+  const openSplit=async t=>{
+    setShowSplit(t);
+    const {data:existing}=await db.from("transaction_splits").filter("transaction_id",t.id);
+    if(existing&&existing.length>0){
+      const loaded=existing.map(s=>({person_id:s.person_id||"",amount:Number(s.amount),is_personal:!!s.is_personal}));
+      const hasMine=loaded.some(s=>s.is_personal);
+      if(!hasMine) loaded.unshift({person_id:"",amount:0,is_personal:true});
+      setSplits(loaded);
+    } else {
+      setSplits([{person_id:"",amount:Math.abs(t.amount),is_personal:true}]);
+    }
+  };
+
+  const saveSplit=async()=>{
+    await db.from("transaction_splits").filter("transaction_id",showSplit.id).then(async r=>{
+      for(const s of(r.data||[])) await db.from("transaction_splits").delete(s.id);
+    });
+    for(const s of splits){
+      if(Number(s.amount)===0&&!s.is_personal) continue;
+      await db.from("transaction_splits").insert({
+        transaction_id:showSplit.id,
+        person_id:s.is_personal?null:s.person_id||null,
+        amount:Number(s.amount),
+        is_personal:s.is_personal,
+        user_id:getCurrentUserId(),
+      });
+    }
+    setShowSplit(null);reload();
+  };
+
+  const updSplit=(i,k,v)=>setSplits(prev=>{
+    const updated=prev.map((s,si)=>si===i?{...s,[k]:v}:s);
+    const editingMine=prev[i]?.is_personal;
+    if(!editingMine&&k==="amount"){
+      const othersTotal=updated.filter(s=>!s.is_personal).reduce((a,s)=>a+Number(s.amount||0),0);
+      const total=Math.abs(showSplit?.amount||0);
+      const myAmt=Math.max(0,total-othersTotal);
+      return updated.map(s=>s.is_personal?{...s,amount:myAmt}:s);
+    }
+    return updated;
+  });
+
+  return(
+    <div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:"0 0 20px",display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif"}}>&#8592; {account.nickname||account.bank_name}</button>
+      </div>
+
+      <Card style={{marginBottom:20}}>
+        <div style={{fontSize:18,fontWeight:700,color:txt,marginBottom:4}}>{stmt.label||"Statement"}</div>
+        <div style={{fontSize:13,color:mut,marginBottom:16}}>{stmt.stmt_from&&stmt.stmt_to?`${stmt.stmt_from} to ${stmt.stmt_to}`:""} · {account.nickname||account.bank_name}</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+          {[
+            {label:"Transactions",value:localTxns.length,plain:true},
+            {label:"Total Debits",value:"₹"+totalDebits.toLocaleString("en-IN",{minimumFractionDigits:2}),color:red},
+            {label:"Total Credits",value:"₹"+totalCredits.toLocaleString("en-IN",{minimumFractionDigits:2}),color:grn},
+            {label:"Net",value:(totalCredits>totalDebits?"+":""+"₹"+(totalCredits-totalDebits).toLocaleString("en-IN",{minimumFractionDigits:2})),plain:true},
+            stmt.closing_balance!=null&&{label:"Closing Balance",value:"₹"+Number(stmt.closing_balance).toLocaleString("en-IN",{minimumFractionDigits:2}),plain:true},
+          ].filter(Boolean).map((s,i)=>(
+            <div key={i} style={{background:surf2,borderRadius:12,padding:"12px 16px",minWidth:100,border:`1px solid ${bdr}`}}>
+              <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:4,fontWeight:500}}>{s.label}</div>
+              <div className="pv-num" style={{fontSize:14,fontWeight:700,color:s.color||txt}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card>
+        <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+          <div style={{position:"relative",flex:1,minWidth:160}}>
+            <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:12}}>🔍</span>
+            <input style={{...inp,marginBottom:0,paddingLeft:28,fontSize:12}} placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
+          </div>
+          <select style={{...inp,marginBottom:0,width:"auto",fontSize:12,padding:"6px 10px"}} value={typeF} onChange={e=>setTypeF(e.target.value)}>
+            <option value="all">All types</option>
+            {TXN_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </div>
+        {filtered.length===0?<Empty msg="No transactions"/>:(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",color:mut}}>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Date</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Narration</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Type</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Category</th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Amount</th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Balance</th>
+                <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>Split</th>
+              </tr></thead>
+              <tbody>
+                {filtered.map((t,i)=>{
+                  const typ=TXN_TYPES.find(x=>x.id===(t.txn_type||"spend"));
+                  const isCredit=t.amount>0;
+                  return(
+                    <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:i%2===0?"transparent":surf2}}>
+                      <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.txn_date)}</td>
+                      <td style={{padding:"9px 10px",color:txt,maxWidth:260,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.narration}>{t.narration}</td>
+                      <td style={{padding:"9px 10px"}}>
+                        <select value={t.txn_type||"spend"} onChange={async e=>{
+                          await db.from("bank_transactions").update(t.id,{txn_type:e.target.value});
+                          reload();
+                        }} style={{fontSize:10,padding:"2px 6px",borderRadius:6,border:`1px solid ${bdr}`,background:surf,color:txt,fontFamily:"'Manrope',sans-serif"}}>
+                          {TXN_TYPES.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}
+                        </select>
+                      </td>
+                      <td style={{padding:"9px 10px"}}>
+                        {(t.txn_type||"spend")==="spend"&&(
+                          <select value={t.category||"Other"} onChange={async e=>{
+                            await db.from("bank_transactions").update(t.id,{category:e.target.value});
+                            reload();
+                          }} style={{fontSize:10,padding:"2px 6px",borderRadius:6,border:`1px solid ${bdr}`,background:surf,color:txt,fontFamily:"'Manrope',sans-serif"}}>
+                            {["Food & Dining","Shopping","Utilities","Transport","Healthcare","Entertainment","Travel","Fuel","Insurance","Education","Rent","Groceries","Other"].map(c=><option key={c}>{c}</option>)}
+                          </select>
+                        )}
+                      </td>
+                      <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:isCredit?grn:red,whiteSpace:"nowrap"}}>
+                        {isCredit?"+":"-"}₹{Math.abs(t.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                      </td>
+                      <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,whiteSpace:"nowrap"}}>
+                        {t.balance!=null?"₹"+Number(t.balance).toLocaleString("en-IN",{minimumFractionDigits:2}):"—"}
+                      </td>
+                      <td style={{padding:"9px 4px",textAlign:"center"}}>
+                        <button onClick={()=>openSplit(t)} style={{...gbtn,fontSize:10,padding:"2px 8px"}}>Split</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* Split modal */}
+      {showSplit&&(
+        <Modal show={true} onClose={()=>setShowSplit(null)} title="Split Transaction">
+          <div style={{fontWeight:600,color:txt,marginBottom:4}}>{showSplit.narration}</div>
+          <div style={{fontSize:13,color:mut,marginBottom:16}}>Total: <strong>₹{Math.abs(showSplit.amount).toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>
+          <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+            {splits.map((s,i)=>(
+              <div key={i} style={{background:surf2,borderRadius:10,padding:"10px 12px",border:`1px solid ${bdr}`}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  {s.is_personal
+                    ?<div style={{flex:1,fontSize:13,fontWeight:600,color:acc}}>Mine (personal)</div>
+                    :<select style={{...inp,marginBottom:0,flex:1,fontSize:12}} value={s.person_id} onChange={e=>updSplit(i,"person_id",e.target.value)}>
+                      <option value="">-- select person --</option>
+                      {people.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                  }
+                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                    <span style={{fontSize:12,color:mut}}>₹</span>
+                    <input type="number" style={{...inp,marginBottom:0,width:90,fontSize:13,fontWeight:600,textAlign:"right"}} value={s.amount} onChange={e=>updSplit(i,"amount",e.target.value)}/>
+                  </div>
+                  {!s.is_personal&&<button onClick={()=>setSplits(prev=>prev.filter((_,si)=>si!==i))} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:16,padding:"0 4px"}}>×</button>}
+                </div>
+                {!s.is_personal&&(
+                  <div style={{display:"flex",gap:3,marginTop:6}}>
+                    {[25,50,75,100].map(pct=>(
+                      <button key={pct} onClick={()=>updSplit(i,"amount",((Math.abs(showSplit?.amount||0)*pct/100)).toFixed(2))}
+                        style={{flex:1,padding:"2px 0",fontSize:10,fontWeight:600,background:surf,border:`1px solid ${bdr}`,borderRadius:5,cursor:"pointer",color:mut,fontFamily:"'Manrope',sans-serif"}}>
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <button style={{...gbtn,width:"100%",justifyContent:"center",marginBottom:8}} onClick={()=>setSplits(prev=>[...prev,{person_id:"",amount:0,is_personal:false}])}>+ Add person</button>
+          <button style={{...pbtn,width:"100%",justifyContent:"center"}} onClick={saveSplit}>Save Split</button>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
 // ── BankUpload page ────────────────────────────────────────────────────────
 function BankUpload({db,owners,onNavigate}){
   const [accounts,setAccounts]=useState([]);
   const [selAccount,setSelAccount]=useState("");
-  const [bank,setBank]=useState(""); // hdfc|axis|manual
+  const [bank,setBank]=useState("");
   const [file,setFile]=useState(null);
   const [parsed,setParsed]=useState(null);
   const [importing,setImporting]=useState(false);
   const [error,setError]=useState("");
   const [msg,setMsg]=useState("");
+  const [stmtFrom,setStmtFrom]=useState("");
+  const [stmtTo,setStmtTo]=useState("");
 
   useEffect(()=>{
     db.from("bank_accounts").select().then(r=>{
@@ -6851,10 +7105,30 @@ function BankUpload({db,owners,onNavigate}){
     if(!parsed) return;
     setImporting(true);
     let added=0,skipped=0;
+
+    // Create statement record
+    const stmtLabel=stmtFrom&&stmtTo
+      ?`${new Date(stmtFrom).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})} – ${new Date(stmtTo).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}`
+      :`${bank==="hdfc"?"HDFC":"Axis"} Statement`;
+    const {data:stmtData}=await db.from("bank_statements").insert({
+      account_id:selAccount,
+      stmt_from:stmtFrom||null,
+      stmt_to:stmtTo||null,
+      label:stmtLabel,
+      file_name:file?.name||"statement",
+      transaction_count:parsed.transactions.length,
+      total_debits:parsed.total_debits||0,
+      total_credits:parsed.total_credits||0,
+      closing_balance:parsed.closing_balance||null,
+      user_id:getCurrentUserId(),
+    });
+    const stmtId=stmtData&&stmtData[0]?.id;
+
     for(const t of parsed.transactions){
       const txnType=autoDetectTxnType(t.narration,t.amount,t.amount>0);
       const data={
         account_id:selAccount,
+        statement_id:stmtId||null,
         narration:t.narration,
         amount:t.amount,
         txn_date:t.txn_date,
@@ -6867,13 +7141,12 @@ function BankUpload({db,owners,onNavigate}){
       const {error:e}=await db.from("bank_transactions").insert(data);
       if(e){console.error(e);skipped++;}else added++;
     }
-    // Update account balance
     if(parsed.closing_balance){
       await db.from("bank_accounts").update(selAccount,{current_balance:parsed.closing_balance});
     }
     setImporting(false);
-    setMsg(`Imported ${added} transactions${skipped>0?`, ${skipped} failed`:""}.`);
-    setParsed(null);setFile(null);
+    setMsg(`Imported ${added} transactions${skipped>0?`, ${skipped} failed`:""}. Statement: ${stmtLabel}`);
+    setParsed(null);setFile(null);setStmtFrom("");setStmtTo("");
   };
 
   return(
@@ -6887,6 +7160,20 @@ function BankUpload({db,owners,onNavigate}){
             <option value="">-- select bank account --</option>
             {accounts.map(a=><option key={a.id} value={a.id}>{a.nickname||a.bank_name}{a.last4?" ···· "+a.last4:""}</option>)}
           </select>
+          {lbl("Statement period")}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+            <div>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>From</div>
+              <input type="date" style={{...inp,marginBottom:0}} value={stmtFrom} onChange={e=>setStmtFrom(e.target.value)}/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>To</div>
+              <input type="date" style={{...inp,marginBottom:0}} value={stmtTo} onChange={e=>setStmtTo(e.target.value)}/>
+            </div>
+          </div>
+          {(stmtFrom&&stmtTo)&&<div style={{fontSize:11,color:acc,marginBottom:12,fontWeight:600}}>
+            Statement: {new Date(stmtFrom).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})} – {new Date(stmtTo).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}
+          </div>}
           {lbl("Statement file (XLS/XLSX)")}
           <input type="file" accept=".xls,.xlsx" style={{display:"block",width:"100%",padding:"10px",marginBottom:12,fontSize:12,border:`1px solid ${bdr}`,borderRadius:10,background:surf2}}
             onChange={e=>processFile(e.target.files?.[0])}/>
@@ -7663,6 +7950,15 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowStmts(true)}>View Statements ({stmts.length})</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowDL(true)}>⬇ Download</button>
           <button style={{...gbtn,padding:"6px 12px",fontSize:12}} onClick={()=>setShowEditCard(true)}>Edit</button>
+          <button style={{...dbtn,padding:"6px 12px",fontSize:12}} onClick={async()=>{
+            if(!confirm("Delete this card and all its transactions and statements? This cannot be undone.")) return;
+            const stmtIds=(await db.from("statements").filter("card_id",card.id)).data?.map(s=>s.id)||[];
+            for(const sid of stmtIds) await db.from("spend_transactions").delete(sid); // by statement
+            await db.from("spend_transactions").filter("card_id",card.id).then(async r=>{for(const t of(r.data||[])) await db.from("spend_transactions").delete(t.id);});
+            for(const sid of stmtIds) await db.from("statements").delete(sid);
+            await db.from("my_cards").delete(card.id);
+            onBack&&onBack();
+          }}>Delete</button>
         </div>
       </div>
       <Card style={{marginBottom:20}}>
