@@ -670,6 +670,30 @@ function Card({children,style={},...rest}){
   return <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:"0 1px 2px rgba(0,0,0,0.04),0 0 0 0 transparent",...style}} {...rest}>{children}</div>;
 }
 
+// ── Collapsible — wraps a list/table section with a header + a bottom arrow to collapse/expand ──
+function Collapsible({storageKey,header,defaultOpen=true,children}){
+  const [open,setOpen]=useState(()=>{
+    try{const v=localStorage.getItem("pv_collapse_"+storageKey);return v===null?defaultOpen:v==="1";}catch(_){return defaultOpen;}
+  });
+  const toggle=()=>setOpen(o=>{
+    const n=!o;
+    try{localStorage.setItem("pv_collapse_"+storageKey,n?"1":"0");}catch(_){}
+    return n;
+  });
+  return(
+    <>
+      {header}
+      {open&&children}
+      <div style={{display:"flex",justifyContent:"flex-end",marginTop:open?12:2}}>
+        <button onClick={toggle} aria-label={open?"Collapse":"Expand"}
+          style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:22,padding:"4px 8px",lineHeight:1}}>
+          {open?"▴":"▾"}
+        </button>
+      </div>
+    </>
+  );
+}
+
 function Hdr({title,sub,action}){
   return(
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:32}}>
@@ -694,6 +718,22 @@ const MAPPING_LIBRARY=[
    delimiter:"auto",skip_rows:6,date_col:0,desc_col:1,amount_type:"single",
    amount_col:3,debit_col:-1,credit_col:-1,date_format:"DD MMM 'YY",
    credit_ind_col:4,total_due_row:3,total_due_col:1,opening_bal_row:4,opening_bal_col:5},
+];
+
+// ── Bank statement mapping library ─────────────────────────────────────────────
+// These mirror the fixed column layouts the dedicated HDFC/Axis parsers use.
+// The HDFC preset is a known-good match for parseHDFCStatement's settings.
+// The Axis preset matches parseAxisStatement's settings as a starting point —
+// it's the one reported not to work, so treat it as a template to tweak, not a guarantee.
+const BANK_MAPPING_LIBRARY=[
+  {lid:"ml_bank_hdfc_xls",name:"HDFC Bank XLS",bank:"HDFC Bank",
+   description:"HDFC Bank savings/current account statement (Excel XLS format)",
+   skip_rows:22,date_col:0,desc_col:1,ref_col:2,amount_type:"split",
+   debit_col:4,credit_col:5,balance_col:6,date_format:"DD/MM/YYYY"},
+  {lid:"ml_bank_axis_xls",name:"Axis Bank XLS (starting point)",bank:"Axis Bank",
+   description:"Axis Bank account statement — matches the current built-in parser's settings; adjust as needed for your export",
+   skip_rows:18,date_col:1,desc_col:3,ref_col:2,amount_type:"split",
+   debit_col:4,credit_col:5,balance_col:6,date_format:"DD-MM-YYYY"},
 ];
 
 
@@ -1012,6 +1052,7 @@ function OvList({title,items,filterOptions,owners,onNav}){
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      <Collapsible storageKey={"ov-list-"+title} header={
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,gap:8,flexWrap:"wrap",flexShrink:0}}>
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",flexShrink:0}}>{title}</div>
         <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -1026,6 +1067,7 @@ function OvList({title,items,filterOptions,owners,onNav}){
           <button onClick={onNav} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:500,padding:0,fontFamily:"'Manrope',sans-serif",flexShrink:0}}>View all</button>
         </div>
       </div>
+      }>
       <div style={{flex:1,overflowY:"auto",minHeight:0}}>
       {items.length===0
         ?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"16px 0"}}>None yet</div>
@@ -1062,6 +1104,7 @@ function OvList({title,items,filterOptions,owners,onNav}){
         ):null;
       })()}
       </div>
+      </Collapsible>
     </div>
   );
 }
@@ -1235,10 +1278,12 @@ function Overview({db,owners,onNavigate}){
 
       {transfers.length>0&&(
         <Card>
+          <Collapsible storageKey="overview-recent-transfers" header={
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
             <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Recent Transfers</div>
             <button onClick={()=>onNavigate("transfer-history")} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:acc,fontWeight:600,padding:0}}>View All</button>
           </div>
+          }>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`1.5px solid ${bdr}`}}>
@@ -1257,6 +1302,7 @@ function Overview({db,owners,onNavigate}){
               </tbody>
             </table>
           </div>
+          </Collapsible>
         </Card>
       )}
     </div>
@@ -1281,7 +1327,6 @@ function AutoTransferName({masterId,db}){
 // ── CardMilestones ────────────────────────────────────────────────────────────
 function CardMilestones({masterId,db}){
   const [ms,setMs]=useState([]);
-  const [show,setShow]=useState(false);
   useEffect(()=>{
     if(!masterId) return;
     db.from("master_milestones").filter("master_card_id",masterId).then(({data})=>{
@@ -1293,11 +1338,10 @@ function CardMilestones({masterId,db}){
   const tLbl={bonus_points:"Bonus Points",voucher:"Voucher",fee_waiver:"Fee Waiver",lounge:"Lounge",gift:"Gift",status_upgrade:"Status Upgrade",other:"Benefit"};
   return(
     <Card style={{marginBottom:16}}>
-      <div onClick={()=>setShow(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Milestones ({ms.length})</div>
-        <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
-      </div>
-      {show&&<div style={{display:"flex",flexDirection:"column",gap:8,marginTop:14}}>
+      <Collapsible storageKey={"card-milestones-"+masterId} header={
+      <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Milestones ({ms.length})</div>
+      }>
+      <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:14}}>
         {ms.map(m=>(
           <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
             <div style={{flexShrink:0,textAlign:"center",minWidth:64}}>
@@ -1311,7 +1355,8 @@ function CardMilestones({masterId,db}){
             </div>
           </div>
         ))}
-      </div>}
+      </div>
+      </Collapsible>
     </Card>
   );
 }
@@ -1340,19 +1385,16 @@ function PartnerRow({p,gName,gLogo}){
 function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onRefresh}){
 
   // No library import here - that belongs in Master catalog only
-  const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
-      <div onClick={()=>setShow(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
-        </div>
-      </div>
-      {show&&(partners.length===0
-        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0",marginTop:8}}>No transfer partners{hasMore?" — use Import above":""}</div>
+      <Collapsible storageKey={"card-partners-"+masterId} header={
+      <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
+      }>
+      {partners.length===0
+        ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0",marginTop:8}}>No transfer partners</div>
         :<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
-      )}
+      }
+      </Collapsible>
     </Card>
   );
 }
@@ -1385,19 +1427,16 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
     setImporting(false);setImportDone(true);onRefresh();
     setTimeout(()=>setImportDone(false),3000);
   };
-  const [show,setShow]=useState(false);
   return(
     <Card style={{marginBottom:16}}>
-      <div onClick={()=>setShow(v=>!v)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",userSelect:"none"}}>
-        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <span style={{fontSize:12,color:acc,fontWeight:600}}>{show?"▲":"▼"}</span>
-        </div>
-      </div>
-      {show&&(partners.length===0
+      <Collapsible storageKey={"prog-partners-"+masterId} header={
+      <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
+      }>
+      {partners.length===0
         ?<div style={{fontSize:12,color:mut,textAlign:"center",padding:"12px 0",marginTop:8}}>No transfer partners{hasMore?" — use Import above":""}</div>
         :<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>{partners.map(p=><PartnerRow key={p.id} p={p} gName={gName} gLogo={gLogo}/>)}</div>
-      )}
+      }
+      </Collapsible>
     </Card>
   );
 }
@@ -2095,7 +2134,6 @@ function LibraryImport({db, onClose, onDone, userId}){
 
 function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
   const [partners,setPartners]=useState([]);
-  const [showPartners,setShowPartners]=useState(false);
   const [inboundPartners,setInboundPartners]=useState([]);
   const [milestones,setMilestones]=useState([]);
   const [allMasters,setAllMasters]=useState({cards:[],programs:[]});
@@ -2170,7 +2208,9 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
       {/* Milestones */}
       {milestones.length>0&&(
         <Card style={{marginBottom:16}}>
+          <Collapsible storageKey={"master-card-milestones-"+card.id} header={
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Milestones</div>
+          }>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {milestones.map(m=>(
               <div key={m.id} style={{display:"flex",gap:14,padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,alignItems:"flex-start"}}>
@@ -2186,16 +2226,16 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
               </div>
             ))}
           </div>
+          </Collapsible>
         </Card>
       )}
 
       {/* Transfer Out */}
       <Card style={{marginBottom:16}}>
-        <div onClick={()=>setShowPartners(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Out Partners ({partners.length})</div>
-          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPartners?"▲":"▼"}</span>
-        </div>
-        {showPartners&&(busy?<div style={{color:mut,fontSize:12,textAlign:"center",padding:16,marginTop:10}}>Loading…</div>:partners.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"12px 0",marginTop:8}}>No outgoing transfer partners</div>:(
+        <Collapsible storageKey={"master-card-out-"+card.id} header={
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Out Partners ({partners.length})</div>
+        }>
+        {(busy?<div style={{color:mut,fontSize:12,textAlign:"center",padding:16,marginTop:10}}>Loading…</div>:partners.length===0?<div style={{color:mut,fontSize:12,textAlign:"center",padding:"12px 0",marginTop:8}}>No outgoing transfer partners</div>:(
           <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
             {partners.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
@@ -2216,16 +2256,16 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
             ))}
           </div>
         ))}
+        </Collapsible>
       </Card>
 
       {/* Transfer In */}
       {inboundPartners.length>0&&(
         <Card>
-          <div onClick={()=>setShowPartners(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none"}}>
-            <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer In ({inboundPartners.length})</div>
-            <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPartners?"▲":"▼"}</span>
-          </div>
-          {showPartners&&<div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
+          <Collapsible storageKey={"master-card-in-"+card.id} header={
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer In ({inboundPartners.length})</div>
+          }>
+          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:12}}>
             {inboundPartners.map(p=>(
               <div key={p.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`,flexWrap:"wrap",gap:8}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -2241,7 +2281,8 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
                 </div>
               </div>
             ))}
-          </div>}
+          </div>
+          </Collapsible>
         </Card>
       )}
     </div>
@@ -2251,7 +2292,6 @@ function MasterCardDetail({card, db, onBack, onEdit, onDelete}){
 // ── MasterProgDetail ──────────────────────────────────────────────────────────
 function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
   const [partners,setPartners]=useState([]);
-  const [showPartners,setShowPartners]=useState(false);
   const [inboundPartners,setInboundPartners]=useState([]);
   const [allMasters,setAllMasters]=useState({cards:[],programs:[]});
   const [busy,setBusy]=useState(true);
@@ -2278,7 +2318,9 @@ function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
   const PartnerSection=({title,items,colorRatio})=>(
     items.length>0?(
       <Card style={{marginBottom:16}}>
+        <Collapsible storageKey={"master-prog-partners-"+prog.id+"-"+title} header={
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>{title} ({items.length})</div>
+        }>
         <div style={{display:"flex",flexDirection:"column",gap:6}}>
           {items.map(p=>{
             const isOut=title.includes("Out");
@@ -2303,6 +2345,7 @@ function MasterProgDetail({prog, db, onBack, onEdit, onDelete}){
             );
           })}
         </div>
+        </Collapsible>
       </Card>
     ):null
   );
@@ -3192,7 +3235,6 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const [dlFrom,setDlFrom]=useState("");
   const [dlTo,setDlTo]=useState("");
   const [dlType,setDlType]=useState("all"); // all|earn|redeem
-  const [showPtsHistory,setShowPtsHistory]=useState(false);
   const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
@@ -3349,11 +3391,10 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <Card>
-        <div onClick={()=>setShowPtsHistory(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:showPtsHistory?16:0}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
-          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPtsHistory?"▲":"▼"}</span>
-        </div>
-        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
+        <Collapsible storageKey={"card-pts-history-"+card.id} header={
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
+        }>
+        {(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
@@ -3377,6 +3418,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             </table>
           </div>
         )}
+        </Collapsible>
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {master?.auto_transfer_to&&<div style={{background:acc+"10",border:`1px solid ${acc}33`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:acc,fontWeight:500}}>
@@ -3621,7 +3663,6 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
-  const [showPtsHistory,setShowPtsHistory]=useState(false);
   const [showDLProg,setShowDLProg]=useState(false);
   const [dlFrom,setDlFrom]=useState(""); const [dlTo,setDlTo]=useState(""); const [dlType,setDlType]=useState("all");
   const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
@@ -3732,11 +3773,10 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <Card>
-        <div onClick={()=>setShowPtsHistory(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:showPtsHistory?16:0}}>
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
-          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showPtsHistory?"▲":"▼"}</span>
-        </div>
-        {showPtsHistory&&(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
+        <Collapsible storageKey={"prog-pts-history-"+prog.id} header={
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
+        }>
+        {(busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
@@ -3760,6 +3800,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
             </table>
           </div>
         )}
+        </Collapsible>
       </Card>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="adjust">Adjustment</option></select>
@@ -4091,6 +4132,7 @@ function TransferHistory({db,owners}){
       </div>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="↗️" msg="No transfers logged yet — use Transfer Points to move points between a card and a loyalty program"/>:(
         <Card>
+          <Collapsible storageKey="transfer-history-table" header={null}>
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
@@ -4122,6 +4164,7 @@ function TransferHistory({db,owners}){
               </div>
             </div>
           )}
+          </Collapsible>
         </Card>
       )}
     </div>
@@ -4328,7 +4371,9 @@ function SetupOwners({db,owners,reloadOwners}){
           </div>
         </Card>
         <Card>
+          <Collapsible storageKey="owners-list" header={
           <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Owners ({owners.length})</div>
+          }>
           {owners.length===0?(
             <div style={{color:mut,fontSize:13,padding:"8px 0"}}>No owners yet</div>
           ):owners.map(o=>(
@@ -4348,6 +4393,7 @@ function SetupOwners({db,owners,reloadOwners}){
               )}
             </div>
           ))}
+          </Collapsible>
         </Card>
       </div>
     </div>
@@ -4732,7 +4778,9 @@ function SetupCategories({db}){
           </div>
         </Card>
         <Card>
+          <Collapsible storageKey="categories-list" header={
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Categories ({cats.length})</div>
+          }>
           {busy?<div style={{color:mut,fontSize:12}}>Loading…</div>:cats.map(c=>(
             <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
               {editId===c.id?(
@@ -4756,6 +4804,7 @@ function SetupCategories({db}){
             </div>
           ))}
           <div style={{fontSize:11,color:mut,marginTop:12}}>Reset to defaults in Settings → Danger Zone</div>
+          </Collapsible>
         </Card>
       </div>}
 
@@ -4781,7 +4830,9 @@ function SetupCategories({db}){
           </div>
         </Card>
         <Card>
+          <Collapsible storageKey="merchant-rules-list" header={
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Rules ({rules.length})</div>
+          }>
           {rules.length===0?<div style={{color:mut,fontSize:12}}>No rules yet — add one above</div>:rules.map(r=>(
             <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"8px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
               <div style={{flex:1,display:"flex",alignItems:"center",gap:12}}>
@@ -4792,6 +4843,7 @@ function SetupCategories({db}){
               <button style={{...dbtn,padding:"3px 10px",fontSize:11}} onClick={()=>delRule(r.id)}>Delete</button>
             </div>
           ))}
+          </Collapsible>
         </Card>
       </div>}
     </div>
@@ -4853,7 +4905,9 @@ function SetupPeople({db}){
         </Card>
         {/* People list */}
         <Card>
+          <Collapsible storageKey="people-list" header={
           <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>People ({people.length})</div>
+          }>
           {people.length===0?(
             <div style={{color:mut,fontSize:13,padding:"8px 0"}}>No people added yet</div>
           ):people.map(p=>(
@@ -4873,6 +4927,7 @@ function SetupPeople({db}){
               )}
             </div>
           ))}
+          </Collapsible>
         </Card>
       </div>
     </div>
@@ -6413,9 +6468,11 @@ function BankAccounts({db,owners,onNavigate}){
                 onMouseEnter={e=>e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)"}
                 onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
                 <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
-                  <div style={{width:48,height:48,borderRadius:12,background:isCash?"#f5f0e8":"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
-                    {isCash?"💵":a.bank_name==="HDFC Bank"?"🏦":a.bank_name==="Axis Bank"?"🏦":"🏦"}
-                  </div>
+                  {isCash?(
+                    <div style={{width:48,height:48,borderRadius:12,background:"#f5f0e8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>💵</div>
+                  ):(
+                    <LogoCircle url={BANK_LOGOS[a.bank_name]} name={a.bank_name} size={48}/>
+                  )}
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nickname||a.bank_name||"Account"}</div>
                     <div style={{fontSize:11,color:mut,marginTop:2}}>{isCash?"Cash":a.bank_name}{a.last4?" ···· "+a.last4:""}{owner?" · "+owner.name:""}</div>
@@ -6443,9 +6500,11 @@ function BankAccounts({db,owners,onNavigate}){
                 style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s"}}
                 onMouseEnter={e=>e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)"}
                 onMouseLeave={e=>e.currentTarget.style.boxShadow="none"}>
-                <div style={{width:40,height:40,borderRadius:10,background:isCash?"#f5f0e8":"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-                  {isCash?"💵":"🏦"}
-                </div>
+                {isCash?(
+                  <div style={{width:40,height:40,borderRadius:10,background:"#f5f0e8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>💵</div>
+                ):(
+                  <LogoCircle url={BANK_LOGOS[a.bank_name]} name={a.bank_name} size={40}/>
+                )}
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:13,fontWeight:600,color:txt}}>{a.nickname||a.bank_name}</div>
                   <div style={{fontSize:11,color:mut}}>{isCash?"Cash":a.bank_name}{a.last4?" ···· "+a.last4:""}{owner?" · "+owner.name:""}</div>
@@ -6520,6 +6579,7 @@ function AddBankAccountModal({db,owners,onSave,onClose}){
 }
 
 // ── BankAccountDetail dashboard ────────────────────────────────────────────
+const BANK_LOGOS={"HDFC Bank":"/logos/hdfc.png","Axis Bank":"/logos/axis.png"};
 function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onNavigate}){
   const [accountData,setAccountData]=useState(initAccount);
   const [txns,setTxns]=useState([]);
@@ -6532,6 +6592,8 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
   const [showAdd,setShowAdd]=useState(false);
   const [editTxn,setEditTxn]=useState(null);
   const [showEdit,setShowEdit]=useState(false);
+  const [page,setPage]=useState(0);
+  const PAGE_SIZE=15;
 
   const owner=owners.find(o=>o.id===accountData.owner_id);
   const isCash=accountData.account_type==="cash";
@@ -6592,7 +6654,17 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
     return 0;
   });
 
+  useEffect(()=>{setPage(0);},[search,typeF,sortCol]);
+  const totalPages=Math.max(1,Math.ceil(filtered.length/PAGE_SIZE));
+  const pageSafe=Math.min(page,totalPages-1);
+  const pageTxns=filtered.slice(pageSafe*PAGE_SIZE,(pageSafe+1)*PAGE_SIZE);
+  const obAtBottom=sortCol==="date-desc";
+  const showObTop=!obAtBottom&&pageSafe===0;
+  const showObBottom=obAtBottom&&pageSafe===totalPages-1;
+
   const delTxn=async id=>{
+    const t=txns.find(x=>x.id===id);
+    if(t?.statement_id) return alert("This transaction is part of an uploaded statement and can't be deleted individually. Delete the whole statement instead.");
     if(!confirm("Delete this transaction?")) return;
     await db.from("bank_transactions").delete(id);
     load();
@@ -6628,9 +6700,11 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
       {/* Header card */}
       <Card style={{marginBottom:20}}>
         <div style={{display:"flex",gap:14,alignItems:"center",marginBottom:16}}>
-          <div style={{width:64,height:64,borderRadius:16,background:isCash?"#f5f0e8":"#e8f0fe",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,flexShrink:0}}>
-            {isCash?"💵":"🏦"}
-          </div>
+          {isCash?(
+            <div style={{width:64,height:64,borderRadius:16,background:"#f5f0e8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:30,flexShrink:0}}>💵</div>
+          ):(
+            <LogoCircle url={BANK_LOGOS[accountData.bank_name]} name={accountData.bank_name} size={64}/>
+          )}
           <div>
             <div style={{fontSize:20,fontWeight:700,color:txt,letterSpacing:"-0.03em",fontFamily:"'Manrope',sans-serif"}}>{accountData.nickname||accountData.bank_name}</div>
             <div style={{fontSize:13,color:mut,marginTop:2}}>{isCash?"Cash":accountData.bank_name}{accountData.last4?" ···· "+accountData.last4:""}{owner?" · "+owner.name:""}</div>
@@ -6656,7 +6730,9 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
       {/* Transactions */}
       {/* Statements */}
       {stmts.length>0&&<Card style={{marginBottom:16}}>
-        <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Statements ({stmts.length})</div>
+        <Collapsible storageKey={"bank-stmts-"+accountData.id} header={
+          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Statements ({stmts.length})</div>
+        }>
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {stmts.map(s=>(
             <div key={s.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 14px",background:surf2,borderRadius:10,cursor:"pointer",border:`1px solid ${bdr}`}}
@@ -6678,9 +6754,11 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
             </div>
           ))}
         </div>
+        </Collapsible>
       </Card>}
 
       <Card>
+        <Collapsible storageKey={"bank-txns-"+accountData.id} header={
         <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
           <div style={{position:"relative",flex:1,minWidth:160}}>
             <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:12}}>🔍</span>
@@ -6697,6 +6775,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
             <option value="amount-asc">Smallest first</option>
           </select>
         </div>
+        }>
         {busy?<div style={{color:mut,padding:20,textAlign:"center"}}>Loading…</div>:
         filtered.length===0?<Empty msg="No transactions found"/>:(
           <div style={{overflowX:"auto"}}>
@@ -6711,15 +6790,17 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
                 <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>✎</th>
               </tr></thead>
               <tbody>
-                <tr style={{background:surf2,borderBottom:`2px solid ${bdr}`}}>
-                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
-                  <td colSpan={2}/>
-                  <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
-                  <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
-                  <td/>
-                </tr>
-                {filtered.map((t,i)=>{
+                {showObTop&&(
+                  <tr style={{background:surf2,borderBottom:`2px solid ${bdr}`}}>
+                    <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                    <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
+                    <td colSpan={2}/>
+                    <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                    <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                    <td/>
+                  </tr>
+                )}
+                {pageTxns.map((t,i)=>{
                   const typ=TXN_TYPES.find(x=>x.id===(t.txn_type||"spend"));
                   const isCredit=t.amount>0;
                   return(
@@ -6738,20 +6819,40 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
                       </td>
                       <td style={{padding:"9px 4px",textAlign:"center"}}>
                         <button onClick={e=>{e.stopPropagation();setEditTxn(t);}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:13,padding:"2px 6px"}}>✎</button>
-                        <button onClick={e=>{e.stopPropagation();delTxn(t.id);}} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:13,padding:"2px 4px"}}>×</button>
+                        {!t.statement_id&&<button onClick={e=>{e.stopPropagation();delTxn(t.id);}} style={{background:"none",border:"none",cursor:"pointer",color:red,fontSize:13,padding:"2px 4px"}}>×</button>}
                       </td>
                     </tr>
                   );
                 })}
+                {showObBottom&&(
+                  <tr style={{background:surf2,borderTop:`2px solid ${bdr}`}}>
+                    <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                    <td style={{padding:"9px 10px",color:mut,fontSize:11,fontStyle:"italic"}}>Opening Balance</td>
+                    <td colSpan={2}/>
+                    <td style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>—</td>
+                    <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",color:mut,fontSize:11,fontStyle:"italic"}}>₹{ob.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</td>
+                    <td/>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
         )}
+        {filtered.length>0&&totalPages>1&&(
+          <div style={{display:"flex",justifyContent:"center",alignItems:"center",gap:14,marginTop:14}}>
+            <button onClick={()=>setPage(p=>Math.max(0,p-1))} disabled={pageSafe===0}
+              style={{...gbtn,padding:"6px 12px",fontSize:12,opacity:pageSafe===0?0.4:1,cursor:pageSafe===0?"default":"pointer"}}>‹ Prev</button>
+            <span style={{fontSize:12,color:mut}}>Page {pageSafe+1} of {totalPages}</span>
+            <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={pageSafe===totalPages-1}
+              style={{...gbtn,padding:"6px 12px",fontSize:12,opacity:pageSafe===totalPages-1?0.4:1,cursor:pageSafe===totalPages-1?"default":"pointer"}}>Next ›</button>
+          </div>
+        )}
+        </Collapsible>
       </Card>
 
-      {showAdd&&<AddBankTxnModal db={db} account={account} allAccounts={allAccounts} onSave={()=>{setShowAdd(false);load();}} onClose={()=>setShowAdd(false)}/>}
-      {editTxn&&<AddBankTxnModal db={db} account={account} allAccounts={allAccounts} existing={editTxn} onSave={()=>{setEditTxn(null);load();}} onClose={()=>setEditTxn(null)}/>}
-      {showEdit&&<EditBankAccountModal db={db} account={account} owners={owners} onSave={async()=>{
+      {showAdd&&<AddBankTxnModal db={db} account={accountData} allAccounts={allAccounts} onSave={()=>{setShowAdd(false);load();}} onClose={()=>setShowAdd(false)}/>}
+      {editTxn&&<AddBankTxnModal db={db} account={accountData} allAccounts={allAccounts} existing={editTxn} onSave={()=>{setEditTxn(null);load();}} onClose={()=>setEditTxn(null)}/>}
+      {showEdit&&<EditBankAccountModal db={db} account={accountData} owners={owners} onSave={async()=>{
               setShowEdit(false);
               // Reload account data from DB to get updated opening balance
               const {data}=await db.from("bank_accounts").filter("id",accountData.id);
@@ -6934,7 +7035,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
         await db.from("ledger_entries").insert({
           person_id:s.person_id,
           amount:Number(s.amount),
-          direction:"owed_to_me",
+          direction:Number(showSplit.amount)<0?"owed_to_me":"i_owe",
           description:showSplit.narration||"Bank transaction",
           entry_date:showSplit.txn_date,
           entry_type:"transaction",
@@ -7019,6 +7120,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
       </Card>
 
       <Card>
+        <Collapsible storageKey={"bank-stmt-detail-txns-"+stmt.id} header={
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
           <div style={{position:"relative",flex:1,minWidth:160}}>
             <span style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:12}}>🔍</span>
@@ -7029,6 +7131,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
             {TXN_TYPES.map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </div>
+        }>
         {filtered.length===0?<Empty msg="No transactions"/>:(
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -7101,6 +7204,7 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
             </table>
           </div>
         )}
+        </Collapsible>
       </Card>
 
       {/* Split Modal */}
@@ -7149,11 +7253,15 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
     </div>
   );
 }
+const BANK_MAP_DEFAULT={skip_rows:1,date_col:0,desc_col:1,ref_col:-1,amount_type:"split",debit_col:2,credit_col:3,amount_col:2,credit_ind_col:-1,balance_col:-1,date_format:"DD/MM/YYYY"};
+
 function BankUpload({db,owners,onNavigate}){
   const [accounts,setAccounts]=useState([]);
   const [selAccount,setSelAccount]=useState("");
   const [bank,setBank]=useState("");
+  const [bankLabel,setBankLabel]=useState("");
   const [file,setFile]=useState(null);
+  const [rawRows,setRawRows]=useState(null);
   const [parsed,setParsed]=useState(null);
   const [importing,setImporting]=useState(false);
   const [error,setError]=useState("");
@@ -7161,17 +7269,28 @@ function BankUpload({db,owners,onNavigate}){
   const [stmtFrom,setStmtFrom]=useState("");
   const [stmtTo,setStmtTo]=useState("");
 
+  // Manual mapping fallback — only used when auto-detect can't identify the bank,
+  // or when the user explicitly opts to override it.
+  const [showManualMap,setShowManualMap]=useState(false);
+  const [bankMappings,setBankMappings]=useState([]);
+  const [showBankLibrary,setShowBankLibrary]=useState(false);
+  const [selBankMapping,setSelBankMapping]=useState("");
+  const [mapName,setMapName]=useState("");
+  const [map,setMap]=useState(BANK_MAP_DEFAULT);
+  const updMap=(k,v)=>setMap(p=>({...p,[k]:v}));
+
   useEffect(()=>{
     db.from("bank_accounts").select().then(r=>{
       const accts=(r.data||[]).filter(a=>a.account_type==="bank");
       setAccounts(accts);
     });
+    db.from("csv_mappings").select().then(r=>setBankMappings((r.data||[]).filter(m=>m.kind==="bank")));
   },[db]);
 
   const processFile=async f=>{
     if(!f) return;
-    setFile(f);setError("");setParsed(null);setMsg("");
-    const isXLS=f.name.match(/\.xls?$/i);
+    setFile(f);setError("");setParsed(null);setMsg("");setShowManualMap(false);setRawRows(null);
+    const isXLS=f.name.match(/\.xlsx?$/i);
     if(!isXLS){setError("Please upload an XLS or XLSX file");return;}
     try{
       const XLSX=window.XLSX;
@@ -7181,7 +7300,8 @@ function BankUpload({db,owners,onNavigate}){
       const ws=wb.Sheets[wb.SheetNames[0]];
       const raw=XLSX.utils.sheet_to_json(ws,{header:1,defval:""});
       const rows=raw.map(row=>row.map(cell=>String(cell===null||cell===undefined?"":cell).trim()));
-      
+      setRawRows(rows);
+
       let result=null;
       // Auto-detect bank
       const fullText=rows.slice(0,20).map(r=>r.join(" ")).join(" ").toLowerCase();
@@ -7190,10 +7310,11 @@ function BankUpload({db,owners,onNavigate}){
       } else if(fullText.includes("axis bank")||fullText.includes("particulars")&&fullText.includes("sol")){
         setBank("axis");result=parseAxisStatement(rows);
       } else {
-        setError("Could not auto-detect bank. Currently supports HDFC and Axis bank statements.");
+        setError("Could not auto-detect bank. Load a mapping below, or configure one manually.");
+        setShowManualMap(true);
         return;
       }
-      
+
       if(result&&result.transactions.length>0){
         setParsed(result);
       } else {
@@ -7201,6 +7322,72 @@ function BankUpload({db,owners,onNavigate}){
       }
     }catch(err){
       setError("Error reading file: "+err.message);
+    }
+  };
+
+  const applyBankMapping=m=>{
+    const next={
+      skip_rows:Number(m.skip_rows)||0,date_col:Number(m.date_col)||0,desc_col:Number(m.desc_col)||1,
+      ref_col:m.ref_col!=null?Number(m.ref_col):-1,amount_type:m.amount_type||"split",
+      debit_col:m.debit_col!=null?Number(m.debit_col):-1,credit_col:m.credit_col!=null?Number(m.credit_col):-1,
+      amount_col:m.amount_col!=null?Number(m.amount_col):-1,
+      credit_ind_col:m.credit_ind_col!=null?Number(m.credit_ind_col):-1,
+      balance_col:m.balance_col!=null?Number(m.balance_col):-1,
+      date_format:m.date_format||"DD/MM/YYYY",
+    };
+    setMap(next);
+    setMapName(m.name||"");
+    setSelBankMapping(m.lid||m.id||"");
+    if(rawRows){
+      const result=parseBankStatementGeneric(rawRows,next);
+      if(result.transactions.length>0){
+        setBank("");setBankLabel(m.name||m.bank||"Custom mapping");
+        setParsed(result);setError("");
+      } else {
+        setError("This mapping found no transactions — adjust the column settings below and try again.");
+      }
+    }
+  };
+
+  const importBankLibraryPreset=async preset=>{
+    const {data}=await db.from("csv_mappings").insert({
+      name:preset.name,card_id:null,kind:"bank",
+      date_col:preset.date_col,desc_col:preset.desc_col,ref_col:preset.ref_col,
+      amount_type:preset.amount_type,amount_col:preset.amount_col??null,
+      debit_col:preset.debit_col,credit_col:preset.credit_col,
+      balance_col:preset.balance_col,date_format:preset.date_format,skip_rows:preset.skip_rows,
+      user_id:getCurrentUserId(),
+    });
+    const saved=data&&data[0];
+    if(saved){
+      setBankMappings(prev=>[...prev,saved]);
+      applyBankMapping(saved);
+      setShowBankLibrary(false);
+    }
+  };
+
+  const saveBankMapping=async()=>{
+    if(!mapName.trim()) return alert("Name this mapping first");
+    const {data}=await db.from("csv_mappings").insert({
+      name:mapName.trim(),card_id:null,kind:"bank",
+      date_col:map.date_col,desc_col:map.desc_col,ref_col:map.ref_col,
+      amount_type:map.amount_type,amount_col:map.amount_col,
+      debit_col:map.debit_col,credit_col:map.credit_col,credit_ind_col:map.credit_ind_col,
+      balance_col:map.balance_col,date_format:map.date_format,skip_rows:map.skip_rows,
+      user_id:getCurrentUserId(),
+    });
+    const saved=data&&data[0];
+    if(saved){setBankMappings(prev=>[...prev,saved]);setSelBankMapping(saved.id);}
+  };
+
+  const parseWithManualMap=()=>{
+    if(!rawRows) return;
+    const result=parseBankStatementGeneric(rawRows,map);
+    if(result.transactions.length>0){
+      setBank("");setBankLabel(mapName||"Custom mapping");
+      setParsed(result);setError("");
+    } else {
+      setError("This mapping found no transactions — check the column settings.");
     }
   };
 
@@ -7213,7 +7400,7 @@ function BankUpload({db,owners,onNavigate}){
     // Create statement record
     const stmtLabel=stmtFrom&&stmtTo
       ?`${new Date(stmtFrom).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})} – ${new Date(stmtTo).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"})}`
-      :`${bank==="hdfc"?"HDFC":"Axis"} Statement`;
+      :bank==="hdfc"?"HDFC Statement":bank==="axis"?"Axis Statement":`${bankLabel||"Bank"} Statement`;
     const {data:stmtData}=await db.from("bank_statements").insert({
       account_id:selAccount,
       stmt_from:stmtFrom||null,
@@ -7283,13 +7470,100 @@ function BankUpload({db,owners,onNavigate}){
             onChange={e=>processFile(e.target.files?.[0])}/>
           {error&&<div style={{color:red,fontSize:12,marginBottom:8}}>✗ {error}</div>}
           {bank&&!error&&<div style={{fontSize:11,color:grn,marginBottom:8}}>✓ Detected: {bank==="hdfc"?"HDFC Bank":"Axis Bank"} statement</div>}
+          {rawRows&&!showManualMap&&
+            <button style={{background:"none",border:"none",cursor:"pointer",color:acc,fontSize:11,fontWeight:600,padding:0}} onClick={()=>setShowManualMap(true)}>
+              Use a column mapping instead
+            </button>
+          }
         </Card>
+
+        {showManualMap&&(
+          <Card style={{marginBottom:16}}>
+            <Collapsible storageKey="bank-upload-mapping" header={
+            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Column Mapping</div>
+            }>
+            {bankMappings.length>0&&(
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:11,color:mut,marginBottom:8}}>Load a saved mapping</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {bankMappings.map(m=><button key={m.id} onClick={()=>applyBankMapping(m)} style={{...gbtn,fontSize:12,background:selBankMapping===m.id?surf3:surf}}>{m.name}</button>)}
+                </div>
+              </div>
+            )}
+            <div style={{marginBottom:14}}>
+              <button style={{...gbtn,fontSize:12}} onClick={()=>setShowBankLibrary(v=>!v)}>{showBankLibrary?"Hide Library":"✦ Import from Library"}</button>
+              {showBankLibrary&&(
+                <div style={{marginTop:10,display:"flex",flexDirection:"column",gap:8}}>
+                  {BANK_MAPPING_LIBRARY.map(preset=>(
+                    <div key={preset.lid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"10px 12px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,color:txt}}>{preset.name}</div>
+                        <div style={{fontSize:11,color:mut,marginTop:2}}>{preset.description}</div>
+                      </div>
+                      <button style={{...pbtn,fontSize:12,padding:"5px 14px"}} onClick={()=>importBankLibraryPreset(preset)}>Import</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+              <div>{lbl("Header rows to skip")}<input type="number" style={inp} value={map.skip_rows} onChange={e=>updMap("skip_rows",parseInt(e.target.value)||0)}/></div>
+              <div>{lbl("Date format")}
+                <select style={inp} value={map.date_format} onChange={e=>updMap("date_format",e.target.value)}>
+                  <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                  <option value="DD-MM-YYYY">DD-MM-YYYY</option>
+                  <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                  <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                </select>
+              </div>
+              <div>{lbl("Date column")}<input type="number" style={inp} value={map.date_col} onChange={e=>updMap("date_col",parseInt(e.target.value)||0)}/></div>
+              <div>{lbl("Narration column")}<input type="number" style={inp} value={map.desc_col} onChange={e=>updMap("desc_col",parseInt(e.target.value)||0)}/></div>
+              <div>{lbl("Ref/Chq no. column (-1 = none)")}<input type="number" style={inp} value={map.ref_col} onChange={e=>updMap("ref_col",parseInt(e.target.value))}/></div>
+              <div>{lbl("Balance column (-1 = none)")}<input type="number" style={inp} value={map.balance_col} onChange={e=>updMap("balance_col",parseInt(e.target.value))}/></div>
+            </div>
+            <div style={{margin:"12px 0"}}>
+              {lbl("Amount columns")}
+              <div style={{display:"flex",gap:6,marginBottom:10}}>
+                {["split","single"].map(t=>(
+                  <button key={t} onClick={()=>updMap("amount_type",t)}
+                    style={{padding:"5px 12px",borderRadius:20,border:`1px solid ${map.amount_type===t?txt:bdr}`,
+                    background:map.amount_type===t?txt:"transparent",color:map.amount_type===t?"#fff":mut,
+                    fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"'Manrope',sans-serif"}}>
+                    {t==="split"?"Separate Debit/Credit columns":"Single amount + indicator"}
+                  </button>
+                ))}
+              </div>
+              {map.amount_type==="split"?(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div>{lbl("Debit (withdrawal) column")}<input type="number" style={inp} value={map.debit_col} onChange={e=>updMap("debit_col",parseInt(e.target.value)||0)}/></div>
+                  <div>{lbl("Credit (deposit) column")}<input type="number" style={inp} value={map.credit_col} onChange={e=>updMap("credit_col",parseInt(e.target.value)||0)}/></div>
+                </div>
+              ):(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div>{lbl("Amount column")}<input type="number" style={inp} value={map.amount_col} onChange={e=>updMap("amount_col",parseInt(e.target.value)||0)}/></div>
+                  <div>{lbl("Credit indicator column (-1 = none)")}<input type="number" style={inp} value={map.credit_ind_col} onChange={e=>updMap("credit_ind_col",parseInt(e.target.value))}/></div>
+                </div>
+              )}
+            </div>
+            {rawRows&&rawRows[map.skip_rows]&&(
+              <div style={{fontSize:10,color:mut,marginBottom:12,padding:"8px 10px",background:surf2,borderRadius:8,overflowX:"auto",whiteSpace:"nowrap"}}>
+                First data row (0-indexed columns): {rawRows[map.skip_rows].map((c,i)=>`[${i}] ${c||"—"}`).join("   ")}
+              </div>
+            )}
+            <button style={{...pbtn,width:"100%",justifyContent:"center",marginBottom:10}} onClick={parseWithManualMap} disabled={!rawRows}>Parse with this mapping</button>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <input style={{...inp,marginBottom:0,flex:1}} placeholder="Name this mapping to save it (e.g. Axis Bank Savings)" value={mapName} onChange={e=>setMapName(e.target.value)}/>
+              <button style={{...gbtn,fontSize:12,whiteSpace:"nowrap"}} onClick={saveBankMapping}>Save mapping</button>
+            </div>
+            </Collapsible>
+          </Card>
+        )}
 
         {parsed&&(
           <Card style={{marginBottom:16}}>
             <div style={{fontSize:11,fontWeight:600,color:acc,marginBottom:10,textTransform:"uppercase",letterSpacing:"0.07em"}}>Statement Summary</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,fontSize:12,marginBottom:16}}>
-              <div><span style={{color:mut}}>Bank: </span><strong>{bank==="hdfc"?"HDFC Bank":"Axis Bank"}</strong></div>
+              <div><span style={{color:mut}}>Bank: </span><strong>{bank==="hdfc"?"HDFC Bank":bank==="axis"?"Axis Bank":(bankLabel||"Custom mapping")}</strong></div>
               <div><span style={{color:mut}}>Transactions: </span><strong>{parsed.transactions.length}</strong></div>
               <div><span style={{color:mut}}>Total Debits: </span><strong style={{color:red}}>₹{parsed.total_debits?.toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>
               <div><span style={{color:mut}}>Total Credits: </span><strong style={{color:grn}}>₹{parsed.total_credits?.toLocaleString("en-IN",{minimumFractionDigits:2})}</strong></div>
@@ -7379,6 +7653,76 @@ function parseAxisStatement(rows){
   return{transactions:txns,closing_balance:closingBal,total_debits:totalDebits,total_credits:totalCredits};
 }
 
+// ── Generic bank statement parser — driven by a saved/library mapping ─────────
+// Kept independent from parseHDFCStatement/parseAxisStatement and from the CC
+// mapping parser in SpendUpload, so tuning a mapping here can't affect either.
+function parseBankDate(str,fmt){
+  str=(str||"").trim().replace(/^["']+|["']+$/g,"");
+  str=str.split("T")[0];
+  if(/^\d{1,2}\/\d{1,2}\/\d{2,4}\s+\d{1,2}:\d{2}/.test(str)) str=str.split(" ")[0];
+  const expandYear=y=>y.length===2?"20"+y:y;
+  const MONTHS={jan:"01",feb:"02",mar:"03",apr:"04",may:"05",jun:"06",jul:"07",aug:"08",sep:"09",oct:"10",nov:"11",dec:"12"};
+  const monthNameMatch=str.match(/^(\d{1,2})\s+([A-Za-z]{3})\s+'?(\d{2,4})$/);
+  if(monthNameMatch){
+    const d=monthNameMatch[1].padStart(2,"0");
+    const m=MONTHS[monthNameMatch[2].toLowerCase()]||"01";
+    return `${expandYear(monthNameMatch[3])}-${m}-${d}`;
+  }
+  if(fmt==="DD-MM-YYYY"){
+    const p=str.split(/[\/\-\.]/);
+    if(p.length===3) return `${expandYear(p[2])}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;
+  }
+  if(fmt==="MM/DD/YYYY"){
+    const p=str.split(/[\/\-\.]/);
+    if(p.length===3) return `${expandYear(p[2])}-${p[0].padStart(2,"0")}-${p[1].padStart(2,"0")}`;
+  }
+  if(fmt==="YYYY-MM-DD") return str.substring(0,10);
+  // DD/MM/YYYY or "auto"
+  const p=str.split(/[\/\-\.]/);
+  if(p.length===3){
+    if(p[0].length===4) return `${p[0]}-${p[1].padStart(2,"0")}-${p[2].padStart(2,"0")}`;
+    return `${expandYear(p[2])}-${p[1].padStart(2,"0")}-${p[0].padStart(2,"0")}`;
+  }
+  return str;
+}
+
+function parseBankStatementGeneric(rows,mapping){
+  const{skip_rows=0,date_col=0,desc_col=1,ref_col=-1,amount_type="split",amount_col=-1,
+    debit_col=-1,credit_col=-1,credit_ind_col=-1,balance_col=-1,date_format="DD/MM/YYYY"}=mapping;
+  const txns=[];
+  let closingBal=null;
+
+  for(let i=skip_rows;i<rows.length;i++){
+    const row=rows[i];
+    if(!row||!row[date_col]||row[date_col].startsWith("*")) continue;
+    const dateStr=parseBankDate(row[date_col],date_format);
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+    const narration=(row[desc_col]||"").trim();
+    if(!narration) continue;
+
+    let amount;
+    if(amount_type==="single"){
+      const raw=(row[amount_col]||"").replace(/[,'"₹\s]/g,"").trim();
+      const absAmt=Math.abs(parseFloat(raw))||0;
+      const indCell=(credit_ind_col>=0?row[credit_ind_col]:"")?.trim().toLowerCase()||"";
+      const isCredit=credit_ind_col>=0&&(indCell==="credit"||indCell==="cr"||(indCell.length>0&&indCell!=="debit"&&indCell!=="dr"&&isNaN(parseFloat(indCell))));
+      amount=isCredit?absAmt:-absAmt;
+    } else {
+      const withdrawal=parseFloat((row[debit_col]||"").replace(/,/g,""))||0;
+      const deposit=parseFloat((row[credit_col]||"").replace(/,/g,""))||0;
+      amount=deposit>0?deposit:-withdrawal;
+    }
+    if(amount===0) continue;
+
+    const balance=balance_col>=0?(parseFloat((row[balance_col]||"").replace(/,/g,""))||null):null;
+    txns.push({txn_date:dateStr,narration,amount,balance,ref_no:ref_col>=0?(row[ref_col]||"").trim():""});
+    if(balance) closingBal=balance;
+  }
+
+  const totalDebits=txns.filter(t=>t.amount<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const totalCredits=txns.filter(t=>t.amount>0).reduce((s,t)=>s+t.amount,0);
+  return{transactions:txns,closing_balance:closingBal,total_debits:totalDebits,total_credits:totalCredits};
+}
 
 // ── LandingPage ──────────────────────────────────────────────────────────────
 function LandingPage({onNavigate}){
@@ -7623,7 +7967,9 @@ function SpendOverview({db,owners,onNavigate}){
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
         <Card>
+          <Collapsible storageKey="spend-overview-by-category" header={
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Category</div>
+          }>
           {topCats.length===0?<div style={{color:mut,fontSize:12}}>No data yet</div>:topCats.map(([cat,val],i)=>(
             <div key={i} style={{marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
@@ -7635,9 +7981,12 @@ function SpendOverview({db,owners,onNavigate}){
               </div>
             </div>
           ))}
+          </Collapsible>
         </Card>
         <Card>
+          <Collapsible storageKey="spend-overview-by-card" header={
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:12}}>Spend by Card</div>
+          }>
           {cardSpend.length===0?<div style={{color:mut,fontSize:12}}>No data yet</div>:cardSpend.map((c,i)=>(
             <div key={i} style={{marginBottom:8}}>
               <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,fontSize:12}}>
@@ -7649,6 +7998,7 @@ function SpendOverview({db,owners,onNavigate}){
               </div>
             </div>
           ))}
+          </Collapsible>
         </Card>
       </div>
     </div>
@@ -7672,7 +8022,6 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
   const [dlStmtOpen,setDlStmtOpen]=useState(false);
   const [colW,setColW]=useState([90,200,120,90,140,90]); // date,desc,cat,amt,split,stmt
   const [pieMyShareOnly,setPieMyShareOnly]=useState(false);
-  const [showTxns,setShowTxns]=useState(false);
   const [pieExcludeCats,setPieExcludeCats]=useState(new Set());
   const [showPieFilter,setShowPieFilter]=useState(false);
   const [showStmts,setShowStmts]=useState(false);
@@ -8265,11 +8614,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
 
       {/* Transactions */}
       <Card>
-        <div onClick={()=>setShowTxns(v=>!v)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",cursor:"pointer",userSelect:"none",marginBottom:showTxns?12:0}}>
-          <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transactions ({txns.length})</div>
-          <span style={{fontSize:12,color:acc,fontWeight:600}}>{showTxns?"▲":"▼"}</span>
-        </div>
-        {showTxns&&<>
+        <Collapsible storageKey={"spend-card-txns-"+card.id} header={
+        <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transactions ({txns.length})</div>
+        }>
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
           <input style={{...inp,marginBottom:0,flex:1,minWidth:160,fontSize:12}} placeholder="Search transactions…" value={txnSearch} onChange={e=>{setTxnSearch(e.target.value);setPage(0);}}/>
           <select style={{...inp,marginBottom:0,fontSize:12,width:"auto"}} value={txnSort} onChange={e=>setTxnSort(e.target.value)}>
@@ -8338,7 +8685,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
           <span>{page*PAGE+1}–{Math.min((page+1)*PAGE,txns.length)} of {txns.length}</span>
           <button onClick={()=>setPage(p=>Math.min(totalPages-1,p+1))} disabled={page===totalPages-1} style={{...gbtn,padding:"4px 12px",opacity:page===totalPages-1?0.4:1}}>Next →</button>
         </div>}
-        </>}
+        </Collapsible>
       </Card>
       {showEditCard&&<EditCardModal card={card} db={db} mCards={allMCards} owners={owners} onSave={()=>load()} onClose={()=>setShowEditCard(false)}/>}
 
