@@ -4467,18 +4467,18 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
     const tag=tagLabelFor(t,splitsByTxn[t.id]);
     return(
       <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
-        <td style={{padding:"9px 8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
-        <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
-        <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240}} title={t.description||undefined}>{t.description||"—"}</td>
-        <td style={{padding:"10px 12px",overflow:"hidden"}}><SourceBadge t={t}/></td>
-        <td style={{padding:"10px 12px",overflow:"hidden"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
-        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+        <td style={{padding:"8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
+        <td style={{padding:"8px",color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
+        <td style={{padding:"8px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t.description||undefined}>{t.description||"—"}</td>
+        <td style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}><SourceBadge t={t}/></td>
+        <td style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
+        <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
           {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
         </td>
-        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
+        <td className="pv-num" style={{padding:"8px",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",color:t.id==="__ob__"?mut:txt}}>
           {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
         </td>
-        <td style={{padding:"9px 10px",textAlign:"right"}}>{t.id!=="__ob__"&&<RowActions t={t}/>}</td>
+        <td style={{padding:"8px",textAlign:"right"}}>{t.id!=="__ob__"&&<RowActions t={t}/>}</td>
       </tr>
     );
   };
@@ -4486,12 +4486,12 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
   const renderRows=rows=>isMobile?(
     <div style={{display:"flex",flexDirection:"column",gap:8}}>{rows.map(renderMobileRow)}</div>
   ):(
-    <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed"}}>
+    <div style={{overflowX:"auto",border:`1px solid ${bdr}`,borderRadius:10,background:surf}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
         <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
-        <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-          <th style={{padding:"7px 8px",position:"relative"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
-          {["Date","Description","Source","Tag","Points","Balance",""].map((h,i)=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontWeight:600,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h}{i<6&&<ColResizeHandle width={colW[i+1]} onResize={w=>setColWAt(i+1,w)}/>}</th>)}
+        <thead><tr style={{background:surf3,borderBottom:`1px solid ${bdr}`}}>
+          <th style={{padding:"6px 8px",position:"relative"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
+          {["Date","Description","Source","Tag","Points","Balance",""].map((h,i)=><th key={h} style={{padding:"6px 8px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,fontWeight:600,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h}{i<6&&<ColResizeHandle width={colW[i+1]} onResize={w=>setColWAt(i+1,w)}/>}</th>)}
         </tr></thead>
         <tbody>{rows.map(renderDesktopRow)}</tbody>
       </table>
@@ -4518,7 +4518,6 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
           {bulkErr&&<div style={{color:red,fontSize:11,width:"100%"}}>{bulkErr}</div>}
         </div>
       )}
-      {obRow&&<div style={{marginBottom:10}}>{renderRows([obRow])}</div>}
       {monthGroups.map(g=>{
         const isOpen=expandedMonths.has(g.key);
         const page=pageFor(g.key);
@@ -4534,7 +4533,7 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
               </div>
             </div>
             {isOpen&&(
-              <div style={{borderTop:`1px solid ${bdr}`,padding:"14px 16px",background:surf2}}>
+              <div style={{borderTop:`1px solid ${bdr}`,padding:"14px 16px"}}>
                 {renderRows(pageRows)}
                 <Pager page={page} setPage={p=>setPageFor(g.key,p)} total={g.rows.length}/>
               </div>
@@ -4542,6 +4541,7 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
           </div>
         );
       })}
+      {obRow&&<div style={{marginTop:10}}>{renderRows([obRow])}</div>}
     </div>
   );
 }
@@ -12079,7 +12079,7 @@ const NAV=[
     {id:"transfer-history", label:"Transfer History"},
     {id:"redemptions",      label:"Redemptions"},
   ]},
-  {section:"Books", items:[
+  {section:"Books & Accounts", items:[
     {id:"books-overview",   label:"Overview"},
     {id:"books-accounts",   label:"Accounts"},
     {id:"books-entities",   label:"Ledgers"},
