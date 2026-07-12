@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, Fragment } from "react";
 
 // ── PointsVault Library — hardcoded master data ───────────────────────────────
 const LIBRARY = {
@@ -448,7 +448,7 @@ function applyTheme(mode){
   bg=p.bg;surf=p.surf;surf2=p.surf2;surf3=p.surf3;bdr=p.bdr;bdr2=p.bdr2;
   txt=p.txt;mut=p.mut;mut2=p.mut2;acc=p.acc;grn=p.grn;red=p.red;amber=p.amber;amb=p.amb;
 
-  inp={width:"100%",padding:"10px 14px",background:surf,border:`1px solid ${bdr}`,borderRadius:10,color:txt,fontSize:13,fontWeight:400,outline:"none",boxSizing:"border-box",marginBottom:14,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.01em",transition:"border-color 0.15s"};
+  inp={width:"100%",padding:"9px 12px",background:surf,border:`1px solid ${bdr}`,borderRadius:9,color:txt,fontSize:13,fontWeight:400,outline:"none",boxSizing:"border-box",marginBottom:11,fontFamily:"'Manrope',sans-serif",letterSpacing:"-0.01em",transition:"border-color 0.15s"};
   pbtn={...btnBase,...btnSizeMd,border:`1px solid ${txt}`,background:txt,color:bg};
   gbtn={...btnBase,...btnSizeMd,border:`1px solid ${bdr}`,background:surf,color:mut2};
   dbtn={...btnBase,...btnSizeMd,border:`1px solid ${bdr}`,background:surf,color:red};
@@ -468,7 +468,7 @@ const num={fontVariantNumeric:"tabular-nums",letterSpacing:"-0.02em"};
 function lbl(t){return <div style={{fontSize:10,color:mut,fontWeight:500,letterSpacing:"0.09em",textTransform:"uppercase",marginBottom:6,fontFamily:"'Manrope',sans-serif"}}>{t}</div>;}
 function inrFmt(v){return"₹"+Math.round(v).toLocaleString("en-IN");}
 function fmtDate(d,mode="full"){
-  // mode: "full"=DD-Mon-YY, "noYear"=DD-Mon, "monthYear"=Mon-YY
+  // mode: "full"=DD/MM/YY (transaction rows), "noYear"=DD-Mon, "monthYear"=Mon-YY
   if(!d) return "—";
   const s=d.substring(0,10);
   const p=s.split("-");
@@ -479,7 +479,7 @@ function fmtDate(d,mode="full"){
   const yr="'"+p[0].slice(2);
   if(mode==="noYear") return `${day}-${mon}`;
   if(mode==="monthYear") return `${mon}-${yr}`;
-  return `${day}-${mon}-${yr}`;
+  return `${String(day).padStart(2,"0")}/${p[1]}/${p[0].slice(2)}`;
 }
 
 function fmtMonth(ym){
@@ -852,6 +852,49 @@ const MAPPING_LIBRARY=[
    delimiter:"auto",skip_rows:7,date_col:0,desc_col:1,amount_type:"single",
    amount_col:2,debit_col:-1,credit_col:-1,date_format:"MM/DD/YYYY",
    credit_ind_col:-1,total_due_row:-1,total_due_col:-1,opening_bal_row:-1,opening_bal_col:-1},
+];
+
+// ── CC points statement mapping library — descriptive only (unlike MAPPING_LIBRARY,
+// these formats need dynamic section-scanning, not fixed row/column indices, so
+// each entry is backed by a dedicated parser function rather than a declarative config).
+const POINTS_MAPPING_LIBRARY=[
+  {lid:"pml_hdfc_csv",name:"HDFC Points (CSV)",bank:"HDFC Bank",
+   description:"Reads the same pipe-delimited CSV export used for Books, but extracts per-transaction reward points, named program bonuses, redemptions and lapsed/adjusted points instead — feeds the card's points ledger only, doesn't touch Books."},
+  {lid:"pml_amex_pdf",name:"Amex Points (PDF)",bank:"American Express",
+   description:"Reads the \"Rewards Activity\" PDF exported from the Amex rewards portal (one calendar month per file) — extracts every dated Earned/Adjusted row with its points value. No aggregate balance to reconcile against, unlike HDFC's CSV."},
+];
+
+// ── Points ledger classification — every point_transactions row has a `kind`
+// (earn/redeem/transfer_out/transfer_in/refund/adjustment/opening_balance), and earn
+// rows carry a sub-type for future filtering/stats. Redemption sub-typing lives on the
+// separate redemption_details table (a redemption can be split across several tags),
+// not here. `refund` is deliberately its own kind, not an earn sub-type — a refund
+// reduces the ledger (negative points), which doesn't fit "earn" semantically.
+const EARN_TYPES=[
+  {id:"on_spends",label:"On Spends"},
+  {id:"bonus_aep",label:"Bonus / AEP"},
+  {id:"joining_renewal",label:"Joining / Renewal Benefits"},
+  {id:"milestone",label:"Milestone Benefits"},
+  {id:"double_dip",label:"Double Dip"},
+];
+const earnTypeLabel=id=>EARN_TYPES.find(e=>e.id===id)?.label||"";
+
+const REDEMPTION_TYPES=[
+  {id:"hotels",label:"Hotels"},
+  {id:"flights",label:"Flights"},
+  {id:"vouchers",label:"Vouchers"},
+  {id:"products",label:"Products"},
+  {id:"statement_credit",label:"Statement Credit"},
+  {id:"other",label:"Other"},
+];
+const redemptionTypeLabel=id=>REDEMPTION_TYPES.find(r=>r.id===id)?.label||"Uncategorized";
+
+// The "Others" tab of the unified Tag modal — Refund (a purchase reversal, always
+// negative) and Adjustment (an unattributed lapse/expiry/correction) are kept as two
+// distinct kinds rather than folded into one, since they mean different things.
+const OTHER_TYPES=[
+  {id:"refund",label:"Refund"},
+  {id:"adjustment",label:"Adjustment"},
 ];
 
 // ── Bank statement mapping library ─────────────────────────────────────────────
@@ -3468,6 +3511,1063 @@ function AddPMModal({show,onClose,db,owners,onSaved,defaultKind="card"}){
   );
 }
 
+// ── HDFCPointsUploadModal — parses an HDFC pipe-delimited CSV export for points only
+// (reuses parseHDFCPointsCSV) and inserts the resulting rows into this card's
+// point_transactions ledger alongside manual entries and transfers. Skips rows that
+// already exist (exact date+description+points match) rather than blocking the whole
+// upload, since re-uploading a statement you've already processed is a common slip.
+const MONTH_NAMES=["","January","February","March","April","May","June","July","August","September","October","November","December"];
+
+function HDFCPointsUploadModal({show,onClose,db,card,existingTxns,onSaved}){
+  const [parsed,setParsed]=useState(null);
+  const [stmtName,setStmtName]=useState("");
+  const [err,setErr]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  const reset=()=>{setParsed(null);setStmtName("");setErr("");setSaving(false);};
+
+  const handleFile=async e=>{
+    const f=e.target.files[0];
+    if(!f) return;
+    setErr("");setParsed(null);
+    try{
+      const text=await f.text();
+      const result=parseHDFCPointsCSV(text);
+      if(!result.statementDate) throw new Error("Couldn't find a Statement Date — is this an HDFC pipe-delimited CSV export?");
+      setParsed(result);
+      const d=new Date(result.statementDate);
+      setStmtName(`HDFC Statement — ${MONTH_NAMES[d.getMonth()+1]} ${d.getFullYear()}`);
+    }catch(ex){ setErr(ex.message||String(ex)); }
+  };
+
+  const isDup=item=>(existingTxns||[]).some(t=>t.txn_date===item.txn_date&&t.description===item.description&&t.points===item.points);
+
+  const confirmSave=async()=>{
+    if(!parsed) return;
+    setSaving(true);setErr("");
+    try{
+      const uid=getCurrentUserId();
+      const toInsert=parsed.items.filter(it=>!isDup(it));
+      const batchId=crypto.randomUUID();
+      const batchName=stmtName.trim()||`HDFC Statement — ${fmtDate(parsed.statementDate)}`;
+      for(const it of toInsert){
+        const {data:trows,error}=await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:it.points,description:it.description,txn_date:it.txn_date,kind:it.kind,earn_type:it.earn_type||null,source:"pml_hdfc_csv",import_batch_id:batchId,import_batch_name:batchName,user_id:uid});
+        if(error) throw new Error(JSON.stringify(error));
+        if(it.kind==="redeem"){
+          await db.from("redemption_details").insert({point_transaction_id:trows[0].id,points:Math.abs(it.points),redemption_type:null,description:it.description,txn_date:it.txn_date,user_id:uid});
+        }
+      }
+      reset();
+      onSaved&&onSaved();
+      onClose();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+
+  const dupCount=parsed?parsed.items.filter(isDup).length:0;
+  const newCount=parsed?parsed.items.length-dupCount:0;
+  const balMismatch=parsed&&parsed.opening!=null&&(card.points_balance||0)!==parsed.opening;
+
+  return(
+    <Modal show={show} onClose={()=>{onClose();reset();}} title="Upload HDFC Points Statement" wide>
+      <div style={{fontSize:12,color:mut,marginBottom:14,lineHeight:1.5}}>
+        Upload the same pipe-delimited CSV export you use for Books — this only reads the points columns and won't touch your Books transactions.
+      </div>
+      <input type="file" accept=".csv" onChange={handleFile} style={{marginBottom:14,fontSize:12,color:mut}}/>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      {parsed&&(<>
+        {lbl("Statement Name")}<input style={inp} value={stmtName} onChange={e=>setStmtName(e.target.value)}/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+          <div style={{background:surf2,borderRadius:10,padding:"10px 12px",border:`1px solid ${bdr}`}}>
+            <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Statement Opening</div>
+            <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt}}>{(parsed.opening||0).toLocaleString("en-IN")}</div>
+          </div>
+          <div style={{background:surf2,borderRadius:10,padding:"10px 12px",border:`1px solid ${bdr}`}}>
+            <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Statement Closing</div>
+            <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt}}>{(parsed.closing||0).toLocaleString("en-IN")}</div>
+          </div>
+          <div style={{background:surf2,borderRadius:10,padding:"10px 12px",border:`1px solid ${bdr}`}}>
+            <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>App's Current Balance</div>
+            <div className="pv-num" style={{fontSize:15,fontWeight:700,color:balMismatch?amber:grn}}>{(card.points_balance||0).toLocaleString("en-IN")}</div>
+          </div>
+        </div>
+        {balMismatch&&(
+          <div style={{background:amber+"15",border:`1px solid ${amber}44`,borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12,color:amber,fontWeight:500}}>
+            ⚠ App balance doesn't match this statement's opening balance — you may be missing a statement, or uploading them out of order.
+          </div>
+        )}
+        <div style={{fontSize:12,color:mut,marginBottom:10}}>
+          {parsed.items.length} rows found · <span style={{color:txt,fontWeight:600}}>{newCount} new</span>{dupCount>0&&<span style={{color:amber,fontWeight:600}}> · {dupCount} already exist (will skip)</span>}
+        </div>
+        <div style={{maxHeight:320,overflowY:"auto",border:`1px solid ${bdr}`,borderRadius:10,marginBottom:14}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",borderBottom:`2px solid ${bdr}`}}>
+              {["Date","Description","Points",""].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Points"?"right":"left",position:"sticky",top:0,background:surf}}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {parsed.items.map((it,i)=>{
+                const dup=isDup(it);
+                return(
+                  <tr key={i} style={{borderBottom:`1px solid ${bdr}`,opacity:dup?0.45:1}}>
+                    <td style={{padding:"7px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(it.txn_date)}</td>
+                    <td style={{padding:"7px 10px",color:txt}}>{it.description}</td>
+                    <td className="pv-num" style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:it.points>0?grn:red}}>{it.points>0?"+"+it.points.toLocaleString():it.points.toLocaleString()}</td>
+                    <td style={{padding:"7px 10px",fontSize:10,color:amber}}>{dup?"Already exists":""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving||newCount===0?0.5:1}} disabled={saving||newCount===0} onClick={confirmSave}>
+          {saving?"Saving…":newCount===0?"Nothing new to add":`Add ${newCount} row${newCount===1?"":"s"}`}
+        </button>
+      </>)}
+    </Modal>
+  );
+}
+
+// ── AmexPointsUploadModal — parses an Amex Rewards Activity PDF (exported from
+// the Amex rewards portal, one calendar month at a time) and inserts the
+// resulting rows into this card's point_transactions ledger. Unlike HDFC's CSV,
+// this format has no aggregate opening/closing balance to check against — each
+// row's own POINTS value is trusted directly, so the preview shows the
+// statement's month instead of a reconciliation figure.
+function AmexPointsUploadModal({show,onClose,db,card,existingTxns,onSaved}){
+  const [parsed,setParsed]=useState(null);
+  const [stmtName,setStmtName]=useState("");
+  const [err,setErr]=useState("");
+  const [saving,setSaving]=useState(false);
+
+  const reset=()=>{setParsed(null);setStmtName("");setErr("");setSaving(false);};
+
+  const handleFile=async e=>{
+    const f=e.target.files[0];
+    if(!f) return;
+    setErr("");setParsed(null);
+    try{
+      const result=await parseAmexPointsPDF(f);
+      setParsed(result);
+      setStmtName(`Amex Statement — ${MONTH_NAMES[result.statementMonthNum]} ${result.statementYear}`);
+    }catch(ex){ setErr(ex.message||String(ex)); }
+  };
+
+  const isDup=item=>(existingTxns||[]).some(t=>t.txn_date===item.txn_date&&t.description===item.description&&t.points===item.points);
+
+  const confirmSave=async()=>{
+    if(!parsed) return;
+    setSaving(true);setErr("");
+    try{
+      const uid=getCurrentUserId();
+      const toInsert=parsed.items.filter(it=>!isDup(it));
+      const batchId=crypto.randomUUID();
+      const batchName=stmtName.trim()||`Amex Statement — ${MONTH_NAMES[parsed.statementMonthNum]} ${parsed.statementYear}`;
+      for(const it of toInsert){
+        const {data:trows,error}=await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:it.points,description:it.description,txn_date:it.txn_date,kind:it.kind,earn_type:it.earn_type||null,source:"pml_amex_pdf",import_batch_id:batchId,import_batch_name:batchName,user_id:uid});
+        if(error) throw new Error(JSON.stringify(error));
+        if(it.kind==="redeem"){
+          await db.from("redemption_details").insert({point_transaction_id:trows[0].id,points:Math.abs(it.points),redemption_type:null,description:it.description,txn_date:it.txn_date,user_id:uid});
+        }
+      }
+      reset();
+      onSaved&&onSaved();
+      onClose();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+
+  const dupCount=parsed?parsed.items.filter(isDup).length:0;
+  const newCount=parsed?parsed.items.length-dupCount:0;
+
+  return(
+    <Modal show={show} onClose={()=>{onClose();reset();}} title="Upload Amex Points Statement" wide>
+      <div style={{fontSize:12,color:mut,marginBottom:14,lineHeight:1.5}}>
+        Upload the "Rewards Activity" PDF exported from the Amex rewards portal (one calendar month per file) — this only reads points, not your Books transactions.
+      </div>
+      <input type="file" accept=".pdf" onChange={handleFile} style={{marginBottom:14,fontSize:12,color:mut}}/>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      {parsed&&(<>
+        {lbl("Statement Name")}<input style={inp} value={stmtName} onChange={e=>setStmtName(e.target.value)}/>
+        <div style={{fontSize:12,color:mut,marginBottom:10}}>
+          Statement period: <strong style={{color:txt}}>{MONTH_NAMES[parsed.statementMonthNum]} {parsed.statementYear}</strong> · {parsed.items.length} rows found · <span style={{color:txt,fontWeight:600}}>{newCount} new</span>{dupCount>0&&<span style={{color:amber,fontWeight:600}}> · {dupCount} already exist (will skip)</span>}
+        </div>
+        <div style={{maxHeight:320,overflowY:"auto",border:`1px solid ${bdr}`,borderRadius:10,marginBottom:14}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",borderBottom:`2px solid ${bdr}`}}>
+              {["Date","Description","Points",""].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Points"?"right":"left",position:"sticky",top:0,background:surf}}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {parsed.items.map((it,i)=>{
+                const dup=isDup(it);
+                return(
+                  <tr key={i} style={{borderBottom:`1px solid ${bdr}`,opacity:dup?0.45:1}}>
+                    <td style={{padding:"7px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(it.txn_date)}</td>
+                    <td style={{padding:"7px 10px",color:txt}}>{it.description}</td>
+                    <td className="pv-num" style={{padding:"7px 10px",textAlign:"right",fontWeight:600,color:it.points>0?grn:red}}>{it.points>0?"+"+it.points.toLocaleString():it.points.toLocaleString()}</td>
+                    <td style={{padding:"7px 10px",fontSize:10,color:amber}}>{dup?"Already exists":""}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving||newCount===0?0.5:1}} disabled={saving||newCount===0} onClick={confirmSave}>
+          {saving?"Saving…":newCount===0?"Nothing new to add":`Add ${newCount} row${newCount===1?"":"s"}`}
+        </button>
+      </>)}
+    </Modal>
+  );
+}
+
+// ── RedemptionDetailsModal — a redeem-kind point_transactions row can be split
+// across several tagged redemption_details rows (e.g. a statement's one lump
+// "Redeemed / Disbursed" figure covering several real-world redemptions). The
+// parent ledger row's point value never changes here — only how it's broken down
+// and described. Allocated/remaining is tracked live; under-allocation is fine
+// (partial tagging, fill in the rest later), over-allocation is blocked.
+function RedemptionDetailsModal({show,onClose,db,txn,onSaved,embedded}){
+  const [splits,setSplits]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+
+  const load=useCallback(async()=>{
+    if(!txn) return;
+    setLoading(true);
+    const {data}=await db.from("redemption_details").filter("point_transaction_id",txn.id);
+    const rows=data||[];
+    setSplits(rows.length?rows.map(s=>({...s,points:String(s.points),redeemed_value_inr:s.redeemed_value_inr!=null?String(s.redeemed_value_inr):""})):[
+      {id:"new-"+Date.now(),points:String(Math.abs(txn.points)),redemption_type:"",description:txn.description||"",notes:"",redeemed_value_inr:"",txn_date:txn.txn_date,_new:true}
+    ]);
+    setLoading(false);
+  },[db,txn]);
+  useEffect(()=>{ if(show) load(); },[show,load]);
+
+  if(!show||!txn) return null;
+  const total=Math.abs(txn.points);
+  const allocated=splits.reduce((a,s)=>a+(parseFloat(s.points)||0),0);
+  const remaining=total-allocated;
+
+  const updateSplit=(id,k,v)=>setSplits(p=>p.map(s=>s.id===id?{...s,[k]:v}:s));
+  const addSplit=()=>{
+    const newPts=remaining>0?remaining:0;
+    setSplits(p=>[...p,{id:"new-"+Date.now(),points:String(newPts),redemption_type:"",description:txn.description||"",notes:"",redeemed_value_inr:"",txn_date:txn.txn_date,_new:true}]);
+  };
+  const removeSplit=async(s)=>{
+    if(!s._new) await db.from("redemption_details").delete(s.id);
+    setSplits(p=>p.filter(x=>x.id!==s.id));
+  };
+
+  const save=async()=>{
+    setErr("");
+    if(allocated>total+0.001){ setErr("Allocated more than the total available — reduce a split's points."); return; }
+    setSaving(true);
+    try{
+      const uid=getCurrentUserId();
+      for(const s of splits){
+        const payload={point_transaction_id:txn.id,points:parseFloat(s.points)||0,redemption_type:s.redemption_type||null,description:s.description||null,notes:s.notes||null,redeemed_value_inr:s.redeemed_value_inr?parseFloat(s.redeemed_value_inr):null,txn_date:s.txn_date||txn.txn_date,user_id:uid};
+        if(s._new){
+          const {error}=await db.from("redemption_details").insert(payload);
+          if(error) throw new Error(JSON.stringify(error));
+        }else{
+          const {error}=await db.from("redemption_details").update(s.id,payload);
+          if(error) throw new Error(JSON.stringify(error));
+        }
+      }
+      setSaving(false);
+      onSaved&&onSaved();
+      onClose&&onClose();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+
+  const content=(
+    <>
+      <div style={{fontSize:12,color:mut,marginBottom:14,lineHeight:1.5}}>
+        {txn.description} · {fmtDate(txn.txn_date)} · {total.toLocaleString("en-IN")} pts total
+      </div>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",background:surf2,borderRadius:8,padding:"8px 12px",marginBottom:14,fontSize:12}}>
+        <span style={{color:mut}}>Allocated</span>
+        <span style={{fontWeight:700,color:txt}}>{allocated.toLocaleString("en-IN")} / {total.toLocaleString("en-IN")}</span>
+        <span style={{color:remaining>0.001?amber:remaining<-0.001?red:grn,fontWeight:600}}>
+          {remaining>0.001?remaining.toLocaleString("en-IN")+" remaining":remaining<-0.001?Math.abs(remaining).toLocaleString("en-IN")+" over-allocated":"Fully allocated"}
+        </span>
+      </div>
+      {loading?<div style={{color:mut}}>Loading…</div>:(
+        <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:14,maxHeight:380,overflowY:"auto"}}>
+          {splits.map(s=>{
+            const pts=parseFloat(s.points)||0;
+            const val=parseFloat(s.redeemed_value_inr)||0;
+            const perPoint=pts>0&&val>0?(val/pts):null;
+            return(
+              <div key={s.id} style={{border:`1px solid ${bdr}`,borderRadius:10,padding:"12px 14px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <div>{lbl("Redemption Type")}<select style={inp} value={s.redemption_type||""} onChange={e=>updateSplit(s.id,"redemption_type",e.target.value)}>
+                    <option value="">Choose…</option>
+                    {REDEMPTION_TYPES.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}
+                  </select></div>
+                  <div>{lbl("Points")}<input style={inp} type="number" value={s.points} onChange={e=>updateSplit(s.id,"points",e.target.value)}/></div>
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                  <div>{lbl("Redeemed Value (₹)")}<input style={inp} type="number" placeholder="Optional" value={s.redeemed_value_inr} onChange={e=>updateSplit(s.id,"redeemed_value_inr",e.target.value)}/></div>
+                  <div>{lbl("Date")}<input style={inp} type="date" value={s.txn_date||""} onChange={e=>updateSplit(s.id,"txn_date",e.target.value)}/></div>
+                </div>
+                <div style={{marginBottom:8}}>{lbl("Notes")}<input style={inp} placeholder="What this was used for..." value={s.notes||""} onChange={e=>updateSplit(s.id,"notes",e.target.value)}/></div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div style={{fontSize:11,color:mut}}>{perPoint?`₹${perPoint.toFixed(2)} / point`:""}</div>
+                  {splits.length>1&&<button style={dbtnSm} onClick={()=>removeSplit(s)}>Remove</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <button style={{...gbtn,width:"100%",justifyContent:"center",marginBottom:10}} onClick={addSplit}>+ Split into another tag</button>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Save"}</button>
+    </>
+  );
+  if(embedded) return content;
+  return(
+    <Modal show={show} onClose={onClose} title="Redemption Details" wide>
+      {content}
+    </Modal>
+  );
+}
+
+// ── recomputeEntityBalance — the shared self-healing calc used whenever a card's
+// or program's balance needs fixing up as a side effect of touching some *other*
+// entity's row (the entity you're actually viewing heals itself via its own load();
+// this is for the one on the other end of a transfer pair).
+async function recomputeEntityBalance(db,entityType,entityId){
+  const tbl=entityType==="card"?"my_cards":"my_programs";
+  const {data:rows}=await db.from(tbl).select();
+  const ent=(rows||[]).find(r=>r.id===entityId);
+  if(!ent) return;
+  const {data:txns}=await db.from("point_transactions").filter("entity_id",entityId);
+  const sum=(txns||[]).filter(t=>t.description!=="Opening balance").reduce((a,t)=>a+t.points,0);
+  await db.from(tbl).update(ent.id,{points_balance:(ent.opening_balance||0)+sum});
+}
+
+// ── deletePointTransaction — deleting a redeem-kind row cascades its
+// redemption_details children automatically via the DB's ON DELETE CASCADE, no
+// app-side work needed. A transfer_out/transfer_in row has no such FK (the two
+// halves live as independent rows, possibly on two different entities), so this
+// finds and deletes its pair explicitly, then fixes the *other* entity's balance —
+// the current entity's own balance is left to the caller's own self-healing load().
+async function deletePointTransaction(db,txn){
+  if(txn.transfer_pair_id){
+    const {data:paired}=await db.from("point_transactions").filter("transfer_pair_id",txn.transfer_pair_id);
+    const other=(paired||[]).find(p=>p.id!==txn.id);
+    await db.from("point_transactions").delete(txn.id);
+    if(other){
+      await db.from("point_transactions").delete(other.id);
+      await recomputeEntityBalance(db,other.entity_type,other.entity_id);
+    }
+  }else{
+    await db.from("point_transactions").delete(txn.id);
+  }
+}
+
+// ── cleanupBeforeKindChange — before retagging a row into a different kind, undo
+// whatever side effects its *current* kind carries: a redeem row's split tags no
+// longer apply once it stops being a redemption, and a transfer's paired row (on
+// a possibly different entity) has to be removed and that entity's balance fixed,
+// same as a real delete would. Called by every Tag-modal tab before it takes over
+// a row that wasn't already its kind.
+async function cleanupBeforeKindChange(db,txn){
+  if(txn.kind==="redeem"){
+    const {data:splits}=await db.from("redemption_details").filter("point_transaction_id",txn.id);
+    for(const s of (splits||[])) await db.from("redemption_details").delete(s.id);
+  }
+  if((txn.kind==="transfer_out"||txn.kind==="transfer_in")&&txn.transfer_pair_id){
+    const {data:paired}=await db.from("point_transactions").filter("transfer_pair_id",txn.transfer_pair_id);
+    const other=(paired||[]).find(p=>p.id!==txn.id);
+    if(other){
+      await db.from("point_transactions").delete(other.id);
+      await recomputeEntityBalance(db,other.entity_type,other.entity_id);
+    }
+  }
+}
+
+// ── EditTransactionModal — core-field editing (description/points/date) for any
+// kind except a native transfer (edited via TransferEditModal instead, since that
+// has to touch both paired rows and two balances). Classification (earn type,
+// redemption type, refund/adjustment, transfer destination) lives in TagModal, not
+// here — this is purely "fix a typo in what I already logged."
+function EditTransactionModal({show,onClose,db,txn,onSaved}){
+  const [f,setF]=useState({description:"",points:"",txn_date:"",notes:""});
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{
+    if(txn) setF({description:txn.description||"",points:String(txn.points),txn_date:txn.txn_date||"",notes:""});
+  },[txn]);
+  if(!show||!txn) return null;
+  const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
+  const save=async()=>{
+    setSaving(true);
+    const raw=parseInt(f.points)||0;
+    const newPts=txn.kind==="adjustment"?raw:(txn.kind==="redeem"||txn.kind==="refund")?-Math.abs(raw):Math.abs(raw);
+    const uid=getCurrentUserId();
+    await db.from("point_transactions").update(txn.id,{description:f.description,points:newPts,txn_date:f.txn_date});
+    if(f.notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:f.notes.trim(),user_id:uid});
+    setSaving(false);
+    onSaved&&onSaved();
+    onClose();
+  };
+  return(
+    <Modal show={show} onClose={onClose} title="Edit Transaction">
+      {lbl("Description")}<input style={inp} value={f.description} onChange={up("description")}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>{lbl("Points")}<input style={inp} type="number" value={f.points} onChange={up("points")}/></div>
+        <div>{lbl("Date")}<input style={inp} type="date" value={f.txn_date} onChange={up("txn_date")}/></div>
+      </div>
+      {lbl("Add a note (optional)")}<input style={inp} placeholder="Stacks with any existing notes..." value={f.notes} onChange={up("notes")}/>
+      <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4,opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Save Changes"}</button>
+    </Modal>
+  );
+}
+
+// ── DeleteConfirmModal — names the specific paired card/program before
+// deleting a transfer (per the user's explicit ask), and warns about cascading
+// redemption tags before deleting a redeem row.
+function DeleteConfirmModal({show,onClose,db,txn,onDeleted}){
+  const [pairedInfo,setPairedInfo]=useState(null);
+  const [loading,setLoading]=useState(true);
+  const [deleting,setDeleting]=useState(false);
+
+  useEffect(()=>{
+    if(!show||!txn) return;
+    setLoading(true);setPairedInfo(null);
+    (async()=>{
+      if(txn.transfer_pair_id){
+        const {data}=await db.from("point_transactions").filter("transfer_pair_id",txn.transfer_pair_id);
+        const other=(data||[]).find(p=>p.id!==txn.id);
+        if(other){
+          const tbl=other.entity_type==="card"?"my_cards":"my_programs";
+          const mtbl=other.entity_type==="card"?"master_cards":"master_programs";
+          const [{data:rows},{data:masters}]=await Promise.all([db.from(tbl).select(),db.from(mtbl).select()]);
+          const ent=(rows||[]).find(r=>r.id===other.entity_id);
+          const name=ent?.nickname||masters?.find(m=>m.id===ent?.master_id)?.name||"the linked account";
+          setPairedInfo({name,points:other.points});
+        }
+      }
+      setLoading(false);
+    })();
+  },[show,txn,db]);
+
+  if(!show||!txn) return null;
+  const isRedeem=txn.kind==="redeem";
+
+  const confirmDelete=async()=>{
+    setDeleting(true);
+    await deletePointTransaction(db,txn);
+    setDeleting(false);
+    onDeleted&&onDeleted();
+    onClose();
+  };
+
+  return(
+    <Modal show={show} onClose={onClose} title="Delete Transaction">
+      <div style={{fontSize:13,color:txt,marginBottom:16,lineHeight:1.6}}>
+        <div style={{marginBottom:10}}><strong>{txn.description}</strong> · <span style={{color:txn.points>0?grn:red}}>{txn.points>0?"+":""}{txn.points.toLocaleString()} pts</span> · {fmtDate(txn.txn_date)}</div>
+        {loading?<div style={{color:mut,fontSize:12}}>Checking for linked entries…</div>:(<>
+          {pairedInfo&&(
+            <div style={{background:amber+"15",border:`1px solid ${amber}44`,borderRadius:8,padding:"10px 12px",marginBottom:8,fontSize:12,color:amber}}>
+              ⚠ Deleting this entry will also delete the corresponding entry on <strong>{pairedInfo.name}</strong> ({pairedInfo.points>0?"+":""}{pairedInfo.points.toLocaleString()} pts). This cannot be undone.
+            </div>
+          )}
+          {isRedeem&&(
+            <div style={{background:amber+"15",border:`1px solid ${amber}44`,borderRadius:8,padding:"10px 12px",marginBottom:8,fontSize:12,color:amber}}>
+              ⚠ This will also delete any redemption tags attached to it.
+            </div>
+          )}
+          {!pairedInfo&&!isRedeem&&<div style={{color:mut,fontSize:12}}>This cannot be undone.</div>}
+        </>)}
+      </div>
+      <button style={{...dbtn,width:"100%",justifyContent:"center",opacity:loading||deleting?0.5:1}} disabled={loading||deleting} onClick={confirmDelete}>{deleting?"Deleting…":"Delete"}</button>
+    </Modal>
+  );
+}
+
+// ── ReceivedTagTab — the Received tab of TagModal: pick an earn sub-type. If the
+// row wasn't already an earn row, converts it first (cleaning up whatever the old
+// kind's side effects were) before applying the new type.
+function ReceivedTagTab({db,txn,onSaved}){
+  const [earnType,setEarnType]=useState(txn.kind==="earn"?(txn.earn_type||"on_spends"):"on_spends");
+  const [notes,setNotes]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const save=async()=>{
+    setSaving(true);setErr("");
+    try{
+      const uid=getCurrentUserId();
+      if(txn.kind!=="earn") await cleanupBeforeKindChange(db,txn);
+      const payload={kind:"earn",earn_type:earnType,points:Math.abs(txn.points),transfer_pair_id:null};
+      if(txn.kind!=="earn") payload.original_kind=txn.original_kind||txn.kind;
+      await db.from("point_transactions").update(txn.id,payload);
+      if(notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:notes.trim(),user_id:uid});
+      onSaved&&onSaved();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+  return(
+    <div>
+      {lbl("Earn Type")}<select style={inp} value={earnType} onChange={e=>setEarnType(e.target.value)}>{EARN_TYPES.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}</select>
+      {lbl("Add a note (optional)")}<input style={inp} placeholder="Stacks with any existing notes..." value={notes} onChange={e=>setNotes(e.target.value)}/>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"OK"}</button>
+    </div>
+  );
+}
+
+// ── RedeemedTagTab — converts the row to kind=redeem (if it wasn't already) then
+// hands off to the exact same split-editing UI/logic as the standalone redemption
+// flow, embedded rather than in its own popup.
+function RedeemedTagTab({db,txn,onSaved}){
+  const [ready,setReady]=useState(txn.kind==="redeem");
+  const [workingTxn,setWorkingTxn]=useState(txn.kind==="redeem"?txn:null);
+  const [err,setErr]=useState("");
+  useEffect(()=>{
+    if(txn.kind==="redeem"){ setWorkingTxn(txn); setReady(true); return; }
+    (async()=>{
+      try{
+        await cleanupBeforeKindChange(db,txn);
+        const payload={kind:"redeem",points:-Math.abs(txn.points),earn_type:null,transfer_pair_id:null,original_kind:txn.original_kind||txn.kind};
+        await db.from("point_transactions").update(txn.id,payload);
+        setWorkingTxn({...txn,...payload});
+        setReady(true);
+      }catch(ex){ setErr(ex.message||String(ex)); }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[txn.id]);
+  if(err) return <div style={{color:red,fontSize:12}}>{err}</div>;
+  if(!ready) return <div style={{color:mut,fontSize:13}}>Converting…</div>;
+  return <RedemptionDetailsModal embedded show db={db} txn={workingTxn} onSaved={onSaved}/>;
+}
+
+// ── TransferTagTab — single destination only (no splitting, per design), reusing
+// the same eligible-partner/ratio logic as the Add Transaction → Transfer Out flow.
+// Converting a row that already carries side effects (an existing redemption's
+// splits, or a prior transfer pairing) cleans those up first, exactly like the
+// other tabs.
+function TransferTagTab({db,txn,entity,eligibleTransferPrograms,onSaved}){
+  const [targetId,setTargetId]=useState("");
+  const [bonus,setBonus]=useState("");
+  const [notes,setNotes]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const target=eligibleTransferPrograms.find(p=>p.progId===targetId);
+  const sentPts=Math.abs(txn.points);
+
+  const save=async()=>{
+    if(!target) return setErr("Choose a destination program");
+    setSaving(true);setErr("");
+    try{
+      const uid=getCurrentUserId();
+      await cleanupBeforeKindChange(db,txn);
+      const bonusPts=parseInt(bonus)||0;
+      const ratioRec=Math.floor(sentPts*(target.ratioTo/target.ratioFrom));
+      const totalRec=ratioRec+bonusPts;
+      const pairId=crypto.randomUUID();
+      await db.from("point_transactions").update(txn.id,{
+        kind:"transfer_out",points:-sentPts,earn_type:null,
+        description:"Transfer to "+target.name+(txn.description?" - "+txn.description:""),
+        transfer_pair_id:pairId,original_kind:txn.original_kind||txn.kind,
+      });
+      await db.from("point_transactions").insert({
+        entity_type:"program",entity_id:target.progId,points:totalRec,
+        description:"Transfer from "+(entity.nickname||entity.masterName)+(bonusPts?" (+"+bonusPts+" bonus)":""),
+        txn_date:txn.txn_date,kind:"transfer_in",source:"manual",transfer_pair_id:pairId,user_id:uid,
+      });
+      const {data:progRows}=await db.from("my_programs").select();
+      const prog=(progRows||[]).find(p=>p.id===target.progId);
+      if(prog) await db.from("my_programs").update(target.progId,{points_balance:(prog.points_balance||0)+totalRec});
+      await db.from("transfer_log").insert({
+        from_type:entity.type,from_id:entity.id,from_owner_id:entity.owner_id,
+        to_type:"program",to_id:target.progId,to_owner_id:prog?.owner_id,
+        points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,
+        ratio_from:target.ratioFrom,ratio_to:target.ratioTo,transfer_date:txn.txn_date,
+        cross_owner:false,notes:notes||null,from_name:entity.nickname||entity.masterName,to_name:target.name,
+        transfer_pair_id:pairId,user_id:uid,
+      });
+      if(notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:notes.trim(),user_id:uid});
+      onSaved&&onSaved();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+
+  return(
+    <div>
+      {lbl("Transfer To")}<select style={inp} value={targetId} onChange={e=>setTargetId(e.target.value)}>
+        <option value="">Choose a program…</option>
+        {eligibleTransferPrograms.map(p=><option key={p.progId} value={p.progId}>{p.name} ({p.ratioFrom}:{p.ratioTo})</option>)}
+      </select>
+      {eligibleTransferPrograms.length===0&&<div style={{fontSize:11,color:amber,marginTop:-8,marginBottom:12}}>No transfer partners found. Check Transfer Partners on this page, or use the Transfer Points page.</div>}
+      {target&&<div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>
+        Ratio {target.ratioFrom}:{target.ratioTo} · Sending {sentPts.toLocaleString("en-IN")} pts · They'll receive ~{Math.floor(sentPts*(target.ratioTo/target.ratioFrom)).toLocaleString("en-IN")} pts
+      </div>}
+      {lbl("Bonus Points (optional)")}<input style={inp} type="number" placeholder="0" value={bonus} onChange={e=>setBonus(e.target.value)}/>
+      {lbl("Add a note (optional)")}<input style={inp} placeholder="Stacks with any existing notes..." value={notes} onChange={e=>setNotes(e.target.value)}/>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"OK"}</button>
+    </div>
+  );
+}
+
+// ── OthersTagTab — Refund and Adjustment are kept as two distinct kinds (a refund
+// is always a reversal/negative, an adjustment can be either), not folded together.
+function OthersTagTab({db,txn,onSaved}){
+  const [subType,setSubType]=useState(txn.kind==="refund"?"refund":txn.kind==="adjustment"?"adjustment":"refund");
+  const [notes,setNotes]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const save=async()=>{
+    setSaving(true);setErr("");
+    try{
+      const uid=getCurrentUserId();
+      if(txn.kind!==subType) await cleanupBeforeKindChange(db,txn);
+      const newPoints=subType==="refund"?-Math.abs(txn.points):txn.points;
+      const payload={kind:subType,earn_type:null,points:newPoints,transfer_pair_id:null};
+      if(txn.kind!==subType) payload.original_kind=txn.original_kind||txn.kind;
+      await db.from("point_transactions").update(txn.id,payload);
+      if(notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:notes.trim(),user_id:uid});
+      onSaved&&onSaved();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+  return(
+    <div>
+      {lbl("Type")}<select style={inp} value={subType} onChange={e=>setSubType(e.target.value)}>{OTHER_TYPES.map(o=><option key={o.id} value={o.id}>{o.label}</option>)}</select>
+      {lbl("Add a note (optional)")}<input style={inp} placeholder="Stacks with any existing notes..." value={notes} onChange={e=>setNotes(e.target.value)}/>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"OK"}</button>
+    </div>
+  );
+}
+
+// ── TagModal — the single entry point for classifying any transaction, on any
+// row except a native (never-tagged) transfer. Four tabs mirror the four things a
+// point movement can actually be: Received / Redeemed / Transfer Out / Others.
+// Switching tabs doesn't touch the row — only clicking that tab's OK button does.
+function TagModal({show,onClose,db,txn,entity,eligibleTransferPrograms,onSaved}){
+  const initialTab=k=>k==="redeem"?"redeemed":(k==="transfer_out"||k==="transfer_in")?"transfer":(k==="refund"||k==="adjustment")?"others":"received";
+  const [tab,setTab]=useState(txn?initialTab(txn.kind):"received");
+  useEffect(()=>{ if(show&&txn) setTab(initialTab(txn.kind)); },[show,txn?.id]);
+  if(!show||!txn) return null;
+  const tabs=[
+    {id:"received",label:"Received"},
+    {id:"redeemed",label:"Redeemed"},
+    {id:"transfer",label:"Transfer Out"},
+    {id:"others",label:"Others"},
+  ];
+  const finish=()=>{ onSaved&&onSaved(); onClose(); };
+  return(
+    <Modal show={show} onClose={onClose} title="Tag Transaction" wide>
+      <div style={{fontSize:12,color:mut,marginBottom:14,lineHeight:1.5}}>
+        {txn.description} · <span style={{color:txn.points>0?grn:red}}>{txn.points>0?"+":""}{txn.points.toLocaleString("en-IN")} pts</span> · {fmtDate(txn.txn_date)}
+      </div>
+      <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:18}}>
+        {tabs.map(t=><button key={t.id} onClick={()=>setTab(t.id)} style={tab===t.id?pbtnSm:gbtnSm}>{t.label}</button>)}
+      </div>
+      {tab==="received"&&<ReceivedTagTab db={db} txn={txn} onSaved={finish}/>}
+      {tab==="redeemed"&&<RedeemedTagTab db={db} txn={txn} onSaved={finish}/>}
+      {tab==="transfer"&&<TransferTagTab db={db} txn={txn} entity={entity} eligibleTransferPrograms={eligibleTransferPrograms} onSaved={finish}/>}
+      {tab==="others"&&<OthersTagTab db={db} txn={txn} onSaved={finish}/>}
+    </Modal>
+  );
+}
+
+// ── TransferEditModal — for a native transfer (created directly as one, not tagged
+// into being one), edits both paired rows at once: points sent, points received,
+// description, date. Destination isn't editable here — moving a transfer to a
+// different receiving entity is really a delete-and-recreate, not an edit. Best-effort
+// syncs the matching transfer_log entry via transfer_pair_id if one is linked.
+function TransferEditModal({show,onClose,db,txn,onSaved}){
+  const [pairedRow,setPairedRow]=useState(null);
+  const [sentPts,setSentPts]=useState("");
+  const [recPts,setRecPts]=useState("");
+  const [description,setDescription]=useState("");
+  const [txnDate,setTxnDate]=useState("");
+  const [notes,setNotes]=useState("");
+  const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+
+  useEffect(()=>{
+    if(!show||!txn) return;
+    setLoading(true);setErr("");
+    (async()=>{
+      const {data}=txn.transfer_pair_id?await db.from("point_transactions").filter("transfer_pair_id",txn.transfer_pair_id):{data:[]};
+      const other=(data||[]).find(p=>p.id!==txn.id)||null;
+      setPairedRow(other);
+      const senderRow=txn.kind==="transfer_out"?txn:other;
+      const receiverRow=txn.kind==="transfer_in"?txn:other;
+      setSentPts(String(Math.abs(senderRow?.points||0)));
+      setRecPts(String(Math.abs(receiverRow?.points||0)));
+      setDescription(txn.description||"");
+      setTxnDate(txn.txn_date||"");
+      setLoading(false);
+    })();
+  },[show,txn]);
+
+  if(!show||!txn) return null;
+
+  const save=async()=>{
+    setSaving(true);setErr("");
+    try{
+      const uid=getCurrentUserId();
+      const senderRow=txn.kind==="transfer_out"?txn:pairedRow;
+      const receiverRow=txn.kind==="transfer_in"?txn:pairedRow;
+      const newSent=Math.abs(parseInt(sentPts))||0;
+      const newRec=Math.abs(parseInt(recPts))||0;
+      if(senderRow) await db.from("point_transactions").update(senderRow.id,{points:-newSent,description,txn_date:txnDate});
+      if(receiverRow) await db.from("point_transactions").update(receiverRow.id,{txn_date:txnDate,points:newRec});
+      if(senderRow) await recomputeEntityBalance(db,senderRow.entity_type,senderRow.entity_id);
+      if(receiverRow) await recomputeEntityBalance(db,receiverRow.entity_type,receiverRow.entity_id);
+      if(txn.transfer_pair_id){
+        const {data:logs}=await db.from("transfer_log").filter("transfer_pair_id",txn.transfer_pair_id);
+        if(logs&&logs[0]) await db.from("transfer_log").update(logs[0].id,{points_sent:newSent,points_received:newRec});
+      }
+      if(notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:notes.trim(),user_id:uid});
+      onSaved&&onSaved();
+      onClose();
+    }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
+  };
+
+  return(
+    <Modal show={show} onClose={onClose} title="Edit Transfer">
+      {loading?<div style={{color:mut}}>Loading…</div>:(<>
+        {!pairedRow&&<div style={{fontSize:11,color:amber,marginBottom:12}}>Couldn't find the paired row — only this side will be updated.</div>}
+        {lbl("Points Sent")}<input style={inp} type="number" value={sentPts} onChange={e=>setSentPts(e.target.value)}/>
+        {lbl("Points Received")}<input style={inp} type="number" value={recPts} onChange={e=>setRecPts(e.target.value)}/>
+        {lbl("Description")}<input style={inp} value={description} onChange={e=>setDescription(e.target.value)}/>
+        {lbl("Date")}<input style={inp} type="date" value={txnDate} onChange={e=>setTxnDate(e.target.value)}/>
+        {lbl("Add a note (optional)")}<input style={inp} placeholder="Stacks with any existing notes..." value={notes} onChange={e=>setNotes(e.target.value)}/>
+        {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+        <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Save Changes"}</button>
+      </>)}
+    </Modal>
+  );
+}
+
+// ── Tag/label helpers shared by the Points History table and (eventually) any
+// other place a point_transactions row needs a human-readable classification.
+function isNativeTransfer(txn){ return (txn.kind==="transfer_out"||txn.kind==="transfer_in")&&!txn.original_kind; }
+function tagLabelFor(txn,splits){
+  // Outgoings (points leaving) = red, Earn = green, Transfers = the accent gold
+  // (kept off amber, which already means "needs attention" elsewhere in this cell).
+  if(txn.id==="__ob__"||txn.kind==="opening_balance") return{text:"—",amber:false,color:mut};
+  if(txn.kind==="earn") return{text:"Earn - "+(txn.earn_type?earnTypeLabel(txn.earn_type):"Untagged"),amber:!txn.earn_type,color:grn};
+  if(txn.kind==="redeem"){
+    const rows=splits||[];
+    if(rows.length===0) return{text:"Redeemed",amber:true,color:red};
+    const anyUntagged=rows.some(s=>!s.redemption_type);
+    if(rows.length===1){
+      const s=rows[0];
+      return s.redemption_type
+        ?{text:`Redeemed ${Math.abs(s.points).toLocaleString("en-IN")} pts for ${redemptionTypeLabel(s.redemption_type)}`,amber:false,color:red}
+        :{text:"Redeemed",amber:true,color:red};
+    }
+    const parts=rows.map(s=>`${Math.abs(s.points).toLocaleString("en-IN")} pts for ${s.redemption_type?redemptionTypeLabel(s.redemption_type):"Untagged"}`);
+    return{text:"Redeemed "+parts.join(", "),amber:anyUntagged,color:red};
+  }
+  if(txn.kind==="transfer_out"){
+    const m=(txn.description||"").match(/^(?:Auto-)?[Tt]ransfer(?:red)? to ([^-]+)/);
+    return{text:m?`Transfer to ${m[1].trim()}`:"Transfer Out",amber:false,color:acc};
+  }
+  if(txn.kind==="transfer_in"){
+    const m=(txn.description||"").match(/^(?:Auto-)?[Tt]ransfer(?:red)? from ([^(]+)/);
+    return{text:m?`Transfer from ${m[1].trim()}`:"Transfer In",amber:false,color:acc};
+  }
+  if(txn.kind==="refund") return{text:"Refund",amber:false,color:red};
+  if(txn.kind==="adjustment") return{text:"Adjustment",amber:false,color:txn.points>0?grn:txn.points<0?red:mut};
+  return{text:"—",amber:false,color:mut};
+}
+
+// ── PointsHistoryTable — shared by CardDetail and ProgDetail so the two never
+// drift apart. Owns its own notes/redemption-split lookups, row selection, the
+// bulk-tag bar, and the notes popover; delegates opening Tag/Edit/Delete modals
+// back up to the parent (which owns those, since it also owns `load()`).
+// Rows are grouped into month sections purely for display — grouping is derived
+// live from txn_date every render, there's no stored "statement" behind it.
+function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,onTag,onEdit,onEditTransfer,onDelete,onReload,reloadTrigger}){
+  const [notesByTxn,setNotesByTxn]=useState({});
+  const [splitsByTxn,setSplitsByTxn]=useState({});
+  const [selected,setSelected]=useState(new Set());
+  const [openNotesId,setOpenNotesId]=useState(null);
+  const [bulkKind,setBulkKind]=useState("received");
+  const [bulkValue,setBulkValue]=useState("");
+  const [bulkApplying,setBulkApplying]=useState(false);
+  const [bulkErr,setBulkErr]=useState("");
+
+  useEffect(()=>{
+    (async()=>{
+      const [nt,rd]=await Promise.all([db.from("transaction_notes").select(),db.from("redemption_details").select()]);
+      const nMap={};(nt.data||[]).forEach(n=>{(nMap[n.point_transaction_id]=nMap[n.point_transaction_id]||[]).push(n);});
+      Object.values(nMap).forEach(arr=>arr.sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)));
+      setNotesByTxn(nMap);
+      const rMap={};(rd.data||[]).forEach(r=>{(rMap[r.point_transaction_id]=rMap[r.point_transaction_id]||[]).push(r);});
+      setSplitsByTxn(rMap);
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[db,reloadTrigger]);
+
+  const toggleSelect=id=>setSelected(p=>{const n=new Set(p);n.has(id)?n.delete(id):n.add(id);return n;});
+  const taggable=disp.filter(t=>t.id!=="__ob__"&&!isNativeTransfer(t));
+  const toggleSelectAll=()=>setSelected(p=>p.size===taggable.length?new Set():new Set(taggable.map(t=>t.id)));
+
+  const bulkApply=async()=>{
+    if(selected.size===0||!bulkValue) return;
+    setBulkApplying(true);setBulkErr("");
+    try{
+      const uid=getCurrentUserId();
+      for(const id of selected){
+        const txn=disp.find(t=>t.id===id);
+        if(!txn) continue;
+        if(bulkKind==="received"){
+          if(txn.kind!=="earn") await cleanupBeforeKindChange(db,txn);
+          const payload={kind:"earn",earn_type:bulkValue,points:Math.abs(txn.points),transfer_pair_id:null};
+          if(txn.kind!=="earn") payload.original_kind=txn.original_kind||txn.kind;
+          await db.from("point_transactions").update(txn.id,payload);
+        }else if(bulkKind==="redeemed"){
+          if(txn.kind!=="redeem"){
+            await cleanupBeforeKindChange(db,txn);
+          }else{
+            const {data:oldSplits}=await db.from("redemption_details").filter("point_transaction_id",txn.id);
+            for(const s of (oldSplits||[])) await db.from("redemption_details").delete(s.id);
+          }
+          const payload={kind:"redeem",points:-Math.abs(txn.points),earn_type:null,transfer_pair_id:null};
+          if(txn.kind!=="redeem") payload.original_kind=txn.original_kind||txn.kind;
+          await db.from("point_transactions").update(txn.id,payload);
+          await db.from("redemption_details").insert({point_transaction_id:txn.id,points:Math.abs(txn.points),redemption_type:bulkValue,description:txn.description||null,txn_date:txn.txn_date,user_id:uid});
+        }else if(bulkKind==="transfer"){
+          const target=eligibleTransferPrograms.find(p=>p.progId===bulkValue);
+          if(!target) continue;
+          await cleanupBeforeKindChange(db,txn);
+          const sentPts=Math.abs(txn.points);
+          const ratioRec=Math.floor(sentPts*(target.ratioTo/target.ratioFrom));
+          const pairId=crypto.randomUUID();
+          await db.from("point_transactions").update(txn.id,{kind:"transfer_out",points:-sentPts,earn_type:null,description:"Transfer to "+target.name+(txn.description?" - "+txn.description:""),transfer_pair_id:pairId,original_kind:txn.original_kind||txn.kind});
+          await db.from("point_transactions").insert({entity_type:"program",entity_id:target.progId,points:ratioRec,description:"Transfer from "+(entity.nickname||entity.masterName),txn_date:txn.txn_date,kind:"transfer_in",source:"manual",transfer_pair_id:pairId,user_id:uid});
+          const {data:progRows}=await db.from("my_programs").select();
+          const prog=(progRows||[]).find(p=>p.id===target.progId);
+          if(prog) await db.from("my_programs").update(target.progId,{points_balance:(prog.points_balance||0)+ratioRec});
+          await db.from("transfer_log").insert({from_type:entity.type,from_id:entity.id,from_owner_id:entity.owner_id,to_type:"program",to_id:target.progId,to_owner_id:prog?.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:0,ratio_from:target.ratioFrom,ratio_to:target.ratioTo,transfer_date:txn.txn_date,cross_owner:false,notes:null,from_name:entity.nickname||entity.masterName,to_name:target.name,transfer_pair_id:pairId,user_id:uid});
+        }else if(bulkKind==="others"){
+          if(txn.kind!==bulkValue) await cleanupBeforeKindChange(db,txn);
+          const newPoints=bulkValue==="refund"?-Math.abs(txn.points):txn.points;
+          const payload={kind:bulkValue,earn_type:null,points:newPoints,transfer_pair_id:null};
+          if(txn.kind!==bulkValue) payload.original_kind=txn.original_kind||txn.kind;
+          await db.from("point_transactions").update(txn.id,payload);
+        }
+      }
+      setSelected(new Set());setBulkValue("");
+      setBulkApplying(false);
+      onReload&&onReload();
+    }catch(ex){ setBulkErr(ex.message||String(ex)); setBulkApplying(false); }
+  };
+
+  const NotesButton=({t})=>{
+    const notes=notesByTxn[t.id]||[];
+    if(notes.length===0) return null;
+    const open=openNotesId===t.id;
+    return(
+      <span style={{position:"relative",display:"inline-block"}}>
+        <button title={notes.map((n,i)=>`Note ${i+1}: ${n.note}`).join("\n")} style={{...gbtnXs,padding:"2px 6px"}} onClick={()=>setOpenNotesId(open?null:t.id)}>ℹ</button>
+        {open&&(
+          <div style={{position:"absolute",zIndex:20,top:"110%",right:0,background:surf,border:`1px solid ${bdr}`,borderRadius:8,padding:"8px 10px",width:220,boxShadow:"0 4px 16px rgba(0,0,0,0.15)",fontSize:11,color:txt}}>
+            {notes.map((n,i)=>(<div key={n.id} style={{marginBottom:i<notes.length-1?6:0}}><strong>Note {i+1}:</strong> {n.note}</div>))}
+          </div>
+        )}
+      </span>
+    );
+  };
+
+  const bulkValueOptions=bulkKind==="received"?EARN_TYPES:bulkKind==="redeemed"?REDEMPTION_TYPES:bulkKind==="transfer"?eligibleTransferPrograms.map(p=>({id:p.progId,label:p.name+" ("+p.ratioFrom+":"+p.ratioTo+")"})):OTHER_TYPES;
+
+  // Source is what gates Edit/Delete (the underlying fact stays locked once it
+  // came from an import, regardless of how it's currently tagged) — Tag itself
+  // is gated separately, only by whether this is a native (never-tagged) transfer.
+  const RowActions=({t})=>{
+    const isTransferKind=t.kind==="transfer_out"||t.kind==="transfer_in";
+    const isManual=t.source==="manual";
+    return(
+      <div style={{display:"flex",gap:6,justifyContent:isMobile?"flex-start":"flex-end",alignItems:"center"}}>
+        {isManual&&<IconBtn title="Edit" onClick={()=>isTransferKind?onEditTransfer(t):onEdit(t)}><EditIcon/></IconBtn>}
+        {isManual&&<IconBtn title="Delete" tone="danger" onClick={()=>onDelete(t)}><DeleteIcon/></IconBtn>}
+        <NotesButton t={t}/>
+      </div>
+    );
+  };
+
+  const TagCell=({t,tag})=>{
+    const showTagBtn=t.id!=="__ob__"&&!isNativeTransfer(t);
+    return(
+      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <span style={{fontSize:12,color:tag.amber?amber:(tag.color||txt),fontWeight:tag.amber?600:500}}>{tag.text}</span>
+        {showTagBtn&&<button style={{...gbtnXs,display:"inline-flex",alignItems:"center",gap:5}} onClick={()=>onTag(t)}><TagIcon size={11}/>{tag.amber?"Tag":"Edit Tag"}</button>}
+      </div>
+    );
+  };
+
+  const SourceBadge=({t})=>t.id==="__ob__"?null:(
+    <span style={{fontSize:11,color:mut}}>{t.source==="manual"?"Manual Transaction":"Imported Transaction"}</span>
+  );
+
+  // Purely a rendering grouping — computed fresh from txn_date every render, no
+  // persisted "statement" behind it. disp is already sorted newest-first, so
+  // consecutive same-month rows are already adjacent.
+  const monthGroups=[];
+  disp.forEach(t=>{
+    const key=t.id==="__ob__"?"__ob__":(t.txn_date||"").slice(0,7);
+    const last=monthGroups[monthGroups.length-1];
+    if(!last||last.key!==key){
+      const label=key==="__ob__"?null:(()=>{const [y,m]=key.split("-");return MONTH_NAMES[parseInt(m)]+" "+y;})();
+      monthGroups.push({key,label,rows:[t]});
+    }else last.rows.push(t);
+  });
+
+  return(
+    <div>
+      {selected.size>0&&(
+        <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:surf2,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 14px",marginBottom:10}}>
+          <div style={{fontSize:12,fontWeight:600,color:txt,marginRight:4}}>Tag {selected.size} selected as:</div>
+          <select style={{...inp,marginBottom:0,width:120,fontSize:12}} value={bulkKind} onChange={e=>{setBulkKind(e.target.value);setBulkValue("");}}>
+            <option value="received">Received</option>
+            <option value="redeemed">Redeemed</option>
+            <option value="transfer">Transfer Out</option>
+            <option value="others">Others</option>
+          </select>
+          <select style={{...inp,marginBottom:0,width:180,fontSize:12}} value={bulkValue} onChange={e=>setBulkValue(e.target.value)}>
+            <option value="">Choose…</option>
+            {bulkValueOptions.map(o=><option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+          <button style={{...pbtnXs,opacity:bulkApplying||!bulkValue?0.5:1}} disabled={bulkApplying||!bulkValue} onClick={bulkApply}>{bulkApplying?"Applying…":"Apply"}</button>
+          <button style={gbtnXs} onClick={()=>setSelected(new Set())}>Clear</button>
+          {bulkErr&&<div style={{color:red,fontSize:11,width:"100%"}}>{bulkErr}</div>}
+        </div>
+      )}
+      {isMobile?(
+        <div style={{display:"flex",flexDirection:"column",gap:14}}>
+          {monthGroups.map(g=>(
+            <div key={g.key}>
+              {g.label&&<div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{g.label}</div>}
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {g.rows.map(t=>{
+                  const tag=tagLabelFor(t,splitsByTxn[t.id]);
+                  return(
+                    <div key={t.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:surf}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+                        <div style={{minWidth:0,display:"flex",gap:6,alignItems:"flex-start"}}>
+                          {t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)} style={{marginTop:3,accentColor:acc,cursor:"pointer"}}/>}
+                          <div>
+                            <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt}}>{t.description||"—"}</div>
+                            <div style={{fontSize:11,color:mut,marginTop:2}}>{t.txn_date?fmtDate(t.txn_date):"—"}{t.id!=="__ob__"&&<> · <SourceBadge t={t}/></>}</div>
+                          </div>
+                        </div>
+                        <div style={{textAlign:"right",flexShrink:0}}>
+                          <div className="pv-num" style={{fontSize:14,fontWeight:700,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+                            {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
+                          </div>
+                          <div className="pv-num" style={{fontSize:11,color:mut,marginTop:2}}>{t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}</div>
+                        </div>
+                      </div>
+                      {t.id!=="__ob__"&&(
+                        <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                          <TagCell t={t} tag={tag}/>
+                          <RowActions t={t}/>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      ):(
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
+              <th style={{padding:"7px 8px"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/></th>
+              {["Date","Description","Source","Tag","Points","Balance",""].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontWeight:600}}>{h}</th>)}
+            </tr></thead>
+            <tbody>
+              {monthGroups.map(g=>(
+                <Fragment key={g.key}>
+                  {g.label&&(
+                    <tr><td colSpan={8} style={{padding:"10px 10px 6px",fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.07em"}}>{g.label}</td></tr>
+                  )}
+                  {g.rows.map(t=>{
+                    const tag=tagLabelFor(t,splitsByTxn[t.id]);
+                    return(
+                      <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
+                        <td style={{padding:"9px 8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
+                        <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
+                        <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
+                        <td style={{padding:"10px 12px"}}><SourceBadge t={t}/></td>
+                        <td style={{padding:"10px 12px"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
+                        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+                          {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
+                        </td>
+                        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
+                          {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
+                        </td>
+                        <td style={{padding:"9px 10px",textAlign:"right"}}>{t.id!=="__ob__"&&<RowActions t={t}/>}</td>
+                      </tr>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── ImportsList — groups this entity's point_transactions by import_batch_id
+// (set once per upload) so a bad import can be undone as one unit rather than
+// row by row. Manual entries have no batch id and never appear here. Deleting a
+// batch reuses deletePointTransaction per row, so any redemption splits or
+// notes on those rows clean up via the same cascade a single delete would use.
+function ImportsList({db,txns,onReload}){
+  const [deleting,setDeleting]=useState(null);
+  const batches={};
+  txns.forEach(t=>{
+    if(!t.import_batch_id) return;
+    if(!batches[t.import_batch_id]) batches[t.import_batch_id]={id:t.import_batch_id,name:t.import_batch_name||"Import",count:0,date:t.txn_date};
+    batches[t.import_batch_id].count++;
+    if(t.txn_date>batches[t.import_batch_id].date) batches[t.import_batch_id].date=t.txn_date;
+  });
+  const list=Object.values(batches).sort((a,b)=>new Date(b.date)-new Date(a.date));
+  if(list.length===0) return null;
+
+  const deleteBatch=async(batch)=>{
+    if(!confirm(`Delete "${batch.name}" — all ${batch.count} transaction${batch.count===1?"":"s"} from this import? This cannot be undone.`)) return;
+    setDeleting(batch.id);
+    const rows=txns.filter(t=>t.import_batch_id===batch.id);
+    for(const t of rows) await deletePointTransaction(db,t);
+    setDeleting(null);
+    onReload&&onReload();
+  };
+
+  return(
+    <Card style={{marginBottom:20}}>
+      <Collapsible storageKey="pv-imports-list" header={
+        <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Imports ({list.length})</div>
+      } defaultOpen={false}>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {list.map(b=>(
+            <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,border:`1px solid ${bdr}`}}>
+              <div>
+                <div style={{fontSize:13,fontWeight:600,color:txt}}>{b.name}</div>
+                <div style={{fontSize:11,color:mut,marginTop:2}}>{b.count} transaction{b.count===1?"":"s"}</div>
+              </div>
+              <IconBtn title="Delete this import" tone="danger" disabled={deleting===b.id} onClick={()=>deleteBatch(b)}><DeleteIcon/></IconBtn>
+            </div>
+          ))}
+        </div>
+      </Collapsible>
+    </Card>
+  );
+}
+
 function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete,onUpdate,onNavigate}){
   const isMobile=useIsMobile();
   const [card,setCard]=useState(initCard);
@@ -3478,11 +4578,17 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
+  const [showUpload,setShowUpload]=useState(false);
+  const [showAmexUpload,setShowAmexUpload]=useState(false);
   const [showDL,setShowDL]=useState(false);
+  const [tagTxn,setTagTxn]=useState(null);
+  const [editTxn,setEditTxn]=useState(null);
+  const [editTransferTxn,setEditTransferTxn]=useState(null);
+  const [deleteTxn,setDeleteTxn]=useState(null);
   const [dlFrom,setDlFrom]=useState("");
   const [dlTo,setDlTo]=useState("");
   const [dlType,setDlType]=useState("all"); // all|earn|redeem
-  const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
+  const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn",earn_type:"on_spends",redemption_type:"",redemption_notes:"",redeemed_value_inr:"",transfer_to:"",transfer_bonus:""};
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const [ef,setEf]=useState({});
@@ -3511,11 +4617,45 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   },[card.id,master?.id]);
   useEffect(()=>{load();},[load]);
 
+  const eligibleTransferPrograms=partners.filter(p=>p.from_type==="card"&&p.to_type==="program").map(p=>{
+    const prog=myProgs.find(mp=>mp.master_id===p.to_id&&mp.owner_id===card.owner_id);
+    if(!prog) return null;
+    return {progId:prog.id,name:prog.nickname||mProgs.find(m=>m.id===prog.master_id)?.name||"Program",ratioFrom:p.ratio_from||1,ratioTo:p.ratio_to||1,minTransfer:p.min_transfer||0};
+  }).filter(Boolean);
+  const selectedTransferTarget=eligibleTransferPrograms.find(p=>p.progId===f.transfer_to);
+
   const saveTxn=async()=>{
     if(!f.points) return alert("Enter points");
-    const pts=f.type==="redeem"?-Math.abs(parseInt(f.points)):Math.abs(parseInt(f.points));
+    const kind=f.type==="redeem"?"redeem":f.type==="adjust"?"adjustment":f.type==="transfer_out"?"transfer_out":f.type==="refund"?"refund":"earn";
+
+    if(kind==="transfer_out"){
+      const sentPts=Math.abs(parseInt(f.points))||0;
+      if(!selectedTransferTarget) return alert("Choose a destination program");
+      if(selectedTransferTarget.minTransfer&&sentPts<selectedTransferTarget.minTransfer) return alert("Minimum: "+selectedTransferTarget.minTransfer.toLocaleString()+" pts");
+      if(sentPts>(card.points_balance||0)) return alert("Insufficient balance. Available: "+(card.points_balance||0).toLocaleString());
+      const prog=myProgs.find(p=>p.id===selectedTransferTarget.progId);
+      const bonusPts=parseInt(f.transfer_bonus)||0;
+      const ratioRec=Math.floor(sentPts*(selectedTransferTarget.ratioTo/selectedTransferTarget.ratioFrom));
+      const totalRec=ratioRec+bonusPts;
+      const uid=getCurrentUserId();
+      const pairId=crypto.randomUUID();
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:-sentPts,description:"Transfer to "+selectedTransferTarget.name+(f.description?" - "+f.description:""),txn_date:f.txn_date,kind:"transfer_out",source:"manual",transfer_pair_id:pairId,user_id:uid});
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:selectedTransferTarget.progId,points:totalRec,description:"Transfer from "+(card.nickname||master?.name)+(bonusPts?" (+"+bonusPts+" bonus)":"")+(f.description?" - "+f.description:""),txn_date:f.txn_date,kind:"transfer_in",source:"manual",transfer_pair_id:pairId,user_id:uid});
+      const newCardBal=(card.points_balance||0)-sentPts;
+      const newProgBal=(prog?.points_balance||0)+totalRec;
+      await db.from("my_cards").update(card.id,{points_balance:newCardBal});
+      await db.from("my_programs").update(selectedTransferTarget.progId,{points_balance:newProgBal});
+      setCard(c=>({...c,points_balance:newCardBal}));
+      await db.from("transfer_log").insert({from_type:"card",from_id:card.id,from_owner_id:card.owner_id,to_type:"program",to_id:selectedTransferTarget.progId,to_owner_id:prog?.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:selectedTransferTarget.ratioFrom,ratio_to:selectedTransferTarget.ratioTo,transfer_date:f.txn_date,cross_owner:false,notes:f.description||null,from_name:card.nickname||master?.name,to_name:selectedTransferTarget.name,user_id:uid});
+      setShowTxn(false);setF(tf);load();
+      onUpdate&&onUpdate();
+      return;
+    }
+
+    const pts=(kind==="redeem"||kind==="refund")?-Math.abs(parseInt(f.points)):kind==="adjustment"?parseInt(f.points):Math.abs(parseInt(f.points));
+    const earnType=kind==="earn"?(f.earn_type||null):null;
     // Auto-transfer: if this card has auto_transfer_to, block if LP not in portfolio, else create paired txns
-    if(master?.auto_transfer_to&&!f.override_auto){
+    if(kind==="earn"&&master?.auto_transfer_to&&!f.override_auto){
       const {data:myProgs}=await db.from("my_programs").select();
       const {data:mProgsData}=await db.from("master_programs").select();
       const autoMaster=mProgsData?.find(m=>m.id===master.auto_transfer_to);
@@ -3527,21 +4667,27 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
         return alert("This co-branded card needs a linked "+( autoMaster?.name||"loyalty program")+" account. Edit the card and select which account to link.");
       }
       // Record earn on card
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description||"Earn",txn_date:f.txn_date,user_id:getCurrentUserId()});
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description||"Earn",txn_date:f.txn_date,kind:"earn",earn_type:earnType,source:"manual",user_id:getCurrentUserId()});
       // Record auto-transfer-out on card
       const rFrom=master.auto_transfer_ratio_from||1;
       const rTo=master.auto_transfer_ratio_to||1;
       const transferredPts=Math.floor(pts*(rTo/rFrom));
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:-pts,description:"Auto-transferred to "+(linkedProg.nickname||autoMaster?.name),txn_date:f.txn_date,user_id:getCurrentUserId()});
+      const autoPairId=crypto.randomUUID();
+      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:-pts,description:"Auto-transferred to "+(linkedProg.nickname||autoMaster?.name),txn_date:f.txn_date,kind:"transfer_out",source:"manual",transfer_pair_id:autoPairId,user_id:getCurrentUserId()});
       // Card balance stays 0 (earn + immediate outgoing = net 0)
       await db.from("my_cards").update(card.id,{points_balance:0});
       setCard(c=>({...c,points_balance:0}));
       // Record transfer-in on LP
-      await db.from("point_transactions").insert({entity_type:"program",entity_id:linkedProg.id,points:transferredPts,description:"Auto-transferred from "+(card.nickname||master?.name),txn_date:f.txn_date,user_id:getCurrentUserId()});
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:linkedProg.id,points:transferredPts,description:"Auto-transferred from "+(card.nickname||master?.name),txn_date:f.txn_date,kind:"transfer_in",source:"manual",transfer_pair_id:autoPairId,user_id:getCurrentUserId()});
       const newProgBal=(linkedProg.points_balance||0)+transferredPts;
       await db.from("my_programs").update(linkedProg.id,{points_balance:newProgBal,user_id:getCurrentUserId()});
     } else {
-      await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description,txn_date:f.txn_date,user_id:getCurrentUserId()});
+      const uid=getCurrentUserId();
+      const {data:trows,error:terr}=await db.from("point_transactions").insert({entity_type:"card",entity_id:card.id,points:pts,description:f.description,txn_date:f.txn_date,kind,earn_type:earnType,source:"manual",user_id:uid});
+      if(terr) return alert(JSON.stringify(terr));
+      if(kind==="redeem"){
+        await db.from("redemption_details").insert({point_transaction_id:trows[0].id,points:Math.abs(pts),redemption_type:f.redemption_type||null,description:f.description||null,notes:f.redemption_notes||null,redeemed_value_inr:f.redeemed_value_inr?parseFloat(f.redeemed_value_inr):null,txn_date:f.txn_date,user_id:uid});
+      }
       const nb=(card.points_balance||0)+pts;
       await db.from("my_cards").update(card.id,{points_balance:nb});
       setCard(c=>({...c,points_balance:nb}));
@@ -3600,7 +4746,11 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
               })()}
             </div>
           </div>
-          <button style={pbtn} onClick={()=>{setF(tf);setShowTxn(true);}}>+ Add Transaction</button>
+          <div style={{display:"flex",gap:8}}>
+            {master?.bank==="HDFC Bank"&&<button style={gbtn} onClick={()=>setShowUpload(true)}>⬆ Upload Statement</button>}
+            {master?.bank==="American Express"&&<button style={gbtn} onClick={()=>setShowAmexUpload(true)}>⬆ Upload Statement</button>}
+            <button style={pbtn} onClick={()=>{setF(tf);setShowTxn(true);}}>+ Add Transaction</button>
+          </div>
         </div>
         <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
           {[
@@ -3620,68 +4770,65 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       </Card>
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
+      <ImportsList db={db} txns={txns} onReload={load}/>
       <Card>
         <Collapsible storageKey={"card-pts-history-"+card.id} header={
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
         }>
-        {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
-        isMobile?(
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {disp.map(t=>(
-              <div key={t.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:surf,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-                <div style={{minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description||"—"}</div>
-                  <div style={{fontSize:11,color:mut,marginTop:2}}>{t.txn_date?fmtDate(t.txn_date):"—"}</div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div className="pv-num" style={{fontSize:14,fontWeight:700,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
-                    {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
-                  </div>
-                  <div className="pv-num" style={{fontSize:11,color:mut,marginTop:2}}>{t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ):(
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","Description","Points","Balance"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"?"left":"right",fontWeight:600}}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {disp.map(t=>(
-                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
-                    <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
-                      {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
-                    </td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
-                      {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
-                    </td>
-                  </tr>
-                ))}
-
-              </tbody>
-            </table>
-          </div>
+        {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:(
+          <PointsHistoryTable db={db} disp={disp} isMobile={isMobile}
+            entity={{type:"card",id:card.id,nickname:card.nickname,masterName:master?.name,owner_id:card.owner_id}}
+            eligibleTransferPrograms={eligibleTransferPrograms}
+            onTag={setTagTxn} onEdit={setEditTxn} onEditTransfer={setEditTransferTxn} onDelete={setDeleteTxn}
+            onReload={load} reloadTrigger={txns}/>
         )}
         </Collapsible>
       </Card>
+      <TagModal show={!!tagTxn} onClose={()=>setTagTxn(null)} db={db} txn={tagTxn}
+        entity={{type:"card",id:card.id,nickname:card.nickname,masterName:master?.name,owner_id:card.owner_id}}
+        eligibleTransferPrograms={eligibleTransferPrograms} onSaved={load}/>
+      <EditTransactionModal show={!!editTxn} onClose={()=>setEditTxn(null)} db={db} txn={editTxn} onSaved={load}/>
+      <TransferEditModal show={!!editTransferTxn} onClose={()=>setEditTransferTxn(null)} db={db} txn={editTransferTxn} onSaved={load}/>
+      <DeleteConfirmModal show={!!deleteTxn} onClose={()=>setDeleteTxn(null)} db={db} txn={deleteTxn} onDeleted={load}/>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {master?.auto_transfer_to&&<div style={{background:acc+"10",border:`1px solid ${acc}33`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:acc,fontWeight:500}}>
           Co-branded card — points auto-transfer to linked LP after logging
         </div>}
-        {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="adjust">Adjustment</option></select>
-        {lbl("Points")}<input style={inp} type="number" placeholder="1000" value={f.points} onChange={up("points")}/>
+        {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="transfer_out">Transfer Out</option><option value="refund">Refund (- points)</option><option value="adjust">Adjustment</option></select>
+        {f.type==="earn"&&(<>{lbl("Earn Type")}<select style={inp} value={f.earn_type||"on_spends"} onChange={up("earn_type")}>{EARN_TYPES.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}</select></>)}
+        {lbl("Points")}<input style={inp} type="number" placeholder={f.type==="adjust"?"-500 or 500":f.type==="transfer_out"?"Points to send":"1000"} value={f.points} onChange={up("points")}/>
         {lbl("Description")}<input style={inp} placeholder="Grocery spend, bonus..." value={f.description} onChange={up("description")}/>
         {lbl("Date")}<input style={inp} type="date" value={f.txn_date} onChange={up("txn_date")}/>
+        {f.type==="redeem"&&(<>
+          {lbl("Redemption Type")}<select style={inp} value={f.redemption_type||""} onChange={up("redemption_type")}>
+            <option value="">Choose…</option>
+            {REDEMPTION_TYPES.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          {lbl("Redeemed Value (₹)")}<input style={inp} type="number" placeholder="Optional — what you got for it" value={f.redeemed_value_inr} onChange={up("redeemed_value_inr")}/>
+          {lbl("Notes")}<input style={inp} placeholder="What this was used for..." value={f.redemption_notes} onChange={up("redemption_notes")}/>
+          <div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>You can split this into multiple tags later from Points History.</div>
+        </>)}
+        {f.type==="transfer_out"&&(<>
+          {lbl("Transfer To")}<select style={inp} value={f.transfer_to||""} onChange={up("transfer_to")}>
+            <option value="">Choose a program…</option>
+            {eligibleTransferPrograms.map(p=><option key={p.progId} value={p.progId}>{p.name} ({p.ratioFrom}:{p.ratioTo})</option>)}
+          </select>
+          {eligibleTransferPrograms.length===0&&<div style={{fontSize:11,color:amber,marginTop:-8,marginBottom:12}}>No transfer partners found for this card. Check Transfer Partners below, or use the Transfer Points page.</div>}
+          {selectedTransferTarget&&<div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>
+            Ratio {selectedTransferTarget.ratioFrom}:{selectedTransferTarget.ratioTo}
+            {f.points?` · They'll receive ~${Math.floor((parseInt(f.points)||0)*(selectedTransferTarget.ratioTo/selectedTransferTarget.ratioFrom)).toLocaleString("en-IN")} pts`:""}
+          </div>}
+          {lbl("Bonus Points (optional)")}<input style={inp} type="number" placeholder="0" value={f.transfer_bonus} onChange={up("transfer_bonus")}/>
+          <div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>For card-to-card or cross-owner transfers, use the <button type="button" style={{background:"none",border:"none",padding:0,color:acc,cursor:"pointer",textDecoration:"underline",fontSize:11}} onClick={()=>{setShowTxn(false);onNavigate&&onNavigate("transfer");}}>Transfer Points</button> page.</div>
+        </>)}
         {master?.auto_transfer_to&&<label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",marginBottom:12,fontSize:12,color:mut2}}>
           <input type="checkbox" checked={f.override_auto||false} onChange={e=>setF(p=>({...p,override_auto:e.target.checked}))} style={{accentColor:acc}}/>
           Override auto-transfer (log to card only)
         </label>}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
+      <HDFCPointsUploadModal show={showUpload} onClose={()=>setShowUpload(false)} db={db} card={card} existingTxns={txns} onSaved={()=>{load();onUpdate&&onUpdate();}}/>
+      <AmexPointsUploadModal show={showAmexUpload} onClose={()=>setShowAmexUpload(false)} db={db} card={card} existingTxns={txns} onSaved={()=>{load();onUpdate&&onUpdate();}}/>
       <Modal show={showDL} onClose={()=>setShowDL(false)} title="Download Points Statement">
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -3875,12 +5022,17 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const [prog,setProg]=useState(initProg);
   const [txns,setTxns]=useState([]);
   const [partners,setPartners]=useState([]);
+  const [myProgs,setMyProgs]=useState([]);
   const [busy,setBusy]=useState(true);
   const [showTxn,setShowTxn]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
   const [showDLProg,setShowDLProg]=useState(false);
+  const [tagTxn,setTagTxn]=useState(null);
+  const [editTxn,setEditTxn]=useState(null);
+  const [editTransferTxn,setEditTransferTxn]=useState(null);
+  const [deleteTxn,setDeleteTxn]=useState(null);
   const [dlFrom,setDlFrom]=useState(""); const [dlTo,setDlTo]=useState(""); const [dlType,setDlType]=useState("all");
-  const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn"};
+  const tf={description:"",points:"",txn_date:new Date().toISOString().split("T")[0],type:"earn",earn_type:"on_spends",redemption_type:"",redemption_notes:"",redeemed_value_inr:"",transfer_to:"",transfer_bonus:""};
   const [f,setF]=useState(tf);
   const up=k=>e=>setF(p=>({...p,[k]:e.target.value}));
   const [ef,setEf]=useState({});
@@ -3888,13 +5040,15 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [t,par]=await Promise.all([
+    const [t,par,myp]=await Promise.all([
       db.from("point_transactions").filter("entity_id",prog.id),
       db.from("master_partners").filter("from_id",master?.id||"x"),
+      db.from("my_programs").select(),
     ]);
     const td=t.data||[];
     setTxns(td.sort((a,b)=>new Date(b.txn_date)-new Date(a.txn_date)));
     setPartners(par.data||[]);
+    setMyProgs((myp.data||[]).filter(p=>p.id!==prog.id));
     const sum=td.filter(t=>t.description!=="Opening balance").reduce((a,t)=>a+t.points,0);
     const correct=(prog.opening_balance||0)+sum;
     if(correct!==(prog.points_balance||0)){
@@ -3905,10 +5059,48 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   },[prog.id,master?.id]);
   useEffect(()=>{load();},[load]);
 
+  const eligibleTransferPrograms=partners.filter(p=>p.from_type==="program"&&p.to_type==="program").map(p=>{
+    const target=myProgs.find(mp=>mp.master_id===p.to_id&&mp.owner_id===prog.owner_id);
+    if(!target) return null;
+    return {progId:target.id,name:target.nickname||mProgs.find(m=>m.id===target.master_id)?.name||"Program",ratioFrom:p.ratio_from||1,ratioTo:p.ratio_to||1,minTransfer:p.min_transfer||0};
+  }).filter(Boolean);
+  const selectedTransferTarget=eligibleTransferPrograms.find(p=>p.progId===f.transfer_to);
+
   const saveTxn=async()=>{
     if(!f.points) return alert("Enter points");
-    const pts=f.type==="redeem"?-Math.abs(parseInt(f.points)):Math.abs(parseInt(f.points));
-    await db.from("point_transactions").insert({entity_type:"program",entity_id:prog.id,points:pts,description:f.description,txn_date:f.txn_date,user_id:getCurrentUserId()});
+    const kind=f.type==="redeem"?"redeem":f.type==="adjust"?"adjustment":f.type==="transfer_out"?"transfer_out":f.type==="refund"?"refund":"earn";
+
+    if(kind==="transfer_out"){
+      const sentPts=Math.abs(parseInt(f.points))||0;
+      if(!selectedTransferTarget) return alert("Choose a destination program");
+      if(selectedTransferTarget.minTransfer&&sentPts<selectedTransferTarget.minTransfer) return alert("Minimum: "+selectedTransferTarget.minTransfer.toLocaleString()+" pts");
+      if(sentPts>(prog.points_balance||0)) return alert("Insufficient balance. Available: "+(prog.points_balance||0).toLocaleString());
+      const target=myProgs.find(p=>p.id===selectedTransferTarget.progId);
+      const bonusPts=parseInt(f.transfer_bonus)||0;
+      const ratioRec=Math.floor(sentPts*(selectedTransferTarget.ratioTo/selectedTransferTarget.ratioFrom));
+      const totalRec=ratioRec+bonusPts;
+      const uid=getCurrentUserId();
+      const pairId=crypto.randomUUID();
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:prog.id,points:-sentPts,description:"Transfer to "+selectedTransferTarget.name+(f.description?" - "+f.description:""),txn_date:f.txn_date,kind:"transfer_out",source:"manual",transfer_pair_id:pairId,user_id:uid});
+      await db.from("point_transactions").insert({entity_type:"program",entity_id:selectedTransferTarget.progId,points:totalRec,description:"Transfer from "+(prog.nickname||master?.name)+(bonusPts?" (+"+bonusPts+" bonus)":"")+(f.description?" - "+f.description:""),txn_date:f.txn_date,kind:"transfer_in",source:"manual",transfer_pair_id:pairId,user_id:uid});
+      const newProgBalSelf=(prog.points_balance||0)-sentPts;
+      const newProgBalTarget=(target?.points_balance||0)+totalRec;
+      await db.from("my_programs").update(prog.id,{points_balance:newProgBalSelf});
+      await db.from("my_programs").update(selectedTransferTarget.progId,{points_balance:newProgBalTarget});
+      setProg(p=>({...p,points_balance:newProgBalSelf}));
+      await db.from("transfer_log").insert({from_type:"program",from_id:prog.id,from_owner_id:prog.owner_id,to_type:"program",to_id:selectedTransferTarget.progId,to_owner_id:target?.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:selectedTransferTarget.ratioFrom,ratio_to:selectedTransferTarget.ratioTo,transfer_date:f.txn_date,cross_owner:false,notes:f.description||null,from_name:prog.nickname||master?.name,to_name:selectedTransferTarget.name,user_id:uid});
+      setShowTxn(false);setF(tf);load();
+      return;
+    }
+
+    const pts=(kind==="redeem"||kind==="refund")?-Math.abs(parseInt(f.points)):kind==="adjustment"?parseInt(f.points):Math.abs(parseInt(f.points));
+    const earnType=kind==="earn"?(f.earn_type||null):null;
+    const uid=getCurrentUserId();
+    const {data:trows,error:terr}=await db.from("point_transactions").insert({entity_type:"program",entity_id:prog.id,points:pts,description:f.description,txn_date:f.txn_date,kind,earn_type:earnType,source:"manual",user_id:uid});
+    if(terr) return alert(JSON.stringify(terr));
+    if(kind==="redeem"){
+      await db.from("redemption_details").insert({point_transaction_id:trows[0].id,points:Math.abs(pts),redemption_type:f.redemption_type||null,description:f.description||null,notes:f.redemption_notes||null,redeemed_value_inr:f.redeemed_value_inr?parseFloat(f.redeemed_value_inr):null,txn_date:f.txn_date,user_id:uid});
+    }
     const nb=(prog.points_balance||0)+pts;
     await db.from("my_programs").update(prog.id,{points_balance:nb});
     setProg(p=>({...p,points_balance:nb}));
@@ -3973,59 +5165,54 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       </Card>
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
+      <ImportsList db={db} txns={txns} onReload={load}/>
       <Card>
         <Collapsible storageKey={"prog-pts-history-"+prog.id} header={
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
         }>
-        {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:
-        isMobile?(
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {disp.map(t=>(
-              <div key={t.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:surf,display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-                <div style={{minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.description||"—"}</div>
-                  <div style={{fontSize:11,color:mut,marginTop:2}}>{t.txn_date?fmtDate(t.txn_date):"—"}</div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0}}>
-                  <div className="pv-num" style={{fontSize:14,fontWeight:700,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
-                    {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
-                  </div>
-                  <div className="pv-num" style={{fontSize:11,color:mut,marginTop:2}}>{t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ):(
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","Description","Points","Balance"].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"?"left":"right",fontWeight:600}}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {disp.map(t=>(
-                  <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
-                    <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
-                      {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
-                    </td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
-                      {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
-                    </td>
-                  </tr>
-                ))}
-
-              </tbody>
-            </table>
-          </div>
+        {busy?<div style={{color:mut,textAlign:"center",padding:20}}>Loading...</div>:(
+          <PointsHistoryTable db={db} disp={disp} isMobile={isMobile}
+            entity={{type:"program",id:prog.id,nickname:prog.nickname,masterName:master?.name,owner_id:prog.owner_id}}
+            eligibleTransferPrograms={eligibleTransferPrograms}
+            onTag={setTagTxn} onEdit={setEditTxn} onEditTransfer={setEditTransferTxn} onDelete={setDeleteTxn}
+            onReload={load} reloadTrigger={txns}/>
         )}
         </Collapsible>
       </Card>
+      <TagModal show={!!tagTxn} onClose={()=>setTagTxn(null)} db={db} txn={tagTxn}
+        entity={{type:"program",id:prog.id,nickname:prog.nickname,masterName:master?.name,owner_id:prog.owner_id}}
+        eligibleTransferPrograms={eligibleTransferPrograms} onSaved={load}/>
+      <EditTransactionModal show={!!editTxn} onClose={()=>setEditTxn(null)} db={db} txn={editTxn} onSaved={load}/>
+      <TransferEditModal show={!!editTransferTxn} onClose={()=>setEditTransferTxn(null)} db={db} txn={editTransferTxn} onSaved={load}/>
+      <DeleteConfirmModal show={!!deleteTxn} onClose={()=>setDeleteTxn(null)} db={db} txn={deleteTxn} onDeleted={load}/>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
-        {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="adjust">Adjustment</option></select>
-        {lbl("Points")}<input style={inp} type="number" placeholder="1000" value={f.points} onChange={up("points")}/>
+        {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="transfer_out">Transfer Out</option><option value="refund">Refund (- points)</option><option value="adjust">Adjustment</option></select>
+        {f.type==="earn"&&(<>{lbl("Earn Type")}<select style={inp} value={f.earn_type||"on_spends"} onChange={up("earn_type")}>{EARN_TYPES.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}</select></>)}
+        {lbl("Points")}<input style={inp} type="number" placeholder={f.type==="adjust"?"-500 or 500":f.type==="transfer_out"?"Points to send":"1000"} value={f.points} onChange={up("points")}/>
         {lbl("Description")}<input style={inp} placeholder="Flight booking, hotel..." value={f.description} onChange={up("description")}/>
         {lbl("Date")}<input style={inp} type="date" value={f.txn_date} onChange={up("txn_date")}/>
+        {f.type==="redeem"&&(<>
+          {lbl("Redemption Type")}<select style={inp} value={f.redemption_type||""} onChange={up("redemption_type")}>
+            <option value="">Choose…</option>
+            {REDEMPTION_TYPES.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}
+          </select>
+          {lbl("Redeemed Value (₹)")}<input style={inp} type="number" placeholder="Optional — what you got for it" value={f.redeemed_value_inr} onChange={up("redeemed_value_inr")}/>
+          {lbl("Notes")}<input style={inp} placeholder="What this was used for..." value={f.redemption_notes} onChange={up("redemption_notes")}/>
+          <div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>You can split this into multiple tags later from Points History.</div>
+        </>)}
+        {f.type==="transfer_out"&&(<>
+          {lbl("Transfer To")}<select style={inp} value={f.transfer_to||""} onChange={up("transfer_to")}>
+            <option value="">Choose a program…</option>
+            {eligibleTransferPrograms.map(p=><option key={p.progId} value={p.progId}>{p.name} ({p.ratioFrom}:{p.ratioTo})</option>)}
+          </select>
+          {eligibleTransferPrograms.length===0&&<div style={{fontSize:11,color:amber,marginTop:-8,marginBottom:12}}>No transfer partners found for this program. Check Transfer Partners below, or use the Transfer Points page.</div>}
+          {selectedTransferTarget&&<div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>
+            Ratio {selectedTransferTarget.ratioFrom}:{selectedTransferTarget.ratioTo}
+            {f.points?` · They'll receive ~${Math.floor((parseInt(f.points)||0)*(selectedTransferTarget.ratioTo/selectedTransferTarget.ratioFrom)).toLocaleString("en-IN")} pts`:""}
+          </div>}
+          {lbl("Bonus Points (optional)")}<input style={inp} type="number" placeholder="0" value={f.transfer_bonus} onChange={up("transfer_bonus")}/>
+          <div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>For cross-owner transfers, use the <button type="button" style={{background:"none",border:"none",padding:0,color:acc,cursor:"pointer",textDecoration:"underline",fontSize:11}} onClick={()=>{setShowTxn(false);onNavigate&&onNavigate("transfer");}}>Transfer Points</button> page.</div>
+        </>)}
         <button style={{...pbtn,width:"100%",justifyContent:"center",marginTop:4}} onClick={saveTxn}>Save Transaction</button>
       </Modal>
       <Modal show={showDLProg} onClose={()=>setShowDLProg(false)} title="Download Points Statement">
@@ -4173,10 +5360,11 @@ function TransferPointsForm({db,owners,onSaved}){
     const tTbl=toType==="card"?"my_cards":"my_programs";
     const fName=fromEntity?.nickname||fromMaster?.name||"--";
     const tName=toEntity?.nickname||toMaster?.name||"--";
+    const pairId=crypto.randomUUID();
     await db.from(fTbl).update(fromEntity.id,{points_balance:(fromEntity.points_balance||0)-sentPts,user_id:getCurrentUserId()});
     await db.from(tTbl).update(toEntity.id,{points_balance:(toEntity.points_balance||0)+totalRec});
-    await db.from("point_transactions").insert({entity_type:fromType,entity_id:fromEntity.id,points:-sentPts,description:"Transfer to "+tName+(notes?" - "+notes:""),txn_date:txnDate,user_id:getCurrentUserId()});
-    await db.from("point_transactions").insert({entity_type:toType,entity_id:toEntity.id,points:totalRec,description:"Transfer from "+fName+(bonusPts?" (+"+bonusPts+" bonus)":"")+(notes?" - "+notes:""),txn_date:txnDate,user_id:getCurrentUserId()});
+    await db.from("point_transactions").insert({entity_type:fromType,entity_id:fromEntity.id,points:-sentPts,description:"Transfer to "+tName+(notes?" - "+notes:""),txn_date:txnDate,kind:"transfer_out",source:"manual",transfer_pair_id:pairId,user_id:getCurrentUserId()});
+    await db.from("point_transactions").insert({entity_type:toType,entity_id:toEntity.id,points:totalRec,description:"Transfer from "+fName+(bonusPts?" (+"+bonusPts+" bonus)":"")+(notes?" - "+notes:""),txn_date:txnDate,kind:"transfer_in",source:"manual",transfer_pair_id:pairId,user_id:getCurrentUserId()});
     const logResult=await db.from("transfer_log").insert({from_type:fromType,from_id:fromEntity.id,from_owner_id:fromEntity.owner_id,to_type:toType,to_id:toEntity.id,to_owner_id:toEntity.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,transfer_date:txnDate,cross_owner:fromEntity.owner_id!==toEntity.owner_id,notes:notes||null,from_name:fName,to_name:tName,user_id:getCurrentUserId()});
     if(logResult.error) alert("Transfer logged but history save failed: "+JSON.stringify(logResult.error)+"\n\nRun in Supabase SQL: ALTER TABLE transfer_log ADD COLUMN IF NOT EXISTS from_name text; ALTER TABLE transfer_log ADD COLUMN IF NOT EXISTS to_name text;");
     setDone({fName,tName,sent:sentPts,received:ratioRec,bonus:bonusPts,total:totalRec,crossOwner:fromEntity.owner_id!==toEntity.owner_id});
@@ -4435,6 +5623,160 @@ function TransferHistory({db,owners}){
   );
 }
 
+// ── RedemptionDashboard — every redemption_details row across every card and
+// program, in one place. Reads redemption_details (not point_transactions
+// directly) so a split redemption shows as several independent, individually
+// tagged rows here rather than one lump sum.
+function RedemptionDashboard({db,owners}){
+  const isMobile=useIsMobile();
+  const [rows,setRows]=useState([]);
+  const [busy,setBusy]=useState(true);
+  const [err,setErr]=useState("");
+  const [search,setSearch]=useState("");
+  const [ownerF,setOwnerF]=useState("all");
+  const [typeF,setTypeF]=useState("all");
+
+  const load=useCallback(async()=>{
+    setBusy(true);setErr("");
+    try{
+      const [rd,pt,mc,mp,myc,myp]=await Promise.all([
+        db.from("redemption_details").select(),
+        db.from("point_transactions").filter("kind","redeem"),
+        db.from("master_cards").select(),
+        db.from("master_programs").select(),
+        db.from("my_cards").select(),
+        db.from("my_programs").select(),
+      ]);
+      if(rd.error){setErr("Load error: "+JSON.stringify(rd.error));setRows([]);setBusy(false);return;}
+      const ptMap={};(pt.data||[]).forEach(p=>{ptMap[p.id]=p;});
+      const resolved=(rd.data||[]).map(d=>{
+        const parent=ptMap[d.point_transaction_id];
+        let sourceName="--",ownerId=null;
+        if(parent){
+          if(parent.entity_type==="card"){
+            const card=(myc.data||[]).find(c=>c.id===parent.entity_id);
+            const master=card?(mc.data||[]).find(m=>m.id===card.master_id):null;
+            sourceName=card?.nickname||master?.name||"Card";
+            ownerId=card?.owner_id||null;
+          }else{
+            const prog=(myp.data||[]).find(p=>p.id===parent.entity_id);
+            const master=prog?(mp.data||[]).find(m=>m.id===prog.master_id):null;
+            sourceName=prog?.nickname||master?.name||"Program";
+            ownerId=prog?.owner_id||null;
+          }
+        }
+        const ownerName=owners.find(o=>o.id===ownerId)?.name||"--";
+        return{...d,sourceName,ownerId,ownerName,txnDate:d.txn_date||parent?.txn_date};
+      });
+      setRows(resolved);
+    }catch(e){setErr("Exception: "+e.message);}
+    setBusy(false);
+  },[db,owners]);
+  useEffect(()=>{load();},[load]);
+
+  const filtered=rows
+    .filter(r=>ownerF==="all"||r.ownerId===ownerF)
+    .filter(r=>typeF==="all"||r.redemption_type===typeF)
+    .filter(r=>{
+      const s=search.toLowerCase();
+      if(!s) return true;
+      return (r.description||"").toLowerCase().includes(s)||(r.notes||"").toLowerCase().includes(s)||(r.sourceName||"").toLowerCase().includes(s);
+    })
+    .sort((a,b)=>new Date(b.txnDate)-new Date(a.txnDate));
+
+  const totalPts=filtered.reduce((a,r)=>a+(r.points||0),0);
+  const totalVal=filtered.reduce((a,r)=>a+(r.redeemed_value_inr||0),0);
+  const avgPerPoint=totalPts>0&&totalVal>0?(totalVal/totalPts):null;
+
+  return(
+    <div>
+      <Hdr title="Redemptions" sub="Every points redemption across your cards and programs, in one place"/>
+      {err&&<div style={{color:red,fontSize:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8,marginBottom:16}}>{err}</div>}
+      {rows.length>0&&(
+        <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
+          {[
+            {label:"Redemptions",value:String(filtered.length)},
+            {label:"Total Points",value:totalPts.toLocaleString("en-IN"),color:red},
+            {label:"Total Value",value:totalVal>0?inrFmt(totalVal):"--",color:grn},
+            {label:"Avg ₹/Point",value:avgPerPoint?"₹"+avgPerPoint.toFixed(2):"--"},
+          ].map((s,i)=>(
+            <div key={i} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"12px 16px",minWidth:120}}>
+              <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:600}}>{s.label}</div>
+              <div style={{fontSize:20,fontWeight:700,color:s.color||txt}}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+        <div style={{position:"relative",flex:1,minWidth:160}}>
+          <span style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:mut,fontSize:13}}>S</span>
+          <input style={{...inp,marginBottom:0,paddingLeft:28}} placeholder="Search redemptions..." value={search} onChange={e=>setSearch(e.target.value)}/>
+        </div>
+        <select style={{...inp,marginBottom:0,width:"auto",padding:"9px 12px"}} value={ownerF} onChange={e=>setOwnerF(e.target.value)}>
+          <option value="all">All Owners</option>
+          {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+        <select style={{...inp,marginBottom:0,width:"auto",padding:"9px 12px"}} value={typeF} onChange={e=>setTypeF(e.target.value)}>
+          <option value="all">All Types</option>
+          {REDEMPTION_TYPES.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}
+        </select>
+      </div>
+      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="🏷️" msg="No redemptions tagged yet — redeem points on a card or program, or tag an existing one from Points History"/>:(
+        <Card>
+          <Collapsible storageKey="redemption-dashboard-table" header={null}>
+          {isMobile?(
+            <div style={{display:"flex",flexDirection:"column",gap:8,padding:12}}>
+              {filtered.map(r=>{
+                const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
+                return(
+                  <div key={r.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:11,color:mut}}>{fmtDate(r.txnDate)}</div>
+                      <span style={{fontSize:10,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span>
+                    </div>
+                    <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{r.description||"--"}</div>
+                    <div style={{fontSize:11,color:mut,marginBottom:8}}>{r.sourceName} · {r.ownerName}</div>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>{(r.points||0).toLocaleString()} pts</div>
+                      {r.redeemed_value_inr>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(r.redeemed_value_inr)}{perPoint&&<span style={{color:mut,fontWeight:400}}> ({perPoint.toFixed(2)}/pt)</span>}</div>}
+                    </div>
+                    {r.notes&&<div style={{fontSize:11,color:mut,marginTop:6,fontStyle:"italic"}}>{r.notes}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          ):(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+              <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
+                {["Date","Description","Redeemed From","Type","Points","Value","₹/pt"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Points"||h==="Value"||h==="₹/pt"?"right":"left",fontWeight:600}}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {filtered.map(r=>{
+                  const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
+                  return(
+                    <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
+                      <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.txnDate)}</td>
+                      <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{r.description||"--"}{r.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic"}}>{r.notes}</div>}</td>
+                      <td style={{padding:"10px 12px",color:txt}}>{r.sourceName}<div style={{fontSize:11,color:mut}}>{r.ownerName}</div></td>
+                      <td style={{padding:"10px 12px"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span></td>
+                      <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(r.points||0).toLocaleString()}</td>
+                      <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:r.redeemed_value_inr>0?grn:mut}}>{r.redeemed_value_inr>0?inrFmt(r.redeemed_value_inr):"--"}</td>
+                      <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut}}>{perPoint?"₹"+perPoint.toFixed(2):"--"}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          )}
+          </Collapsible>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // Vouchers
 
 function AuthScreen({onAuth}){
@@ -4531,6 +5873,7 @@ function Vouchers({db,owners,onNavigate}){
   const [editShow,setEditShow]=useState(false);
   const [edit,setEdit]=useState(null);
   const [ownerF,setOwnerF]=useState("all");
+  const [viewMode,setViewMode]=useState(()=>localStorage.getItem("pv_vouchers_view")||"grid");
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -4552,11 +5895,20 @@ function Vouchers({db,owners,onNavigate}){
       <Hdr title="Vouchers" sub={`${rows.filter(v=>!expired(v)).length} active · Rewards and benefits redeemed from your points`}
         action={
           <Toolbar>
+            <div style={{display:"flex",border:`1px solid ${bdr}`,borderRadius:8,overflow:"hidden"}}>
+              <button onClick={()=>{setViewMode("grid");localStorage.setItem("pv_vouchers_view","grid");}}
+                style={{padding:"6px 10px",border:"none",background:viewMode==="grid"?txt:surf,color:viewMode==="grid"?bg:mut,cursor:"pointer",fontSize:13,lineHeight:1}}
+                title="Grid view">⊞</button>
+              <button onClick={()=>{setViewMode("list");localStorage.setItem("pv_vouchers_view","list");}}
+                style={{padding:"6px 10px",border:"none",background:viewMode==="list"?txt:surf,color:viewMode==="list"?bg:mut,cursor:"pointer",fontSize:13,lineHeight:1}}
+                title="List view">☰</button>
+            </div>
             <OwnerFilterSelect value={ownerF} onChange={e=>setOwnerF(e.target.value)} owners={owners}/>
             <RoundAddButton onClick={()=>setShowAdd(true)} title="Add Voucher"/>
           </Toolbar>
         }/>
       {busy?<div style={{color:mut,fontSize:13}}>Loading…</div>:filteredRows.length===0?<Empty icon="🎟️" msg="No vouchers yet — vouchers are created when you redeem points for a reward"/>:(
+        viewMode==="grid"?(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
           {filteredRows.map(v=>(
             <Card key={v.id} style={{opacity:expired(v)?0.5:1,position:"relative"}}>
@@ -4574,6 +5926,32 @@ function Vouchers({db,owners,onNavigate}){
             </Card>
           ))}
         </div>
+        ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {filteredRows.map(v=>(
+            <div key={v.id} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",display:"flex",alignItems:"center",gap:16,opacity:expired(v)?0.5:1}}>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.title}</span>
+                  {v.code&&<span style={{fontSize:11,fontFamily:"monospace",background:surf2,padding:"2px 7px",borderRadius:6,color:txt,flexShrink:0}}>{v.code}</span>}
+                  {expired(v)&&<span style={{fontSize:9,fontWeight:600,color:red,textTransform:"uppercase",letterSpacing:"0.07em",background:red+"15",padding:"2px 8px",borderRadius:10,flexShrink:0}}>Expired</span>}
+                </div>
+                <div style={{fontSize:11,color:mut,marginTop:2}}>{[owners.find(o=>o.id===v.owner_id)?.name,v.notes].filter(Boolean).join(" · ")}</div>
+              </div>
+              {v.value>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:80}}>
+                <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(v.value)}</div>
+              </div>}
+              <div style={{textAlign:"right",flexShrink:0,minWidth:90,fontSize:11,color:expired(v)?red:mut}}>
+                {v.expiry?"Expires "+fmtDate(v.expiry):""}
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button style={{...gbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>openEdit(v)}>Edit</button>
+                <button style={{...dbtn,fontSize:11,padding:"4px 10px"}} onClick={()=>del(v.id)}>Delete</button>
+              </div>
+            </div>
+          ))}
+        </div>
+        )
       )}
       <AddPMModal show={showAdd} onClose={()=>setShowAdd(false)} db={db} owners={owners} onSaved={load} defaultKind="voucher"/>
       <AddVoucherModal show={editShow} onClose={()=>{setEditShow(false);setEdit(null);}} db={db} owners={owners} onSave={load} editVoucher={edit}/>
@@ -4738,6 +6116,7 @@ function SettingsLibrary(){
     {id:"banks",     title:"Banks",                         items:BANK_LIBRARY.map(b=>b.name)},
     {id:"ccmap",     title:"Credit Card Statement Mappings", items:MAPPING_LIBRARY.map(m=>m.name)},
     {id:"bankmap",   title:"Bank Statement Mappings",       items:BANK_MAPPING_LIBRARY.map(m=>m.name)},
+    {id:"ptsmap",    title:"Points Statement Mappings",     items:POINTS_MAPPING_LIBRARY.map(m=>m.name)},
     {id:"cats",      title:"Default Spend Categories",      items:CATEGORIES},
   ];
 
@@ -6760,6 +8139,74 @@ function ThemeIcon({dark,size=14}){
   );
 }
 
+function SignOutIcon({size=14}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+      <polyline points="16 17 21 12 16 7"/>
+      <line x1="21" y1="12" x2="9" y2="12"/>
+    </svg>
+  );
+}
+
+// Sidebar dark-mode control — a real toggle switch instead of a button whose label
+// flips between "Dark Mode"/"Light Mode", so the switch position itself communicates
+// the current state at a glance.
+function ThemeToggleSwitch({dark,onClick}){
+  return(
+    <button onClick={onClick} aria-label="Toggle dark mode"
+      style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",border:`1px solid ${bdr}`,borderRadius:10,background:surf,cursor:"pointer",padding:"8px 12px"}}>
+      <span style={{display:"flex",alignItems:"center",gap:7,fontSize:12,fontWeight:500,color:txt}}>
+        <ThemeIcon dark={dark} size={13}/> Dark Mode
+      </span>
+      <span style={{position:"relative",width:34,height:19,borderRadius:10,background:dark?acc:bdr,transition:"background 0.2s",flexShrink:0}}>
+        <span style={{position:"absolute",top:2,left:dark?17:2,width:15,height:15,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 2px rgba(0,0,0,0.3)",transition:"left 0.2s"}}/>
+      </span>
+    </button>
+  );
+}
+
+// ── Row-action icon set — small stroke icons matching ThemeIcon's style, used
+// wherever a transaction row needs an Edit/Tag/Delete affordance, across every
+// table in the app, so these three visuals never drift between modules again.
+function EditIcon({size=14}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
+    </svg>
+  );
+}
+function TagIcon({size=14}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/>
+      <line x1="7" y1="7" x2="7.01" y2="7"/>
+    </svg>
+  );
+}
+function DeleteIcon({size=14}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18"/>
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+      <line x1="10" y1="11" x2="10" y2="17"/>
+      <line x1="14" y1="11" x2="14" y2="17"/>
+    </svg>
+  );
+}
+// A round icon-only button — the shared shape for all row-level Edit/Tag/Delete
+// actions. `tone` picks the color (neutral for edit/tag, danger red for delete).
+function IconBtn({onClick,title,tone="neutral",children,disabled}){
+  const color=tone==="danger"?red:mut2;
+  return(
+    <button title={title} onClick={onClick} disabled={disabled}
+      style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:26,height:26,borderRadius:"50%",
+        border:`1px solid ${bdr}`,background:surf,color,cursor:disabled?"default":"pointer",opacity:disabled?0.4:1,padding:0}}>
+      {children}
+    </button>
+  );
+}
+
 // ── BrandLogo — the wordmark shown at the top of the sidebar/mobile header.
 // Tries /logo.png first; if that file isn't in /public yet (404), falls back
 // to the plain text lockup so the nav never breaks or shows a missing-image icon.
@@ -7300,6 +8747,15 @@ const BOOKS_ACTIONS=[
   {id:"transfer",label:"Transfer between my accounts"},
 ];
 
+// AddTransactionModal is split-first: every Money In / Money Out transaction is
+// 1+ rows, each row choosing its own type from the direction-appropriate subset
+// below (Transfer and Recorded Elsewhere don't split — they stay whole-transaction).
+const TXN_DIRECTIONS=[{id:"out",label:"Money Out"},{id:"in",label:"Money In"},{id:"transfer",label:"Transfer between my accounts"}];
+const ROW_TYPES_OUT=[{id:"expense",label:"Expense"},{id:"paid_on_behalf",label:"Paid on behalf of…"},{id:"repaid",label:"Repaid…"}];
+const ROW_TYPES_IN=[{id:"income",label:"Income"},{id:"refund_received",label:"Refund received from…"},{id:"borrowed",label:"Borrowed from…"}];
+const rowTypesFor=dir=>dir==="out"?ROW_TYPES_OUT:ROW_TYPES_IN;
+const isCategoryRowType=t=>t==="income"||t==="expense";
+
 // Resolve a category name to an accounts.id, creating the expense/income account if needed.
 async function resolveCategoryAccount(db,name,type,categoryAccts,uid){
   const existing=categoryAccts.find(c=>c.name===name);
@@ -7373,27 +8829,22 @@ function findTransferMatch(stagedRow,matchData,excludeStagedId){
 }
 
 function AddTransactionModal({show,onClose,db,onSaved,prefill}){
-  const [action,setAction]=useState("expense");
+  const [direction,setDirection]=useState("out");
   const [amount,setAmount]=useState("");
   const [txnDate,setTxnDate]=useState(new Date().toISOString().split("T")[0]);
   const [description,setDescription]=useState("");
   const [notes,setNotes]=useState("");
   const [sourceAcctId,setSourceAcctId]=useState("");
   const [destAcctId,setDestAcctId]=useState("");
-  const [entityId,setEntityId]=useState("");
-  const [categoryId,setCategoryId]=useState("");
   const [rules,setRules]=useState([]);
   const [autoTagged,setAutoTagged]=useState(false);
-  const [newEntityName,setNewEntityName]=useState("");
-  const [newCategoryName,setNewCategoryName]=useState("");
   const [accounts,setAccounts]=useState([]);
   const [entities,setEntities]=useState([]);
   const [people,setPeople]=useState([]);
   const [spendCategories,setSpendCategories]=useState([]);
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState("");
-  const [splitMode,setSplitMode]=useState(false);
-  const [splitRows,setSplitRows]=useState([{type:"category",name:"",amount:""},{type:"person",name:"",amount:""}]);
+  const [splitRows,setSplitRows]=useState([{type:"expense",selId:"",newName:"",amount:""}]);
   const [editTxnId,setEditTxnId]=useState(null);
 
   useEffect(()=>{
@@ -7413,7 +8864,9 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         setTxnDate(prefill.txnDate||new Date().toISOString().split("T")[0]);
         setDescription(prefill.description||"");
         setSourceAcctId(prefill.sourceAccountId||"");
-        setAction(Number(prefill.amount||0)<0?"expense":"income");
+        const dir=Number(prefill.amount||0)<0?"out":"in";
+        setDirection(dir);
+        setSplitRows([{type:dir==="out"?"expense":"income",selId:"",newName:"",amount:String(Math.abs(Number(prefill.amount||0)))}]);
 
         if(prefill.existingTransactionId){
           setEditTxnId(prefill.existingTransactionId);
@@ -7421,22 +8874,25 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
           const txn=(t.data||[]).find(x=>x.id===prefill.existingTransactionId);
           const lines=(l.data||[]).filter(x=>x.transaction_id===prefill.existingTransactionId);
           if(txn){
-            setAction(txn.action);
             setNotes(txn.notes||"");
             const otherLines=lines.filter(ln=>ln.account_id!==prefill.sourceAccountId);
-            if(otherLines.length>1){
-              setSplitMode(true);
+            if(txn.action==="transfer"){
+              setDirection("transfer");
+              const acct=accts.find(x=>x.id===otherLines[0]?.account_id);
+              if(acct) setDestAcctId(acct.id);
+            }else{
+              const inferredDir=["income","refund_received","borrowed"].includes(txn.action)?"in":"out";
+              setDirection(inferredDir);
               setSplitRows(otherLines.map(ln=>{
                 const acct=accts.find(x=>x.id===ln.account_id);
-                return {type:acct?.type==="expense"||acct?.type==="income"?"category":"person",name:acct?.name||"",amount:String(Number(ln.debit)||Number(ln.credit))};
+                const rowAmt=String(Number(ln.debit)||Number(ln.credit));
+                if(acct?.type==="expense"||acct?.type==="income") return {type:inferredDir==="in"?"income":"expense",selId:acct.id,newName:"",amount:rowAmt};
+                let type;
+                if(acct?.subtype==="receivable") type=inferredDir==="out"?"paid_on_behalf":"refund_received";
+                else if(acct?.subtype==="payable") type=inferredDir==="out"?"repaid":"borrowed";
+                else type=inferredDir==="out"?"expense":"income";
+                return {type,selId:ents.find(x=>x.id===acct?.entity_id)?.id||"",newName:"",amount:rowAmt};
               }));
-            }else if(otherLines.length===1){
-              const acct=accts.find(x=>x.id===otherLines[0].account_id);
-              if(acct){
-                if(acct.type==="expense"||acct.type==="income") setCategoryId(acct.id);
-                else if(acct.subtype==="receivable"||acct.subtype==="payable") setEntityId(ents.find(x=>x.id===acct.entity_id)?.id||"");
-                else if(txn.action==="transfer") setDestAcctId(acct.id);
-              }
             }
           }
         }
@@ -7445,37 +8901,34 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   },[show,db]);
 
   // Auto-tag: as the description changes (typed, or pre-filled from an imported
-  // statement row), suggest a category from merchant_rules — but only while the
-  // category field is still empty, so it never clobbers a choice already made
-  // (either by the user, or by a previously-saved transaction being re-opened).
+  // statement row), suggest a category from merchant_rules — but only for the plain
+  // single-row expense case, and only while that row's category is still empty, so
+  // it never clobbers a choice already made (by the user, or by re-opening a saved txn).
   useEffect(()=>{
-    if(action!=="expense") return;
-    if(categoryId||newCategoryName) return;
+    if(direction!=="out") return;
+    if(splitRows.length!==1||splitRows[0].type!=="expense") return;
+    if(splitRows[0].selId||splitRows[0].newName) return;
     if(!description.trim()) return;
     const matched=applyRules(description,[...rules,...DEFAULT_RULES]);
     if(!matched||matched==="Other") return;
     const catAccts=accounts.filter(a=>a.type==="expense");
     const existing=catAccts.find(c=>c.name===matched);
-    if(existing) setCategoryId(existing.id); else setNewCategoryName(matched);
+    setSplitRows(rs=>rs.map((r,i)=>i===0?{...r,selId:existing?existing.id:"",newName:existing?"":matched}:r));
     setAutoTagged(true);
-  },[description,action,rules]);
+  },[description,direction,rules]);
 
   if(!show) return null;
 
-  const needsEntity=["paid_on_behalf","refund_received","borrowed","repaid"].includes(action);
-  const needsCategory=action==="income"||action==="expense";
-  const needsDest=action==="transfer";
-  const canSplit=action==="expense";
+  const needsDest=direction==="transfer";
 
   const sourceAccts=accounts.filter(a=>(a.type==="asset"||a.type==="liability")&&!a.entity_id);
-  const categoryAccts=accounts.filter(a=>a.type===(action==="income"?"income":"expense"));
-  const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(action==="expense"?spendCategories:[])])].sort();
+  const categoryAccts=accounts.filter(a=>a.type===(direction==="in"?"income":"expense"));
+  const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(direction==="out"?spendCategories:[])])].sort();
   const entityNames=[...new Set([...entities.map(e=>e.name),...people])].sort();
 
   const reset=()=>{
-    setAmount("");setDescription("");setNotes("");setEntityId("");setCategoryId("");
-    setNewEntityName("");setNewCategoryName("");setSourceAcctId("");setDestAcctId("");setErr("");
-    setSplitMode(false);setSplitRows([{type:"category",name:"",amount:""},{type:"person",name:"",amount:""}]);
+    setAmount("");setDescription("");setNotes("");setSourceAcctId("");setDestAcctId("");setErr("");
+    setDirection("out");setSplitRows([{type:"expense",selId:"",newName:"",amount:""}]);
     setEditTxnId(null);setAutoTagged(false);
   };
 
@@ -7485,7 +8938,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   const save=async()=>{
     setErr("");
 
-    if(action==="recorded_elsewhere"){
+    if(direction==="recorded_elsewhere"){
       if(!prefill?.stagedId) return setErr("Nothing to mark");
       setSaving(true);
       try{
@@ -7506,13 +8959,11 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
     if(!amt||amt<=0) return setErr("Enter a valid amount");
     if(!sourceAcctId) return setErr("Choose an account");
     if(needsDest&&!destAcctId) return setErr("Choose a destination account");
-    if(splitMode){
-      if(splitRows.some(r=>!r.name.trim())) return setErr("Every split row needs a category or person");
-      if(splitRows.some(r=>!parseFloat(r.amount))) return setErr("Every split row needs an amount");
+    if(direction==="out"||direction==="in"){
+      if(splitRows.some(r=>!r.type)) return setErr("Choose a type for every split");
+      if(splitRows.some(r=>!(r.selId||r.newName.trim()))) return setErr("Every split needs a category or person");
+      if(splitRows.some(r=>!parseFloat(r.amount))) return setErr("Every split needs an amount");
       if(Math.abs(splitRemaining)>0.01) return setErr("Split amounts must add up to the total ("+inrFmt(amt)+")");
-    }else{
-      if(needsEntity&&!entityId&&!newEntityName.trim()) return setErr("Choose or type a person/company");
-      if(needsCategory&&!categoryId&&!newCategoryName.trim()) return setErr("Choose or type a category");
     }
 
     setSaving(true);
@@ -7520,40 +8971,29 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
       const sourceAcct=accounts.find(a=>a.id===sourceAcctId);
       const uid=getCurrentUserId();
       let lines=[];
+      let primaryAction=direction;
 
-      if(splitMode){
+      if(direction==="out"||direction==="in"){
+        const isDebit=direction==="out";
         for(const row of splitRows){
           const rowAmt=parseFloat(row.amount);
-          if(row.type==="category"){
-            const catId=await resolveCategoryAccount(db,row.name.trim(),action==="income"?"income":"expense",categoryAccts,uid);
-            lines.push({account_id:catId,debit:rowAmt,credit:0});
+          let acctIdForRow;
+          if(isCategoryRowType(row.type)){
+            acctIdForRow=row.selId||await resolveCategoryAccount(db,row.newName.trim(),direction==="in"?"income":"expense",categoryAccts,uid);
           }else{
-            const entId=await resolveEntityId(db,entities,row.name.trim(),sourceAcct.owner_id,uid);
-            const {recvAcctId}=await ensureEntityAccounts(db,entId,row.name.trim(),sourceAcct.owner_id,uid);
-            lines.push({account_id:recvAcctId,debit:rowAmt,credit:0});
+            const entName=row.selId?(entities.find(e=>e.id===row.selId)?.name||""):row.newName.trim();
+            const entId=row.selId||await resolveEntityId(db,entities,entName,sourceAcct.owner_id,uid);
+            const {recvAcctId,payAcctId}=await ensureEntityAccounts(db,entId,entName,sourceAcct.owner_id,uid);
+            acctIdForRow=(row.type==="paid_on_behalf"||row.type==="refund_received")?recvAcctId:payAcctId;
           }
+          lines.push(isDebit?{account_id:acctIdForRow,debit:rowAmt,credit:0}:{account_id:acctIdForRow,debit:0,credit:rowAmt});
         }
-        lines.push({account_id:sourceAcctId,debit:0,credit:amt});
-      }else{
-        let finalEntityId=entityId;
-        if(needsEntity&&!finalEntityId&&newEntityName.trim()) finalEntityId=await resolveEntityId(db,entities,newEntityName.trim(),sourceAcct.owner_id,uid);
+        lines.push(isDebit?{account_id:sourceAcctId,debit:0,credit:amt}:{account_id:sourceAcctId,debit:amt,credit:0});
 
-        let finalCategoryId=categoryId;
-        if(needsCategory&&!finalCategoryId&&newCategoryName.trim()) finalCategoryId=await resolveCategoryAccount(db,newCategoryName.trim(),action==="income"?"income":"expense",categoryAccts,uid);
-
-        let recvAcctId=null,payAcctId=null;
-        if(needsEntity){
-          const entName=entities.find(e=>e.id===finalEntityId)?.name||newEntityName.trim();
-          ({recvAcctId,payAcctId}=await ensureEntityAccounts(db,finalEntityId,entName,sourceAcct.owner_id,uid));
-        }
-
-        if(action==="income") lines=[{account_id:sourceAcctId,debit:amt,credit:0},{account_id:finalCategoryId,debit:0,credit:amt}];
-        else if(action==="expense") lines=[{account_id:finalCategoryId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
-        else if(action==="paid_on_behalf") lines=[{account_id:recvAcctId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
-        else if(action==="refund_received") lines=[{account_id:sourceAcctId,debit:amt,credit:0},{account_id:recvAcctId,debit:0,credit:amt}];
-        else if(action==="borrowed") lines=[{account_id:sourceAcctId,debit:amt,credit:0},{account_id:payAcctId,debit:0,credit:amt}];
-        else if(action==="repaid") lines=[{account_id:payAcctId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
-        else if(action==="transfer") lines=[{account_id:destAcctId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
+        const rowTypes=splitRows.map(r=>r.type);
+        primaryAction=rowTypes.includes("expense")?"expense":rowTypes.includes("income")?"income":rowTypes[0];
+      }else if(direction==="transfer"){
+        lines=[{account_id:destAcctId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
       }
 
       if(editTxnId){
@@ -7567,7 +9007,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         if(derr) throw new Error(JSON.stringify(derr));
       }
 
-      const {data:txnRows,error:terr}=await db.from("transactions").insert({txn_date:txnDate,description:description.trim()||null,notes:notes.trim()||null,action,source:prefill?"import":"manual",user_id:uid});
+      const {data:txnRows,error:terr}=await db.from("transactions").insert({txn_date:txnDate,description:description.trim()||null,notes:notes.trim()||null,action:primaryAction,source:prefill?"import":"manual",user_id:uid});
       if(terr) throw new Error(JSON.stringify(terr));
       const txnId=txnRows[0].id;
       const {error:lerr}=await db.from("transaction_lines").insert(lines.map(l=>({...l,transaction_id:txnId})));
@@ -7580,7 +9020,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
 
       // Self-transfer: auto-resolve the mirror row on the other account if its
       // matching statement has already been imported (same amount, within 5 days).
-      if(action==="transfer"){
+      if(direction==="transfer"){
         const {data:otherStaged}=await db.from("staged_transactions").select();
         const mirrors=(otherStaged||[]).filter(row=>
           !row.is_reconciled&&row.id!==prefill?.stagedId&&
@@ -7598,25 +9038,37 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
     }catch(e){setErr(e.message||String(e));setSaving(false);}
   };
 
-  const nameOptions=(type)=>type==="category"?categoryNames:entityNames;
-
   return(
     <Modal show={show} onClose={()=>{reset();onClose();}} title={editTxnId?"Edit Tag":prefill?"Tag Transaction":"Add Transaction"}>
       <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:18}}>
-        {[...BOOKS_ACTIONS,...(prefill?.stagedId?[{id:"recorded_elsewhere",label:"Recorded elsewhere"}]:[])].map(a=>(
-          <button key={a.id} onClick={()=>{setAction(a.id);setEntityId("");setCategoryId("");setNewEntityName("");setNewCategoryName("");setAutoTagged(false);if(a.id!=="expense")setSplitMode(false);}} style={action===a.id?pbtnSm:gbtnSm}>{a.label}</button>
+        {[...TXN_DIRECTIONS,...(prefill?.stagedId?[{id:"recorded_elsewhere",label:"Recorded elsewhere"}]:[])].map(d=>(
+          <button key={d.id} onClick={()=>{
+            setDirection(d.id);setAutoTagged(false);
+            if(d.id==="out") setSplitRows([{type:"expense",selId:"",newName:"",amount:""}]);
+            else if(d.id==="in") setSplitRows([{type:"income",selId:"",newName:"",amount:""}]);
+          }} style={direction===d.id?pbtnSm:gbtnSm}>{d.label}</button>
         ))}
       </div>
 
-      {action==="recorded_elsewhere"?(
+      {direction==="recorded_elsewhere"?(
         <div style={{fontSize:13,color:mut,marginBottom:18,lineHeight:1.6,background:surf2,borderRadius:10,padding:"12px 14px"}}>
           Use this when the matching transfer was already tagged on the other account (e.g. a CC payment tagged as a Transfer on your bank statement). This won't create a new ledger entry — if a matching transfer is found within 5 days for the same amount, it'll be linked automatically so the Status column shows where it was actually recorded.
         </div>
       ):(<>
-      {lbl("Amount (₹)")}<input style={inp} type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)}/>
-      {lbl("Date")}<input style={inp} type="date" value={txnDate} onChange={e=>setTxnDate(e.target.value)}/>
+      {prefill?(<>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Amount (₹)")}<div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>₹{(parseFloat(amount)||0).toLocaleString("en-IN")}</div></div>
+          <div>{lbl("Date")}<div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>{txnDate?fmtDate(txnDate):"—"}</div></div>
+        </div>
+        <div style={{fontSize:11,color:mut,margin:"-6px 0 14px"}}>Locked to match the original record — add a note instead, or use Edit Transaction if this was entered manually.</div>
+      </>):(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>{lbl("Amount (₹)")}<input style={inp} type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)}/></div>
+          <div>{lbl("Date")}<input style={inp} type="date" value={txnDate} onChange={e=>setTxnDate(e.target.value)}/></div>
+        </div>
+      )}
 
-      {lbl(action==="transfer"?"From account":"Account")}
+      {lbl(direction==="transfer"?"From account":"Account")}
       <select style={inp} value={sourceAcctId} onChange={e=>setSourceAcctId(e.target.value)}>
         <option value="">Select…</option>
         {sourceAccts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
@@ -7630,77 +9082,162 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         </select>
       </>)}
 
-      {canSplit&&(
-        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:13,color:txt,marginBottom:16}}>
-          <input type="checkbox" checked={splitMode} onChange={e=>setSplitMode(e.target.checked)} style={{accentColor:acc}}/>
-          Split this transaction between categories / people
-        </label>
-      )}
-
-      {splitMode?(
+      {(direction==="out"||direction==="in")&&(
         <div style={{marginBottom:16}}>
           {lbl("Split into")}
           {splitRows.map((row,i)=>(
-            <div key={i} style={{display:"grid",gridTemplateColumns:"90px 1fr 110px 28px",gap:8,marginBottom:8,alignItems:"center"}}>
-              <select style={{...inp,marginBottom:0,fontSize:12}} value={row.type} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,type:e.target.value,name:""}:r))}>
-                <option value="category">Category</option>
-                <option value="person">Person</option>
+            <div key={i} style={{border:`1px solid ${bdr}`,borderRadius:10,padding:12,marginBottom:10,background:surf2}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:0.3}}>Split {i+1}</div>
+                <button style={{...dbtnXs,padding:"4px 8px"}} onClick={()=>setSplitRows(rs=>rs.filter((_,ri)=>ri!==i))} disabled={splitRows.length<=1}>×</button>
+              </div>
+
+              <select style={inp} value={row.type} onChange={e=>{
+                const t=e.target.value;
+                setSplitRows(rs=>rs.map((r,ri)=>ri===i?{type:t,selId:"",newName:"",amount:r.amount}:r));
+                setAutoTagged(false);
+              }}>
+                <option value="">Select type…</option>
+                {rowTypesFor(direction).map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
-              <input style={{...inp,marginBottom:0}} list={`split-opts-${i}`} placeholder={row.type==="category"?"Category name":"Person/company name"} value={row.name} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,name:e.target.value}:r))}/>
-              <datalist id={`split-opts-${i}`}>
-                {nameOptions(row.type).map(n=><option key={n} value={n}/>)}
-              </datalist>
-              <input style={{...inp,marginBottom:0}} type="number" placeholder="₹0" value={row.amount} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,amount:e.target.value}:r))}/>
-              <button style={{...dbtnXs,padding:"6px 8px"}} onClick={()=>setSplitRows(rs=>rs.filter((_,ri)=>ri!==i))} disabled={splitRows.length<=1}>×</button>
+
+              {row.type&&(isCategoryRowType(row.type)?(<>
+                {i===0&&autoTagged&&(row.selId||row.newName)&&(
+                  <div style={{fontSize:11,color:acc,margin:"0 0 6px",display:"flex",alignItems:"center",gap:5}}>✨ Auto-tagged from your rules — click to change</div>
+                )}
+                <select style={inp} value={row.selId?categoryAccts.find(c=>c.id===row.selId)?.name||"":row.newName} onChange={e=>{
+                  const val=e.target.value;
+                  const existing=categoryAccts.find(c=>c.name===val);
+                  setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:existing?existing.id:"",newName:existing?"":val}:r));
+                }}>
+                  <option value="">Select existing category…</option>
+                  {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+                <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
+                <input style={inp} placeholder="New category name" value={row.newName} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,newName:e.target.value,selId:""}:r))}/>
+              </>):(<>
+                <select style={inp} value={row.selId?entities.find(en=>en.id===row.selId)?.name||"":row.newName} onChange={e=>{
+                  const val=e.target.value;
+                  const existing=entities.find(en=>en.name===val);
+                  setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:existing?existing.id:"",newName:existing?"":val}:r));
+                }}>
+                  <option value="">Select existing person/company…</option>
+                  {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
+                </select>
+                <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
+                <input style={inp} placeholder="New person/company name" value={row.newName} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,newName:e.target.value,selId:""}:r))}/>
+              </>))}
+
+              <input style={{...inp,marginTop:8,marginBottom:0}} type="number" placeholder="Amount ₹" value={row.amount} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,amount:e.target.value}:r))}/>
             </div>
           ))}
-          <button style={{...gbtnXs,marginBottom:10}} onClick={()=>setSplitRows(rs=>[...rs,{type:"person",name:"",amount:""}])}>+ Add split</button>
+          <button style={{...gbtnXs,marginBottom:10}} onClick={()=>setSplitRows(rs=>[...rs,{type:"",selId:"",newName:"",amount:""}])}>+ Add split</button>
           <div style={{fontSize:12,color:Math.abs(splitRemaining)>0.01?red:grn,fontWeight:600}}>
             {Math.abs(splitRemaining)>0.01?`Remaining: ₹${splitRemaining.toLocaleString("en-IN")}`:"✓ Splits add up to the total"}
           </div>
         </div>
-      ):(<>
-        {needsEntity&&(<>
-          {lbl("Person / Company")}
-          <select style={inp} value={entityId?entities.find(en=>en.id===entityId)?.name||"":newEntityName} onChange={e=>{
-            const val=e.target.value;
-            const existing=entities.find(en=>en.name===val);
-            setEntityId(existing?existing.id:"");
-            setNewEntityName(existing?"":val);
-          }}>
-            <option value="">Select existing…</option>
-            {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
-          </select>
-          <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
-          <input style={inp} placeholder="New person/company name" value={newEntityName} onChange={e=>{setNewEntityName(e.target.value);setEntityId("");}}/>
-        </>)}
+      )}
 
-        {needsCategory&&(<>
-          {lbl(action==="income"?"Income category":"Expense category")}
-          {autoTagged&&(categoryId||newCategoryName)&&(
-            <div style={{fontSize:11,color:acc,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>✨ Auto-tagged from your rules — click to change</div>
-          )}
-          <select style={inp} value={categoryId?categoryAccts.find(c=>c.id===categoryId)?.name||"":newCategoryName} onChange={e=>{
-            const val=e.target.value;
-            const existing=categoryAccts.find(c=>c.name===val);
-            setCategoryId(existing?existing.id:"");
-            setNewCategoryName(existing?"":val);
-            setAutoTagged(false);
-          }}>
-            <option value="">Select existing…</option>
-            {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
-          </select>
-          <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
-          <input style={inp} placeholder="New category name" value={newCategoryName} onChange={e=>{setNewCategoryName(e.target.value);setCategoryId("");setAutoTagged(false);}}/>
-        </>)}
-      </>)}
-
-      {lbl("Description")}<input style={inp} placeholder="What was this for?" value={description} onChange={e=>setDescription(e.target.value)}/>
+      {lbl("Description")}
+      {prefill?(
+        <div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>{description||"—"}</div>
+      ):(
+        <input style={inp} placeholder="What was this for?" value={description} onChange={e=>setDescription(e.target.value)}/>
+      )}
       {lbl("Notes (optional)")}<input style={inp} placeholder="Any extra notes…" value={notes} onChange={e=>setNotes(e.target.value)}/>
       </>)}
 
       {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
-      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":action==="recorded_elsewhere"?"Mark as Recorded Elsewhere":"Save Transaction"}</button>
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":direction==="recorded_elsewhere"?"Mark as Recorded Elsewhere":"Save Transaction"}</button>
+    </Modal>
+  );
+}
+
+// ── EditBooksTransactionModal — core-field editing (date/description/amount) for a
+// manually-entered Books transaction only. Mirrors the Points & Miles pencil-vs-Tag
+// split: AddTransactionModal locks these fields while tagging to protect duplicate-
+// detection and the source-of-truth; this is the one place they can change, and only
+// for transactions the user typed in themselves — imported ones never get this button.
+// Changing the amount re-scales every line proportionally (so splits keep their ratio)
+// and, since transaction_lines must always balance, does it via delete+reinsert rather
+// than editing lines in place — the same safe pattern the tag-edit flow already uses.
+function EditBooksTransactionModal({show,onClose,db,txn,stagedId,onSaved}){
+  const [description,setDescription]=useState("");
+  const [amount,setAmount]=useState("");
+  const [txnDate,setTxnDate]=useState("");
+  const [origAmount,setOrigAmount]=useState(0);
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+
+  useEffect(()=>{
+    if(!show||!txn) return;
+    setDescription(txn.description||"");
+    setTxnDate(txn.txn_date||"");
+    setErr("");
+    (async()=>{
+      const {data}=await db.from("transaction_lines").select();
+      const total=(data||[]).filter(l=>l.transaction_id===txn.id).reduce((a,l)=>a+(Number(l.debit)||0),0);
+      setAmount(String(total));
+      setOrigAmount(total);
+    })();
+  },[show,txn,db]);
+
+  if(!show||!txn) return null;
+
+  const MONEY_IN_ACTIONS=["income","refund_received","borrowed"];
+
+  const save=async()=>{
+    setErr("");
+    const newAmt=parseFloat(amount);
+    if(!newAmt||newAmt<=0) return setErr("Enter a valid amount");
+    setSaving(true);
+    try{
+      // transactions rows are treated as immutable everywhere else in this app (every
+      // re-tag flow deletes+reinserts rather than updating in place) — mirror that here
+      // rather than PATCHing the row directly, which the schema silently no-ops on.
+      const {data:lineData}=await db.from("transaction_lines").select();
+      const oldLines=(lineData||[]).filter(l=>l.transaction_id===txn.id);
+      const ratio=origAmount>0?newAmt/origAmount:1;
+      const newLines=oldLines.map(l=>({
+        account_id:l.account_id,
+        debit:Number(l.debit)?Math.round(Number(l.debit)*ratio*100)/100:0,
+        credit:Number(l.credit)?Math.round(Number(l.credit)*ratio*100)/100:0,
+      }));
+
+      if(stagedId){
+        const {error:cerr}=await db.from("staged_transactions").update(stagedId,{resulting_transaction_id:null});
+        if(cerr) throw new Error(JSON.stringify(cerr));
+      }
+      const {error:derr}=await db.from("transactions").delete(txn.id);
+      if(derr) throw new Error(JSON.stringify(derr));
+
+      const {data:txnRows,error:terr}=await db.from("transactions").insert({txn_date:txnDate,description:description.trim()||null,notes:txn.notes||null,action:txn.action,source:txn.source,user_id:getCurrentUserId()});
+      if(terr) throw new Error(JSON.stringify(terr));
+      const finalTxnId=txnRows[0].id;
+      const {error:lerr}=await db.from("transaction_lines").insert(newLines.map(l=>({...l,transaction_id:finalTxnId})));
+      if(lerr) throw new Error(JSON.stringify(lerr));
+
+      if(stagedId){
+        const signedAmt=MONEY_IN_ACTIONS.includes(txn.action)?newAmt:-newAmt;
+        const {error:serr}=await db.from("staged_transactions").update(stagedId,{resulting_transaction_id:finalTxnId,amount:signedAmt,txn_date:txnDate,raw_description:description.trim()||null});
+        if(serr) throw new Error(JSON.stringify(serr));
+      }
+
+      setSaving(false);
+      onSaved&&onSaved();
+      onClose();
+    }catch(e){setErr(e.message||String(e));setSaving(false);}
+  };
+
+  return(
+    <Modal show={show} onClose={onClose} title="Edit Transaction">
+      {lbl("Description")}<input style={inp} value={description} onChange={e=>setDescription(e.target.value)}/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <div>{lbl("Amount (₹)")}<input style={inp} type="number" value={amount} onChange={e=>setAmount(e.target.value)}/></div>
+        <div>{lbl("Date")}<input style={inp} type="date" value={txnDate} onChange={e=>setTxnDate(e.target.value)}/></div>
+      </div>
+      {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
+      <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Save Changes"}</button>
     </Modal>
   );
 }
@@ -7864,18 +9401,24 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
           {lbl("Account")}
           <div style={{fontSize:14,fontWeight:600,color:txt}}>{selectedAcct?.name||"—"}</div>
         </div>
-      ):(<>
-        {lbl("Owner")}
-        <select style={inp} value={ownerId} onChange={e=>{setOwnerId(e.target.value);setAcctId("");}}>
-          <option value="">Select…</option>
-          {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
-        </select>
-        {lbl("Account")}
-        <select style={inp} value={acctId} onChange={e=>setAcctId(e.target.value)} disabled={!ownerId}>
-          <option value="">Select…</option>
-          {cashAccts.filter(a=>a.owner_id===ownerId).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-        </select>
-      </>)}
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>
+            {lbl("Owner")}
+            <select style={inp} value={ownerId} onChange={e=>{setOwnerId(e.target.value);setAcctId("");}}>
+              <option value="">Select…</option>
+              {owners.map(o=><option key={o.id} value={o.id}>{o.name}</option>)}
+            </select>
+          </div>
+          <div>
+            {lbl("Account")}
+            <select style={inp} value={acctId} onChange={e=>setAcctId(e.target.value)} disabled={!ownerId}>
+              <option value="">Select…</option>
+              {cashAccts.filter(a=>a.owner_id===ownerId).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+        </div>
+      )}
 
       {lbl("Date")}<input style={inp} type="date" value={txnDate} onChange={e=>setTxnDate(e.target.value)}/>
 
@@ -8935,7 +10478,7 @@ function AddAccountModal({show,onClose,db,owners,onSaved,lockType,embedded}){
         });
         if(cerr) throw new Error(JSON.stringify(cerr));
         const myCardId=crows[0].id;
-        await db.from("point_transactions").insert({entity_type:"card",entity_id:myCardId,points:0,description:"Opening balance",txn_date:new Date().toISOString().split("T")[0],user_id:uid});
+        await db.from("point_transactions").insert({entity_type:"card",entity_id:myCardId,points:0,description:"Opening balance",txn_date:new Date().toISOString().split("T")[0],kind:"opening_balance",source:"manual",user_id:uid});
 
         const masterCard=masterCardName?{name:masterCardName}:masterCards.find(m=>m.id===finalMasterId);
         const {data:arows,error:aerr}=await db.from("accounts").insert({
@@ -9487,7 +11030,11 @@ function stmtLabel(s){
   return s.statement_date?fmtMonth(s.statement_date):fmtDate(s.period_start)+" – "+fmtDate(s.period_end);
 }
 
-const PAGE_SIZE=15;
+const PAGE_SIZE=20;
+// Short pages (e.g. a month with 2 transactions) used to get padded all the way out to
+// PAGE_SIZE, which just looked broken/empty. A small fixed floor keeps a 1-row page from
+// looking absurdly cramped without making a near-empty page look like it's missing data.
+const MIN_TABLE_ROWS=2;
 function Pager({page,setPage,total}){
   const totalPages=Math.max(1,Math.ceil(total/PAGE_SIZE));
   if(totalPages<=1) return null;
@@ -9600,6 +11147,7 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
 function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,onDeleted}){
   const [staged,setStaged]=useState(null); // null = not yet loaded
   const [tagging,setTagging]=useState(null);
+  const [editingTxn,setEditingTxn]=useState(null); // {txn, stagedId}
   const [showEditStmt,setShowEditStmt]=useState(false);
   const [search,setSearch]=useState("");
   const [sortBy,setSortBy]=useState("date");
@@ -9621,7 +11169,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   const [prevStmt,setPrevStmt]=useState(null);
   const [sameAcctStmtsList,setSameAcctStmtsList]=useState([]);
   const [acctStagedMap,setAcctStagedMap]=useState({});
-  const [colW,setColW]=useState([36,90,170,90,95,95,110]); // check,date,desc,status,amount,balance,actions
+  const [colW,setColW]=useState([36,80,140,110,110,90,90,80]); // check,date,desc,source,tag,amount,balance,actions
   const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   const isCC=account.subtype==="credit_card";
@@ -9680,6 +11228,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
     });
     return (ACTION_SHORT[txn.action]||txn.action)+": "+(parts.join(", ")||"—");
   };
+  const linkedTxn=s=>s.resulting_transaction_id?allTxns.find(t=>t.id===s.resulting_transaction_id):null;
   // Reconciliation math: Previous statement's dues, minus payments/credits received
   // this period, plus new purchases, should equal this statement's total due —
   // shown as the calculated figure, with the bank's own fetched figure alongside
@@ -9956,19 +11505,40 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                       <th style={{padding:"6px 8px",position:"relative"}}><input type="checkbox" checked={untaggedCount>0&&selected.size===untaggedCount} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
                       {sortHdr("date","Date",null,1)}
                       {sortHdr("desc","Description",null,2)}
-                      {sortHdr("status","Status",null,3)}
-                      {sortHdr("amount","Amount","right",4)}
-                      <th style={{padding:"6px 8px",textAlign:"right",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,whiteSpace:"nowrap",position:"relative"}}>Balance<ColResizeHandle width={colW[5]} onResize={w=>setColWAt(5,w)}/></th>
-                      <th style={{padding:"6px 8px",position:"relative"}}><ColResizeHandle width={colW[6]} onResize={w=>setColWAt(6,w)}/></th>
+                      <th style={{padding:"6px 8px",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,whiteSpace:"nowrap",position:"relative"}}>Source<ColResizeHandle width={colW[3]} onResize={w=>setColWAt(3,w)}/></th>
+                      {sortHdr("status","Tag",null,4)}
+                      {sortHdr("amount","Amount","right",5)}
+                      <th style={{padding:"6px 8px",textAlign:"right",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,whiteSpace:"nowrap",position:"relative"}}>Balance<ColResizeHandle width={colW[6]} onResize={w=>setColWAt(6,w)}/></th>
+                      <th style={{padding:"6px 8px",position:"relative"}}><ColResizeHandle width={colW[7]} onResize={w=>setColWAt(7,w)}/></th>
                     </tr>
                   </thead>
                   <tbody>
-                    {sorted.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(s=>(
+                    {sorted.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(s=>{
+                      const txn=linkedTxn(s);
+                      const isManual=txn?.source==="manual";
+                      return(
                       <tr key={s.id} style={{borderBottom:`1px solid ${bdr}`}}>
                         <td style={{padding:"8px"}}>{!s.is_reconciled&&<input type="checkbox" checked={selected.has(s.id)} onChange={()=>toggleSelect(s.id)}/>}</td>
                         <td style={{padding:"8px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:mut}}>{fmtDate(s.txn_date)}</td>
                         <td title={s.raw_description} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:txt,fontWeight:500}}>{s.raw_description}</td>
-                        <td title={describeTag(s)||""} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.is_reconciled?<span style={{color:grn}}>{describeTag(s)||"Tagged"}</span>:<span style={{color:amber}}>Untagged</span>}</td>
+                        <td style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:mut,fontSize:11}}>{txn?(isManual?"Manual Transaction":"Imported Transaction"):"—"}</td>
+                        <td title={describeTag(s)||""} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {s.is_reconciled?(
+                            <span style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{color:grn}}>{describeTag(s)||"Tagged"}</span>
+                              {s.resulting_transaction_id?(
+                                <button title="Edit Tag" onClick={()=>setTagging(s)} style={{display:"inline-flex",alignItems:"center",gap:3,border:"none",background:"none",color:mut2,cursor:"pointer",padding:0,fontSize:11}}><TagIcon size={11}/>Edit Tag</button>
+                              ):(
+                                <button style={{...gbtnXs,padding:"2px 6px",fontSize:10}} onClick={async()=>{await db.from("staged_transactions").update(s.id,{is_reconciled:false});await load();onSaved&&onSaved();}}>Undo</button>
+                              )}
+                            </span>
+                          ):(
+                            <span style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{color:amber}}>Untagged</span>
+                              <button title="Tag" onClick={()=>setTagging(s)} style={{display:"inline-flex",alignItems:"center",gap:3,border:"none",background:"none",color:mut2,cursor:"pointer",padding:0,fontSize:11}}><TagIcon size={11}/>Tag</button>
+                            </span>
+                          )}
+                        </td>
                         <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",color:Number(s.amount)>0?grn:red,whiteSpace:"nowrap"}}>
                           {Number(s.amount)>0?"+":"-"}₹{Math.abs(Number(s.amount)).toLocaleString("en-IN")}
                         </td>
@@ -9977,19 +11547,18 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                         </td>
                         <td style={{padding:"8px",textAlign:"right",whiteSpace:"nowrap",overflow:"hidden"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
-                            {!s.is_reconciled&&<button style={pbtnXs} onClick={()=>setTagging(s)}>Tag</button>}
-                            {s.is_reconciled&&s.resulting_transaction_id&&<button style={gbtnXs} onClick={()=>setTagging(s)}>Edit</button>}
-                            {s.is_reconciled&&!s.resulting_transaction_id&&<button style={gbtnXs} onClick={async()=>{await db.from("staged_transactions").update(s.id,{is_reconciled:false});await load();onSaved&&onSaved();}}>Undo</button>}
-                            <button title="Delete" style={{...dbtnXs,padding:"3px 7px"}} onClick={()=>deleteRow(s)}>×</button>
+                            {isManual&&<IconBtn title="Edit Transaction" onClick={()=>setEditingTxn({txn,stagedId:s.id})}><EditIcon size={12}/></IconBtn>}
+                            {(!s.resulting_transaction_id||isManual)&&<IconBtn title="Delete" tone="danger" onClick={()=>deleteRow(s)}><DeleteIcon size={12}/></IconBtn>}
                           </div>
                         </td>
                       </tr>
-                    ))}
-                    {/* Pad short pages out to a fixed PAGE_SIZE rows so the table doesn't
-                        visually shrink/jump as you page through or filter down. */}
-                    {Array.from({length:Math.max(0,PAGE_SIZE-sorted.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).length)}).map((_,i)=>(
+                      );
+                    })}
+                    {/* Keep a small minimum row count so a near-empty page doesn't look cramped —
+                        but don't pad all the way to PAGE_SIZE, which just looks broken/empty. */}
+                    {Array.from({length:Math.max(0,MIN_TABLE_ROWS-sorted.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).length)}).map((_,i)=>(
                       <tr key={"filler-"+i} style={{borderBottom:`1px solid ${bdr}`}}>
-                        <td colSpan={7} style={{padding:"8px"}}>&nbsp;</td>
+                        <td colSpan={8} style={{padding:"8px"}}>&nbsp;</td>
                       </tr>
                     ))}
                   </tbody>
@@ -10005,6 +11574,14 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
             db={db}
             onSaved={()=>{load();onSaved&&onSaved();}}
             prefill={tagging?{stagedId:tagging.id,sourceAccountId:tagging.source_account_id,txnDate:tagging.txn_date,amount:tagging.amount,description:tagging.raw_description,existingTransactionId:tagging.resulting_transaction_id||null}:null}
+          />
+          <EditBooksTransactionModal
+            show={!!editingTxn}
+            onClose={()=>setEditingTxn(null)}
+            db={db}
+            txn={editingTxn?.txn}
+            stagedId={editingTxn?.stagedId}
+            onSaved={()=>{load();onSaved&&onSaved();}}
           />
         </div>
       )}
@@ -10322,6 +11899,7 @@ const NAV=[
     {id:"my-programs",      label:"Loyalty Programs"},
     {id:"vouchers",         label:"Vouchers"},
     {id:"transfer-history", label:"Transfer History"},
+    {id:"redemptions",      label:"Redemptions"},
   ]},
   {section:"Books", items:[
     {id:"books-overview",   label:"Overview"},
@@ -10558,11 +12136,11 @@ export default function App(){
           })}
         </div>
 
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",gap:8}}>
-          <button onClick={toggleTheme} style={{...gbtn,width:"100%",justifyContent:"center",fontSize:12,padding:"8px 0",gap:7}}>
-            <ThemeIcon dark={theme==="dark"} size={14}/> {theme==="dark"?"Light Mode":"Dark Mode"}
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",gap:10}}>
+          <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+          <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
+            <SignOutIcon size={12}/> Sign Out
           </button>
-          <button onClick={handleSignOut} style={{...gbtn,width:"100%",justifyContent:"center",fontSize:12,padding:"8px 0"}}>Sign Out</button>
         </div>
       </aside>
 
@@ -10717,6 +12295,7 @@ export default function App(){
         {tab==="my-programs"       &&<MyPrograms key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
         {tab==="transfer"          &&<TransferPoints db={db} owners={owners}/>}
         {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
+        {tab==="redemptions"       &&<RedemptionDashboard db={db} owners={owners}/>}
         {tab==="vouchers"          &&<Vouchers key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
         {(tab==="pm-setup-owners"||tab==="setup-owners")&&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
         {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog key={resetTick} db={db} ownersData={owners} reloadOwners={()=>loadOwners()} userId={user?.id} initialTab={navTarget}/>}
@@ -10978,7 +12557,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
   const [editTxn,setEditTxn]=useState(null);
   const [showEdit,setShowEdit]=useState(false);
   const [page,setPage]=useState(0);
-  const PAGE_SIZE=15;
+  const PAGE_SIZE=20;
   const isMobile=useIsMobile();
 
   const owner=owners.find(o=>o.id===accountData.owner_id);
@@ -12224,6 +13803,144 @@ function parseBankStatementGeneric(rows,mapping){
   return{transactions:txns,closing_balance:closingBal,total_debits:totalDebits,total_credits:totalCredits,opening_balance:openingBal};
 }
 
+// ── HDFC CC points statement parser — same pipe-delimited CSV export as the Books
+// mapping (ml_hdfc_csv), but pulls the per-transaction REWARDS column, the Reward
+// Points Summary aggregate, and the Rewards Program Points Summary bonus breakdown
+// instead of ledger transactions. HDFC's aggregate "Earned" total always includes some
+// unnamed bonus not covered by either the per-txn REWARDS column or the named program
+// bonuses (verified against 7 real statements) — a residual row absorbs that gap so
+// opening + sum always reconciles exactly to the statement's own printed closing balance.
+function parseHDFCPointsCSV(text){
+  const rows=parseCSV(text,"|");
+  let statementDate=null;
+  for(const row of rows){ if((row[0]||"").trim()==="Statement Date"){ statementDate=parseBankDate(row[1],"DD/MM/YYYY"); break; } }
+
+  let txnHeaderIdx=-1;
+  for(let i=0;i<rows.length;i++){ if((rows[i][0]||"").trim()==="Transaction type"){ txnHeaderIdx=i; break; } }
+  const items=[];
+  if(txnHeaderIdx>=0){
+    for(let i=txnHeaderIdx+1;i<rows.length;i++){
+      const row=rows[i];
+      if(!row||(row[0]||"").trim()==="Reward Points Summary") break;
+      const dateStr=parseBankDate(row[2],"DD/MM/YYYY");
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) continue;
+      const rewardsRaw=(row[6]||"").trim();
+      if(!rewardsRaw) continue;
+      const m=rewardsRaw.match(/^([+-])\s*([\d,]+)$/);
+      if(!m) continue;
+      const pts=parseInt(m[2].replace(/,/g,""))*(m[1]==="-"?-1:1);
+      if(!pts) continue;
+      const description=(row[3]||"").trim().replace(/\s+/g," ");
+      items.push(pts<0?{txn_date:dateStr,description,points:pts,kind:"refund",earn_type:null}:{txn_date:dateStr,description,points:pts,kind:"earn",earn_type:"on_spends"});
+    }
+  }
+
+  let opening=null,earned=0,disbursed=0,adjusted=0,closing=null;
+  for(let i=0;i<rows.length;i++){
+    if((rows[i][0]||"").trim()==="Opening Balance"&&(rows[i][1]||"").includes("Earned")){
+      const d=rows[i+1]||[];
+      opening=parseInt((d[0]||"0").replace(/,/g,""))||0;
+      earned=parseInt((d[1]||"0").replace(/,/g,""))||0;
+      disbursed=parseInt((d[2]||"0").replace(/,/g,""))||0;
+      adjusted=parseInt((d[3]||"0").replace(/,/g,""))||0;
+      closing=parseInt((d[4]||"0").replace(/,/g,""))||0;
+      break;
+    }
+  }
+
+  let progHeaderIdx=-1;
+  for(let i=0;i<rows.length;i++){ if((rows[i][0]||"").trim()==="Programs"&&(rows[i][1]||"").trim()==="Bonus Points"){ progHeaderIdx=i; break; } }
+  if(progHeaderIdx>=0){
+    for(let i=progHeaderIdx+1;i<rows.length;i++){
+      const row=rows[i];
+      const name=(row[0]||"").trim();
+      const val=parseInt((row[1]||"").replace(/,/g,""));
+      if(!name||isNaN(val)) break;
+      items.push({txn_date:statementDate,description:name.replace(/_/g," "),points:val,kind:"earn",earn_type:"bonus_aep"});
+    }
+  }
+
+  const sumSoFar=items.reduce((a,r)=>a+r.points,0);
+  const residual=earned-sumSoFar;
+  if(residual!==0&&statementDate) items.push({txn_date:statementDate,description:"Other / Unidentified Bonus",points:residual,kind:"earn",earn_type:"bonus_aep"});
+  if(disbursed>0&&statementDate) items.push({txn_date:statementDate,description:"Redeemed / Disbursed",points:-disbursed,kind:"redeem",earn_type:null});
+  if(adjusted!==0&&statementDate) items.push({txn_date:statementDate,description:"Adjusted / Lapsed",points:-adjusted,kind:"adjustment",earn_type:null});
+
+  return{statementDate,opening,earned,disbursed,adjusted,closing,items};
+}
+
+// ── Amex Rewards Activity PDF parser — this is the export from the Amex rewards
+// web portal (global.americanexpress.com/rewards/summary), not the regular Books
+// card statement (that's the unrelated parseAmexPDF above). Its table has no
+// aggregate opening/closing balance to reconcile against — each row's own POINTS
+// value is trusted directly. The real difficulty here is layout reconstruction:
+// pdf.js gives positioned text fragments, not rows, and a multi-line DESCRIPTION
+// cell can start visually higher than the row's own DATE cell, so row boundaries
+// use the midpoint between consecutive DATE markers rather than the DATE marker's
+// own y — anchoring on the marker itself was verified (against 4 real statements)
+// to bleed the next row's first line into the previous row.
+async function parseAmexPointsPDF(file){
+  const pdfjsLib=window.pdfjsLib;
+  if(!pdfjsLib) throw new Error("PDF.js not loaded — please refresh");
+  const arrayBuffer=await file.arrayBuffer();
+  const pdf=await pdfjsLib.getDocument({data:arrayBuffer}).promise;
+
+  const MONTHS={Jan:1,Feb:2,Mar:3,Apr:4,May:5,Jun:6,Jul:7,Aug:8,Sep:9,Oct:10,Nov:11,Dec:12,
+    January:1,February:2,March:3,April:4,May:5,June:6,July:7,August:8,September:9,October:10,November:11,December:12};
+  const joinCol=arr=>arr.sort((a,b)=>b.y-a.y||a.x-b.x).map(it=>it.str.trim()).filter(Boolean).join(" ").replace(/\s+/g," ").trim();
+
+  const pages=[];
+  for(let p=1;p<=pdf.numPages;p++){
+    const page=await pdf.getPage(p);
+    const content=await page.getTextContent();
+    pages.push(content.items.map(it=>({str:it.str,x:Math.round(it.transform[4]),y:Math.round(it.transform[5])})));
+  }
+  if(!pages.some(p=>p.some(it=>it.str.includes("American Express")))) throw new Error("Not an Amex Rewards Activity PDF");
+
+  let statementYear=null,statementMonthNum=null;
+  outer: for(const page of pages){
+    for(const it of page){
+      const m=it.str.match(/^([A-Za-z]+)\s+(\d{4})$/);
+      if(m&&MONTHS[m[1]]){ statementYear=parseInt(m[2]); statementMonthNum=MONTHS[m[1]]; break outer; }
+    }
+  }
+  if(!statementYear) throw new Error("Couldn't find the statement's Date Range — is this an Amex Rewards Activity export?");
+
+  const items=[];
+  for(const page of pages){
+    const headerItem=page.find(it=>it.str==="DATE"&&it.x<80);
+    const cutoffY=headerItem?headerItem.y-1:800;
+    const dataItems=page.filter(it=>it.x>=25&&it.x<600&&it.y<cutoffY&&it.y>55&&it.str.trim()!=="");
+    const rowStarts=dataItems.filter(it=>it.x<80&&/^\d{1,2}(\s+[A-Za-z]{3})?$/.test(it.str.trim()));
+    rowStarts.sort((a,b)=>b.y-a.y);
+    for(let i=0;i<rowStarts.length;i++){
+      const upperBound=i===0?cutoffY+1:(rowStarts[i-1].y+rowStarts[i].y)/2;
+      const lowerBound=i===rowStarts.length-1?55:(rowStarts[i].y+rowStarts[i+1].y)/2;
+      const rowItems=dataItems.filter(it=>it.y<upperBound&&it.y>=lowerBound);
+      const cols={date:[],status:[],desc:[],points:[]};
+      for(const it of rowItems){
+        if(!it.str.trim()) continue;
+        if(it.x<80) cols.date.push(it);
+        else if(it.x<210) cols.status.push(it);
+        else if(it.x<440) cols.desc.push(it);
+        else if(it.x>=510) cols.points.push(it);
+      }
+      const dayMatch=joinCol(cols.date).match(/^(\d{1,2})/);
+      const day=dayMatch?parseInt(dayMatch[1]):null;
+      if(!day) continue;
+      const status=joinCol(cols.status);
+      const description=joinCol(cols.desc);
+      const points=parseInt(joinCol(cols.points).replace(/,/g,""))||0;
+      if(!points) continue;
+      const txn_date=`${statementYear}-${String(statementMonthNum).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      const kind=/redeem/i.test(status)?"redeem":points<0?"refund":"earn";
+      const earn_type=kind==="earn"?(/bonus/i.test(description)?"bonus_aep":"on_spends"):null;
+      items.push({txn_date,description,points,kind,earn_type});
+    }
+  }
+  return{statementYear,statementMonthNum,items};
+}
+
 // ── LandingPage ──────────────────────────────────────────────────────────────
 // ── LandingPage — a guided home base rather than a shortcut grid. Greets the
 // user by name, then walks through each module as a setup checklist: every
@@ -12472,22 +14189,25 @@ function MonthlyBudgetModal({show,onClose,db,owners,onSaved}){
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState("");
   const [tableMissing,setTableMissing]=useState(false);
+  const categoryAcctsRef=useRef([]);
 
   useEffect(()=>{
     if(!show) return;
     setLoading(true);setErr("");setTableMissing(false);
     (async()=>{
-      const [a,b]=await Promise.all([db.from("accounts").select(),db.from("category_budgets").select()]);
+      const [a,b,sc]=await Promise.all([db.from("accounts").select(),db.from("category_budgets").select(),db.from("spend_categories").select()]);
       if(b.error&&(b.error.code==="42P01"||b.error.code==="PGRST205")){
         setTableMissing(true);setLoading(false);return;
       }
-      const cats=(a.data||[]).filter(x=>x.type==="expense").sort((x,y)=>x.name.localeCompare(y.name));
+      const expenseAccts=(a.data||[]).filter(x=>x.type==="expense");
+      categoryAcctsRef.current=expenseAccts;
+      const cats=(sc.data||[]).map(s=>({id:s.id,name:s.name,accountId:(expenseAccts.find(ac=>ac.name===s.name)||{}).id||null})).sort((x,y)=>x.name.localeCompare(y.name));
       setCategories(cats);
       const rows=b.data||[];
       setBudgets(rows);
       const scope={},combined={},perOwner={};
       cats.forEach(c=>{
-        const catRows=rows.filter(r=>r.category_account_id===c.id);
+        const catRows=c.accountId?rows.filter(r=>r.category_account_id===c.accountId):[];
         const combinedRow=catRows.find(r=>!r.owner_id);
         if(combinedRow){
           scope[c.id]="combined";
@@ -12519,8 +14239,16 @@ function MonthlyBudgetModal({show,onClose,db,owners,onSaved}){
     try{
       const uid=getCurrentUserId();
       for(const c of categories){
-        const existing=budgets.filter(r=>r.category_account_id===c.id);
         const scope=scopeByCategory[c.id]||"combined";
+        const hasAnyValue=scope==="combined"
+          ?parseFloat(combinedByCategory[c.id])>0
+          :owners.some(o=>parseFloat((perOwnerByCategory[c.id]||{})[o.id])>0);
+        let accountId=c.accountId;
+        if(!accountId){
+          if(!hasAnyValue) continue;
+          accountId=await resolveCategoryAccount(db,c.name,"expense",categoryAcctsRef.current,uid);
+        }
+        const existing=budgets.filter(r=>r.category_account_id===accountId);
         if(scope==="combined"){
           for(const r of existing.filter(r=>r.owner_id)) await db.from("category_budgets").delete(r.id);
           const val=parseFloat(combinedByCategory[c.id]);
@@ -12530,7 +14258,7 @@ function MonthlyBudgetModal({show,onClose,db,owners,onSaved}){
           }else if(combinedRow){
             await db.from("category_budgets").update(combinedRow.id,{monthly_amount:val});
           }else{
-            const {error}=await db.from("category_budgets").insert({category_account_id:c.id,owner_id:null,monthly_amount:val,user_id:uid});
+            const {error}=await db.from("category_budgets").insert({category_account_id:accountId,owner_id:null,monthly_amount:val,user_id:uid});
             if(error) throw new Error(JSON.stringify(error));
           }
         }else{
@@ -12544,7 +14272,7 @@ function MonthlyBudgetModal({show,onClose,db,owners,onSaved}){
             }else if(ownerRow){
               await db.from("category_budgets").update(ownerRow.id,{monthly_amount:val});
             }else{
-              const {error}=await db.from("category_budgets").insert({category_account_id:c.id,owner_id:o.id,monthly_amount:val,user_id:uid});
+              const {error}=await db.from("category_budgets").insert({category_account_id:accountId,owner_id:o.id,monthly_amount:val,user_id:uid});
               if(error) throw new Error(JSON.stringify(error));
             }
           }
@@ -12801,21 +14529,31 @@ function SpendTrackerHome({db,owners,onNavigate}){
     const txn=expenseTxnById[txnId];
     if(!txn) return;
     const txnLines=linesByTxn[txnId];
-    const catLine=txnLines.find(l=>accountsById[l.account_id]?.type==="expense");
-    const srcLine=txnLines.find(l=>l!==catLine);
-    if(!catLine||!srcLine) return;
+    // The source line is the one true asset/liability account (never entity-linked) —
+    // found by what it IS, not by elimination, so it's correct regardless of how many
+    // other lines (categories, people) the split has or what order they come back in.
+    const srcLine=txnLines.find(l=>{
+      const a=accountsById[l.account_id];
+      return a&&(a.type==="asset"||a.type==="liability")&&!a.entity_id;
+    });
+    if(!srcLine) return;
     const srcAcct=accountsById[srcLine.account_id];
     if(!srcAcct) return;
-    allSpendRows.push({
-      id:txnId,
-      date:txn.txn_date,
-      description:txn.description||"",
-      amount:Number(catLine.debit)||Number(srcLine.credit)||0,
-      categoryId:catLine.account_id,
-      categoryName:accountsById[catLine.account_id]?.name||"Uncategorized",
-      accountId:srcAcct.id,
-      accountName:srcAcct.name,
-      ownerId:srcAcct.owner_id,
+    // A split can have more than one Expense-type row (e.g. two different categories) —
+    // every one of them is its own spend row, not just the first.
+    const catLines=txnLines.filter(l=>accountsById[l.account_id]?.type==="expense");
+    catLines.forEach(catLine=>{
+      allSpendRows.push({
+        id:txnId+"-"+catLine.account_id,
+        date:txn.txn_date,
+        description:txn.description||"",
+        amount:Number(catLine.debit)||0,
+        categoryId:catLine.account_id,
+        categoryName:accountsById[catLine.account_id]?.name||"Uncategorized",
+        accountId:srcAcct.id,
+        accountName:srcAcct.name,
+        ownerId:srcAcct.owner_id,
+      });
     });
   });
   const spendRows=allSpendRows.filter(r=>includedIds.has(r.accountId));
@@ -13226,7 +14964,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
   const [showEditCard,setShowEditCard]=useState(false);
   const [deleting,setDeleting]=useState(false);
   const [people,setPeople]=useState([]);
-  const PAGE=15;
+  const PAGE=20;
   const isMobile=useIsMobile();
 
   const [splitsMap,setSplitsMap]=useState({});
@@ -14527,7 +16265,7 @@ function SpendLedger({db,owners,onNavigate}){
   if(busy) return <div style={{color:mut,padding:32}}>Loading…</div>;
 
   if(selPerson){
-    const PAGE_SIZE=15;
+    const PAGE_SIZE=20;
 
     // Always sort oldest-first for running balance calculation
     const personEntries=entries.filter(e=>e.person_id===selPerson.id)
@@ -14819,7 +16557,7 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
   const [showSplit,setShowSplit]=useState(null);
   const [splits,setSplits]=useState([]);
   const [page,setPage]=useState(0);
-  const PAGE=15;
+  const PAGE=20;
   const [selected,setSelected]=useState(new Set()); // selected txn ids
   const [bulkCat,setBulkCat]=useState("");
   const [reapplying,setReapplying]=useState(false);
