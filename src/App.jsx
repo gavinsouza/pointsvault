@@ -804,9 +804,9 @@ function Collapsible({storageKey,header,defaultOpen=true,children}){
     <>
       {header}
       {open&&children}
-      <div style={{display:"flex",justifyContent:"flex-end",marginTop:open?12:2}}>
+      <div style={{display:"flex",justifyContent:"flex-end",marginTop:open?12:0}}>
         <button onClick={toggle} aria-label={open?"Collapse":"Expand"}
-          style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:22,padding:"4px 8px",lineHeight:1}}>
+          style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:open?22:16,padding:open?"4px 8px":"0 4px",lineHeight:1}}>
           {open?"▴":"▾"}
         </button>
       </div>
@@ -1577,7 +1577,7 @@ function CardPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
 
   // No library import here - that belongs in Master catalog only
   return(
-    <Card style={{marginBottom:16}}>
+    <Card style={{marginBottom:16,padding:"14px 18px"}}>
       <Collapsible storageKey={"card-partners-"+masterId} defaultOpen={false} header={
       <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
       }>
@@ -1619,7 +1619,7 @@ function ProgPartnersWithImport({masterId,masterName,partners,gName,gLogo,db,onR
     setTimeout(()=>setImportDone(false),3000);
   };
   return(
-    <Card style={{marginBottom:16}}>
+    <Card style={{marginBottom:16,padding:"14px 18px"}}>
       <Collapsible storageKey={"prog-partners-"+masterId} defaultOpen={false} header={
       <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Transfer Partners ({partners.length})</div>
       }>
@@ -4800,7 +4800,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <ImportsList db={db} txns={txns} onReload={load}/>
-      <Card>
+      <Card style={{padding:"14px 18px"}}>
         <Collapsible storageKey={"card-pts-history-"+card.id} header={
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
         }>
@@ -5210,7 +5210,7 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       <CardMilestones masterId={master?.id} db={db}/>
       <CardPartnersWithImport masterId={master?.id} masterName={master?.name} partners={partners} gName={gName} gLogo={gLogo} db={db} onRefresh={load}/>
       <ImportsList db={db} txns={txns} onReload={load}/>
-      <Card>
+      <Card style={{padding:"14px 18px"}}>
         <Collapsible storageKey={"prog-pts-history-"+prog.id} header={
         <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Points History ({txns.length})</div>
         }>
