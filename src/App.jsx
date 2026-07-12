@@ -1318,15 +1318,15 @@ function Overview({db,owners,onNavigate}){
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [c,p,mca,mpa,tr,v,t]=await Promise.all([
+    const [c,p,mca,mpa,v,t]=await Promise.all([
       db.from("my_cards").select(),db.from("my_programs").select(),
       db.from("master_cards").select(),db.from("master_programs").select(),
-      db.from("transfer_log").select(),db.from("vouchers").select(),
+      db.from("vouchers").select(),
       db.from("point_transactions").select(),
     ]);
     setCards(c.data||[]); setProgs(p.data||[]);
     setMc(mca.data||[]); setMp(mpa.data||[]);
-    setTransfers((tr.data||[]).sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)));
+    setTransfers(computeTransferPairs(t.data||[],c.data||[],mca.data||[],p.data||[],mpa.data||[]));
     setVouchers(v.data||[]);
     setTxns(t.data||[]);
     setBusy(false);
@@ -1481,11 +1481,11 @@ function Overview({db,owners,onNavigate}){
               <tbody>
                 {transfers.slice(0,5).map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.transfer_date,"noYear")}</td>
-                    <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.from_name||"--"}</td>
-                    <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.to_name||"--"}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:red}}>{(t.points_sent||0).toLocaleString()}</td>
-                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:grn}}>{((t.points_received||0)+(t.bonus_miles||0)).toLocaleString()}</td>
+                    <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.date,"noYear")}</td>
+                    <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.fromName}</td>
+                    <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.toName}</td>
+                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:red}}>{t.sent.toLocaleString()}</td>
+                    <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:grn}}>{t.received.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
@@ -3059,9 +3059,71 @@ function MyCards({db,owners,onNavigate}){
   const filtered=cards
     .filter(c=>ownerF==="all"||c.owner_id===ownerF)
     .filter(c=>{const m=mCards.find(x=>x.id===c.master_id);return(c.nickname||m?.name||"").toLowerCase().includes(search.toLowerCase())||(c.last4||"").includes(search);});
+  const favourites=filtered.filter(c=>c.is_favourite);
 
   const total=filtered.reduce((a,c)=>a+(c.points_balance||0),0);
   const totalInr=filtered.reduce((a,c)=>{const m=mCards.find(x=>x.id===c.master_id);return a+(c.points_balance||0)*(m?.inr_per_point||0);},0);
+
+  const renderGridCard=c=>{
+    const m=mCards.find(x=>x.id===c.master_id);
+    const owner=owners.find(o=>o.id===c.owner_id);
+    const iv=(c.points_balance||0)*(m?.inr_per_point||0);
+    const fee=c.fee_override?c.fee_override_value:m?.annual_fee;
+    return(
+      <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",position:"relative",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,border-color 0.2s"}}
+        onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
+        onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+          <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
+          <div style={{minWidth:0,flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.nickname||m?.name}</div>
+            {c.last4&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:2,fontWeight:600,letterSpacing:"0.02em"}}>•••• •••• •••• {c.last4}</div>}
+            <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{[owner?.name,m?.name,m?.bank,m?.network].filter(Boolean).join(" · ")}</div>
+            {m?.auto_transfer_to&&<div style={{fontSize:10,color:acc,fontWeight:600,marginTop:2}}>Co-branded · {mProgNames[m.auto_transfer_to]||"Linked LP"}</div>}
+          </div>
+        </div>
+        <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+        <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>{m?.points_currency||"pts"}</div>
+        {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
+        <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:mut,fontWeight:400}}>
+          <span>{c.stmt_date?"Statement "+ordinal(c.stmt_date):""}</span>
+          <span>{fee>0?"₹"+Number(fee).toLocaleString()+" p.a.":""}</span>
+        </div>
+        <FavouriteButton active={!!c.is_favourite} onToggle={()=>toggleFavouriteRow(db,"my_cards",c,setCards)}/>
+      </div>
+    );
+  };
+
+  const renderListRow=c=>{
+    const m=mCards.find(x=>x.id===c.master_id);
+    const owner=owners.find(o=>o.id===c.owner_id);
+    const iv=(c.points_balance||0)*(m?.inr_per_point||0);
+    const fee=c.fee_override?c.fee_override_value:m?.annual_fee;
+    return(
+      <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s,border-color 0.2s"}}
+        onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)";e.currentTarget.style.borderColor=bdr2;}}
+        onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
+        <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nickname||m?.name}</div>
+          {c.last4&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:1,fontWeight:600,letterSpacing:"0.02em"}}>•••• •••• •••• {c.last4}</div>}
+          <div style={{fontSize:11,color:mut,marginTop:1}}>{[owner?.name,m?.name,m?.bank,m?.network].filter(Boolean).join(" · ")}{m?.auto_transfer_to&&<span style={{color:acc,fontWeight:600}}> · Co-branded</span>}</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+          <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
+          <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>{m?.points_currency||"pts"}</div>
+        </div>
+        {iv>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+          <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(iv)}</div>
+        </div>}
+        <div style={{textAlign:"right",flexShrink:0,minWidth:100,fontSize:11,color:mut}}>
+          {c.stmt_date?"Stmt "+ordinal(c.stmt_date):""}
+          {fee>0&&<div>₹{Number(fee).toLocaleString()} p.a.</div>}
+        </div>
+        <FavouriteButton inline active={!!c.is_favourite} onToggle={()=>toggleFavouriteRow(db,"my_cards",c,setCards)}/>
+      </div>
+    );
+  };
 
   return(
     <div>
@@ -3086,69 +3148,23 @@ function MyCards({db,owners,onNavigate}){
           <input style={{...inp,marginBottom:0,paddingLeft:28}} placeholder="Search cards..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
       </div>
+      {!busy&&(
+        <FavouritesSection count={favourites.length}>
+          {viewMode==="grid"?(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>{favourites.map(renderGridCard)}</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>{favourites.map(renderListRow)}</div>
+          )}
+        </FavouritesSection>
+      )}
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="💳" msg={search?"No cards match your search":"No cards added yet — go to Setup → Master to add cards to your catalog, then add them here"}/>:(
         viewMode==="grid"?(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
-          {filtered.map(c=>{
-            const m=mCards.find(x=>x.id===c.master_id);
-            const owner=owners.find(o=>o.id===c.owner_id);
-            const iv=(c.points_balance||0)*(m?.inr_per_point||0);
-            const fee=c.fee_override?c.fee_override_value:m?.annual_fee;
-            return(
-              <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",position:"relative",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,border-color 0.2s"}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
-                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
-                  <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.nickname||m?.name}</div>
-                    {c.last4&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:2,fontWeight:600,letterSpacing:"0.02em"}}>•••• •••• •••• {c.last4}</div>}
-                    <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{[owner?.name,m?.name,m?.bank,m?.network].filter(Boolean).join(" · ")}</div>
-                    {m?.auto_transfer_to&&<div style={{fontSize:10,color:acc,fontWeight:600,marginTop:2}}>Co-branded · {mProgNames[m.auto_transfer_to]||"Linked LP"}</div>}
-                  </div>
-                </div>
-                <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
-                <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>{m?.points_currency||"pts"}</div>
-                {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
-                <div style={{display:"flex",justifyContent:"space-between",borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:mut,fontWeight:400}}>
-                  <span>{c.stmt_date?"Statement "+ordinal(c.stmt_date):""}</span>
-                  <span>{fee>0?"₹"+Number(fee).toLocaleString()+" p.a.":""}</span>
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map(renderGridCard)}
         </div>
         ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {filtered.map(c=>{
-            const m=mCards.find(x=>x.id===c.master_id);
-            const owner=owners.find(o=>o.id===c.owner_id);
-            const iv=(c.points_balance||0)*(m?.inr_per_point||0);
-            const fee=c.fee_override?c.fee_override_value:m?.annual_fee;
-            return(
-              <div key={c.id} onClick={()=>setDetail(c)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s,border-color 0.2s"}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)";e.currentTarget.style.borderColor=bdr2;}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
-                <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nickname||m?.name}</div>
-                  {c.last4&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:1,fontWeight:600,letterSpacing:"0.02em"}}>•••• •••• •••• {c.last4}</div>}
-                  <div style={{fontSize:11,color:mut,marginTop:1}}>{[owner?.name,m?.name,m?.bank,m?.network].filter(Boolean).join(" · ")}{m?.auto_transfer_to&&<span style={{color:acc,fontWeight:600}}> · Co-branded</span>}</div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
-                  <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{(c.points_balance||0).toLocaleString("en-IN")}</div>
-                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>{m?.points_currency||"pts"}</div>
-                </div>
-                {iv>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
-                  <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(iv)}</div>
-                </div>}
-                <div style={{textAlign:"right",flexShrink:0,minWidth:100,fontSize:11,color:mut}}>
-                  {c.stmt_date?"Stmt "+ordinal(c.stmt_date):""}
-                  {fee>0&&<div>₹{Number(fee).toLocaleString()} p.a.</div>}
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map(renderListRow)}
         </div>
         )
       )}
@@ -4078,14 +4094,6 @@ function TransferTagTab({db,txn,entity,eligibleTransferPrograms,onSaved}){
       const {data:progRows}=await db.from("my_programs").select();
       const prog=(progRows||[]).find(p=>p.id===target.progId);
       if(prog) await db.from("my_programs").update(target.progId,{points_balance:(prog.points_balance||0)+totalRec});
-      await db.from("transfer_log").insert({
-        from_type:entity.type,from_id:entity.id,from_owner_id:entity.owner_id,
-        to_type:"program",to_id:target.progId,to_owner_id:prog?.owner_id,
-        points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,
-        ratio_from:target.ratioFrom,ratio_to:target.ratioTo,transfer_date:txn.txn_date,
-        cross_owner:false,notes:notes||null,from_name:entity.nickname||entity.masterName,to_name:target.name,
-        transfer_pair_id:pairId,user_id:uid,
-      });
       if(notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:notes.trim(),user_id:uid});
       onSaved&&onSaved();
     }catch(ex){ setErr(ex.message||String(ex)); setSaving(false); }
@@ -4174,8 +4182,8 @@ function TagModal({show,onClose,db,txn,entity,eligibleTransferPrograms,onSaved})
 // ── TransferEditModal — for a native transfer (created directly as one, not tagged
 // into being one), edits both paired rows at once: points sent, points received,
 // description, date. Destination isn't editable here — moving a transfer to a
-// different receiving entity is really a delete-and-recreate, not an edit. Best-effort
-// syncs the matching transfer_log entry via transfer_pair_id if one is linked.
+// different receiving entity is really a delete-and-recreate, not an edit. Transfer
+// History reads straight off these rows, so there's nothing else to keep in sync.
 function TransferEditModal({show,onClose,db,txn,onSaved}){
   const [pairedRow,setPairedRow]=useState(null);
   const [sentPts,setSentPts]=useState("");
@@ -4218,10 +4226,6 @@ function TransferEditModal({show,onClose,db,txn,onSaved}){
       if(receiverRow) await db.from("point_transactions").update(receiverRow.id,{txn_date:txnDate,points:newRec});
       if(senderRow) await recomputeEntityBalance(db,senderRow.entity_type,senderRow.entity_id);
       if(receiverRow) await recomputeEntityBalance(db,receiverRow.entity_type,receiverRow.entity_id);
-      if(txn.transfer_pair_id){
-        const {data:logs}=await db.from("transfer_log").filter("transfer_pair_id",txn.transfer_pair_id);
-        if(logs&&logs[0]) await db.from("transfer_log").update(logs[0].id,{points_sent:newSent,points_received:newRec});
-      }
       if(notes.trim()) await db.from("transaction_notes").insert({point_transaction_id:txn.id,note:notes.trim(),user_id:uid});
       onSaved&&onSaved();
       onClose();
@@ -4285,6 +4289,22 @@ function tagLabelFor(txn,splits){
 // Rows are grouped into month sections purely for display — grouping is derived
 // live from txn_date every render, there's no stored "statement" behind it.
 function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,onTag,onEdit,onEditTransfer,onDelete,onReload,reloadTrigger}){
+  // Purely a rendering grouping — computed fresh from txn_date every render, no
+  // persisted "statement" behind it. disp is already sorted newest-first, so
+  // consecutive same-month rows are already adjacent. Opening balance (if present)
+  // is always the oldest row, rendered separately outside any month tab.
+  let obRow=null;
+  const monthGroups=[];
+  disp.forEach(t=>{
+    if(t.id==="__ob__"){obRow=t;return;}
+    const key=(t.txn_date||"").slice(0,7);
+    const last=monthGroups[monthGroups.length-1];
+    if(!last||last.key!==key){
+      const [y,m]=key.split("-");
+      monthGroups.push({key,label:MONTH_NAMES[parseInt(m)]+" "+y,rows:[t]});
+    }else last.rows.push(t);
+  });
+
   const [notesByTxn,setNotesByTxn]=useState({});
   const [splitsByTxn,setSplitsByTxn]=useState({});
   const [selected,setSelected]=useState(new Set());
@@ -4293,6 +4313,11 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
   const [bulkValue,setBulkValue]=useState("");
   const [bulkApplying,setBulkApplying]=useState(false);
   const [bulkErr,setBulkErr]=useState("");
+  const [expandedMonths,setExpandedMonths]=useState(()=>new Set(monthGroups[0]?[monthGroups[0].key]:[]));
+  const [pageByMonth,setPageByMonth]=useState({});
+  const toggleMonth=key=>setExpandedMonths(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
+  const pageFor=key=>pageByMonth[key]||0;
+  const setPageFor=(key,updater)=>setPageByMonth(prev=>({...prev,[key]:typeof updater==="function"?updater(prev[key]||0):updater}));
 
   useEffect(()=>{
     (async()=>{
@@ -4346,7 +4371,6 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
           const {data:progRows}=await db.from("my_programs").select();
           const prog=(progRows||[]).find(p=>p.id===target.progId);
           if(prog) await db.from("my_programs").update(target.progId,{points_balance:(prog.points_balance||0)+ratioRec});
-          await db.from("transfer_log").insert({from_type:entity.type,from_id:entity.id,from_owner_id:entity.owner_id,to_type:"program",to_id:target.progId,to_owner_id:prog?.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:0,ratio_from:target.ratioFrom,ratio_to:target.ratioTo,transfer_date:txn.txn_date,cross_owner:false,notes:null,from_name:entity.nickname||entity.masterName,to_name:target.name,transfer_pair_id:pairId,user_id:uid});
         }else if(bulkKind==="others"){
           if(txn.kind!==bulkValue) await cleanupBeforeKindChange(db,txn);
           const newPoints=bulkValue==="refund"?-Math.abs(txn.points):txn.points;
@@ -4408,18 +4432,68 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
     <span style={{fontSize:11,color:mut}}>{t.source==="manual"?"Manual Transaction":"Imported Transaction"}</span>
   );
 
-  // Purely a rendering grouping — computed fresh from txn_date every render, no
-  // persisted "statement" behind it. disp is already sorted newest-first, so
-  // consecutive same-month rows are already adjacent.
-  const monthGroups=[];
-  disp.forEach(t=>{
-    const key=t.id==="__ob__"?"__ob__":(t.txn_date||"").slice(0,7);
-    const last=monthGroups[monthGroups.length-1];
-    if(!last||last.key!==key){
-      const label=key==="__ob__"?null:(()=>{const [y,m]=key.split("-");return MONTH_NAMES[parseInt(m)]+" "+y;})();
-      monthGroups.push({key,label,rows:[t]});
-    }else last.rows.push(t);
-  });
+  const renderMobileRow=t=>{
+    const tag=tagLabelFor(t,splitsByTxn[t.id]);
+    return(
+      <div key={t.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:surf}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
+          <div style={{minWidth:0,display:"flex",gap:6,alignItems:"flex-start"}}>
+            {t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)} style={{marginTop:3,accentColor:acc,cursor:"pointer"}}/>}
+            <div>
+              <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt}}>{t.description||"—"}</div>
+              <div style={{fontSize:11,color:mut,marginTop:2}}>{t.txn_date?fmtDate(t.txn_date):"—"}{t.id!=="__ob__"&&<> · <SourceBadge t={t}/></>}</div>
+            </div>
+          </div>
+          <div style={{textAlign:"right",flexShrink:0}}>
+            <div className="pv-num" style={{fontSize:14,fontWeight:700,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+              {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
+            </div>
+            <div className="pv-num" style={{fontSize:11,color:mut,marginTop:2}}>{t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}</div>
+          </div>
+        </div>
+        {t.id!=="__ob__"&&(
+          <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+            <TagCell t={t} tag={tag}/>
+            <RowActions t={t}/>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderDesktopRow=t=>{
+    const tag=tagLabelFor(t,splitsByTxn[t.id]);
+    return(
+      <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
+        <td style={{padding:"9px 8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
+        <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
+        <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
+        <td style={{padding:"10px 12px"}}><SourceBadge t={t}/></td>
+        <td style={{padding:"10px 12px"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
+        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
+          {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
+        </td>
+        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
+          {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
+        </td>
+        <td style={{padding:"9px 10px",textAlign:"right"}}>{t.id!=="__ob__"&&<RowActions t={t}/>}</td>
+      </tr>
+    );
+  };
+
+  const renderRows=rows=>isMobile?(
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>{rows.map(renderMobileRow)}</div>
+  ):(
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
+          <th style={{padding:"7px 8px"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/></th>
+          {["Date","Description","Source","Tag","Points","Balance",""].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontWeight:600}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{rows.map(renderDesktopRow)}</tbody>
+      </table>
+    </div>
+  );
 
   return(
     <div>
@@ -4441,82 +4515,30 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
           {bulkErr&&<div style={{color:red,fontSize:11,width:"100%"}}>{bulkErr}</div>}
         </div>
       )}
-      {isMobile?(
-        <div style={{display:"flex",flexDirection:"column",gap:14}}>
-          {monthGroups.map(g=>(
-            <div key={g.key}>
-              {g.label&&<div style={{fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:8}}>{g.label}</div>}
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {g.rows.map(t=>{
-                  const tag=tagLabelFor(t,splitsByTxn[t.id]);
-                  return(
-                    <div key={t.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:surf}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10}}>
-                        <div style={{minWidth:0,display:"flex",gap:6,alignItems:"flex-start"}}>
-                          {t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)} style={{marginTop:3,accentColor:acc,cursor:"pointer"}}/>}
-                          <div>
-                            <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt}}>{t.description||"—"}</div>
-                            <div style={{fontSize:11,color:mut,marginTop:2}}>{t.txn_date?fmtDate(t.txn_date):"—"}{t.id!=="__ob__"&&<> · <SourceBadge t={t}/></>}</div>
-                          </div>
-                        </div>
-                        <div style={{textAlign:"right",flexShrink:0}}>
-                          <div className="pv-num" style={{fontSize:14,fontWeight:700,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
-                            {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
-                          </div>
-                          <div className="pv-num" style={{fontSize:11,color:mut,marginTop:2}}>{t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}</div>
-                        </div>
-                      </div>
-                      {t.id!=="__ob__"&&(
-                        <div style={{marginTop:8,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                          <TagCell t={t} tag={tag}/>
-                          <RowActions t={t}/>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+      {obRow&&<div style={{marginBottom:10}}>{renderRows([obRow])}</div>}
+      {monthGroups.map(g=>{
+        const isOpen=expandedMonths.has(g.key);
+        const page=pageFor(g.key);
+        const pageRows=g.rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+        return(
+          <div key={g.key} style={{border:`1px solid ${bdr}`,borderRadius:14,overflow:"hidden",marginBottom:10}}>
+            <div onClick={()=>toggleMonth(g.key)} style={{padding:"13px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background 0.12s"}}
+              onMouseEnter={e=>e.currentTarget.style.background=surf2} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <div style={{fontSize:13,fontWeight:600,color:txt}}>{g.label}</div>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:11,color:mut}}>{g.rows.length} transaction{g.rows.length===1?"":"s"}</div>
+                <div style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",color:mut2,fontSize:11,transition:"transform 0.18s",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▾</div>
               </div>
             </div>
-          ))}
-        </div>
-      ):(
-        <div style={{overflowX:"auto"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-            <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-              <th style={{padding:"7px 8px"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/></th>
-              {["Date","Description","Source","Tag","Points","Balance",""].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontWeight:600}}>{h}</th>)}
-            </tr></thead>
-            <tbody>
-              {monthGroups.map(g=>(
-                <Fragment key={g.key}>
-                  {g.label&&(
-                    <tr><td colSpan={8} style={{padding:"10px 10px 6px",fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.07em"}}>{g.label}</td></tr>
-                  )}
-                  {g.rows.map(t=>{
-                    const tag=tagLabelFor(t,splitsByTxn[t.id]);
-                    return(
-                      <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
-                        <td style={{padding:"9px 8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
-                        <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
-                        <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
-                        <td style={{padding:"10px 12px"}}><SourceBadge t={t}/></td>
-                        <td style={{padding:"10px 12px"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
-                        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
-                          {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
-                        </td>
-                        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:txt}}>
-                          {t.closing!=null?t.closing.toLocaleString("en-IN"):"—"}
-                        </td>
-                        <td style={{padding:"9px 10px",textAlign:"right"}}>{t.id!=="__ob__"&&<RowActions t={t}/>}</td>
-                      </tr>
-                    );
-                  })}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            {isOpen&&(
+              <div style={{borderTop:`1px solid ${bdr}`,padding:"14px 16px",background:surf2}}>
+                {renderRows(pageRows)}
+                <Pager page={page} setPage={p=>setPageFor(g.key,p)} total={g.rows.length}/>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -4646,7 +4668,6 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
       await db.from("my_cards").update(card.id,{points_balance:newCardBal});
       await db.from("my_programs").update(selectedTransferTarget.progId,{points_balance:newProgBal});
       setCard(c=>({...c,points_balance:newCardBal}));
-      await db.from("transfer_log").insert({from_type:"card",from_id:card.id,from_owner_id:card.owner_id,to_type:"program",to_id:selectedTransferTarget.progId,to_owner_id:prog?.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:selectedTransferTarget.ratioFrom,ratio_to:selectedTransferTarget.ratioTo,transfer_date:f.txn_date,cross_owner:false,notes:f.description||null,from_name:card.nickname||master?.name,to_name:selectedTransferTarget.name,user_id:uid});
       setShowTxn(false);setF(tf);load();
       onUpdate&&onUpdate();
       return;
@@ -4922,8 +4943,67 @@ function MyPrograms({db,owners,onNavigate}){
   const filtered=progs
     .filter(p=>ownerF==="all"||p.owner_id===ownerF)
     .filter(p=>{const m=mProgs.find(x=>x.id===p.master_id);return(p.nickname||m?.name||"").toLowerCase().includes(search.toLowerCase())||(p.membership_number||"").includes(search);});
+  const favourites=filtered.filter(p=>p.is_favourite);
 
   const totalInr=filtered.reduce((a,p)=>{const m=mProgs.find(x=>x.id===p.master_id);return a+(p.points_balance||0)*(m?.inr_per_point||0);},0);
+
+  const renderGridCard=p=>{
+    const m=mProgs.find(x=>x.id===p.master_id);
+    const owner=owners.find(o=>o.id===p.owner_id);
+    const iv=(p.points_balance||0)*(m?.inr_per_point||0);
+    const days=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null;
+    const exp=days!==null&&days<=60;
+    return(
+      <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",position:"relative",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,border-color 0.2s"}}
+        onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
+        onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
+          <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
+          <div style={{minWidth:0,flex:1}}>
+            <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{p.nickname||m?.name}</div>
+            <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
+          </div>
+        </div>
+        <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
+        <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>points</div>
+        {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
+        <div style={{borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:exp?red:mut,fontWeight:400}}>
+          {p.expiry_date?(exp?"⚠ ":"")+fmtDate(p.expiry_date)+(days!==null?" · "+days+"d":""):""}
+        </div>
+        <FavouriteButton active={!!p.is_favourite} onToggle={()=>toggleFavouriteRow(db,"my_programs",p,setProgs)}/>
+      </div>
+    );
+  };
+
+  const renderListRow=p=>{
+    const m=mProgs.find(x=>x.id===p.master_id);
+    const owner=owners.find(o=>o.id===p.owner_id);
+    const iv=(p.points_balance||0)*(m?.inr_per_point||0);
+    const days=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null;
+    const exp=days!==null&&days<=60;
+    return(
+      <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s,border-color 0.2s"}}
+        onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)";e.currentTarget.style.borderColor=bdr2;}}
+        onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
+        <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nickname||m?.name}</div>
+          <div style={{fontSize:11,color:mut,marginTop:1}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
+        </div>
+        <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+          <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
+          <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>points</div>
+        </div>
+        {iv>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
+          <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(iv)}</div>
+        </div>}
+        <div style={{textAlign:"right",flexShrink:0,minWidth:120,fontSize:11,color:exp?red:mut}}>
+          {p.expiry_date?(exp?"⚠ ":"")+fmtDate(p.expiry_date)+(days!==null?" · "+days+"d":""):""}
+        </div>
+        <FavouriteButton inline active={!!p.is_favourite} onToggle={()=>toggleFavouriteRow(db,"my_programs",p,setProgs)}/>
+      </div>
+    );
+  };
 
   return(
     <div>
@@ -4948,66 +5028,23 @@ function MyPrograms({db,owners,onNavigate}){
           <input style={{...inp,marginBottom:0,paddingLeft:28}} placeholder="Search programs..." value={search} onChange={e=>setSearch(e.target.value)}/>
         </div>
       </div>
+      {!busy&&(
+        <FavouritesSection count={favourites.length}>
+          {viewMode==="grid"?(
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>{favourites.map(renderGridCard)}</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>{favourites.map(renderListRow)}</div>
+          )}
+        </FavouritesSection>
+      )}
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="✈️" msg={search?"No programs match your search":"No programs added yet — go to Setup → Master to add programs to your catalog, then add them here"}/>:(
         viewMode==="grid"?(
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(270px,1fr))",gap:14}}>
-          {filtered.map(p=>{
-            const m=mProgs.find(x=>x.id===p.master_id);
-            const owner=owners.find(o=>o.id===p.owner_id);
-            const iv=(p.points_balance||0)*(m?.inr_per_point||0);
-            const days=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null;
-            const exp=days!==null&&days<=60;
-            return(
-              <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",cursor:"pointer",position:"relative",boxShadow:"0 1px 2px rgba(0,0,0,0.04)",transition:"box-shadow 0.2s,border-color 0.2s"}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 4px 24px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor=bdr2;}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="0 1px 2px rgba(0,0,0,0.04)";e.currentTarget.style.borderColor=bdr;}}>
-                <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
-                  <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
-                  <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{p.nickname||m?.name}</div>
-                    <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
-                  </div>
-                </div>
-                <div className="pv-num" style={{fontSize:26,fontWeight:700,color:txt,lineHeight:1,fontFamily:"'Manrope',sans-serif"}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
-                <div style={{fontSize:10,color:mut,fontWeight:500,textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4,marginBottom:iv>0?10:16}}>points</div>
-                {iv>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn,marginBottom:16,letterSpacing:"-0.01em"}}>{inrFmt(iv)}</div>}
-                <div style={{borderTop:`1px solid ${bdr}`,paddingTop:12,fontSize:11,color:exp?red:mut,fontWeight:400}}>
-                  {p.expiry_date?(exp?"⚠ ":"")+fmtDate(p.expiry_date)+(days!==null?" · "+days+"d":""):""}
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map(renderGridCard)}
         </div>
         ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {filtered.map(p=>{
-            const m=mProgs.find(x=>x.id===p.master_id);
-            const owner=owners.find(o=>o.id===p.owner_id);
-            const iv=(p.points_balance||0)*(m?.inr_per_point||0);
-            const days=p.expiry_date?Math.round((new Date(p.expiry_date)-new Date())/86400000):null;
-            const exp=days!==null&&days<=60;
-            return(
-              <div key={p.id} onClick={()=>setDetail(p)} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",cursor:"pointer",display:"flex",alignItems:"center",gap:16,transition:"box-shadow 0.2s,border-color 0.2s"}}
-                onMouseEnter={e=>{e.currentTarget.style.boxShadow="0 2px 12px rgba(0,0,0,0.06)";e.currentTarget.style.borderColor=bdr2;}}
-                onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
-                <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nickname||m?.name}</div>
-                  <div style={{fontSize:11,color:mut,marginTop:1}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
-                </div>
-                <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
-                  <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>{(p.points_balance||0).toLocaleString("en-IN")}</div>
-                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.06em"}}>points</div>
-                </div>
-                {iv>0&&<div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
-                  <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(iv)}</div>
-                </div>}
-                <div style={{textAlign:"right",flexShrink:0,minWidth:120,fontSize:11,color:exp?red:mut}}>
-                  {p.expiry_date?(exp?"⚠ ":"")+fmtDate(p.expiry_date)+(days!==null?" · "+days+"d":""):""}
-                </div>
-              </div>
-            );
-          })}
+          {filtered.map(renderListRow)}
         </div>
         )
       )}
@@ -5088,7 +5125,6 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
       await db.from("my_programs").update(prog.id,{points_balance:newProgBalSelf});
       await db.from("my_programs").update(selectedTransferTarget.progId,{points_balance:newProgBalTarget});
       setProg(p=>({...p,points_balance:newProgBalSelf}));
-      await db.from("transfer_log").insert({from_type:"program",from_id:prog.id,from_owner_id:prog.owner_id,to_type:"program",to_id:selectedTransferTarget.progId,to_owner_id:target?.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:selectedTransferTarget.ratioFrom,ratio_to:selectedTransferTarget.ratioTo,transfer_date:f.txn_date,cross_owner:false,notes:f.description||null,from_name:prog.nickname||master?.name,to_name:selectedTransferTarget.name,user_id:uid});
       setShowTxn(false);setF(tf);load();
       return;
     }
@@ -5365,8 +5401,6 @@ function TransferPointsForm({db,owners,onSaved}){
     await db.from(tTbl).update(toEntity.id,{points_balance:(toEntity.points_balance||0)+totalRec});
     await db.from("point_transactions").insert({entity_type:fromType,entity_id:fromEntity.id,points:-sentPts,description:"Transfer to "+tName+(notes?" - "+notes:""),txn_date:txnDate,kind:"transfer_out",source:"manual",transfer_pair_id:pairId,user_id:getCurrentUserId()});
     await db.from("point_transactions").insert({entity_type:toType,entity_id:toEntity.id,points:totalRec,description:"Transfer from "+fName+(bonusPts?" (+"+bonusPts+" bonus)":"")+(notes?" - "+notes:""),txn_date:txnDate,kind:"transfer_in",source:"manual",transfer_pair_id:pairId,user_id:getCurrentUserId()});
-    const logResult=await db.from("transfer_log").insert({from_type:fromType,from_id:fromEntity.id,from_owner_id:fromEntity.owner_id,to_type:toType,to_id:toEntity.id,to_owner_id:toEntity.owner_id,points_sent:sentPts,points_received:ratioRec,bonus_miles:bonusPts,ratio_from:partner.ratio_from,ratio_to:partner.ratio_to,transfer_date:txnDate,cross_owner:fromEntity.owner_id!==toEntity.owner_id,notes:notes||null,from_name:fName,to_name:tName,user_id:getCurrentUserId()});
-    if(logResult.error) alert("Transfer logged but history save failed: "+JSON.stringify(logResult.error)+"\n\nRun in Supabase SQL: ALTER TABLE transfer_log ADD COLUMN IF NOT EXISTS from_name text; ALTER TABLE transfer_log ADD COLUMN IF NOT EXISTS to_name text;");
     setDone({fName,tName,sent:sentPts,received:ratioRec,bonus:bonusPts,total:totalRec,crossOwner:fromEntity.owner_id!==toEntity.owner_id});
     setFromId(""); setToId(""); setPts(""); setBonus(""); setNotes("");
     await loadAll();
@@ -5509,43 +5543,81 @@ function TransferPoints({db,owners}){
   );
 }
 
+// Pairs up transfer_out/transfer_in point_transactions rows by transfer_pair_id into
+// the shape both TransferHistory and the P&M Overview "Recent Transfers" widget need.
+// Computed live from the ledger — nothing here is stored, so nothing can desync.
+function computeTransferPairs(ptRows,mcRows,macRows,mpRows,mapRows){
+  const nameFor=(entityType,entityId)=>{
+    const rows=entityType==="card"?mcRows:mpRows;
+    const masters=entityType==="card"?macRows:mapRows;
+    const ent=rows.find(r=>r.id===entityId);
+    return ent?.nickname||masters.find(m=>m.id===ent?.master_id)?.name||"—";
+  };
+  const transfers=ptRows.filter(t=>t.kind==="transfer_out"||t.kind==="transfer_in");
+  const byPair={};
+  transfers.forEach(t=>{
+    if(!t.transfer_pair_id) return;
+    (byPair[t.transfer_pair_id]=byPair[t.transfer_pair_id]||[]).push(t);
+  });
+  return Object.entries(byPair).filter(([,rows])=>rows.length===2).map(([pairId,rows])=>{
+    const out=rows.find(r=>r.kind==="transfer_out");
+    const inn=rows.find(r=>r.kind==="transfer_in");
+    return{
+      id:pairId,
+      date:out?.txn_date||inn?.txn_date,
+      fromName:out?nameFor(out.entity_type,out.entity_id):"—",
+      toName:inn?nameFor(inn.entity_type,inn.entity_id):"—",
+      sent:Math.abs(out?.points||0),
+      received:inn?.points||0,
+    };
+  }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+}
+
 // TransferHistory
+// Transfer History is computed straight from point_transactions (paired via
+// transfer_pair_id) rather than a separately-maintained log table — so there's
+// nothing that can ever fall out of sync with the real ledger. View-only: to
+// delete or edit a transfer, do it from the sending or receiving card/program
+// page, where the pair-aware delete/edit logic already lives.
 function TransferHistory({db,owners}){
   const isMobile=useIsMobile();
-  const [logs,setLogs]=useState([]);
+  const [pairs,setPairs]=useState([]);
   const [busy,setBusy]=useState(true);
   const [err,setErr]=useState("");
   const [search,setSearch]=useState("");
   const [sort,setSort]=useState("date");
-  const [detail,setDetail]=useState(null);
 
   const load=useCallback(async()=>{
     setBusy(true);setErr("");
     try{
-      const {data,error}=await db.from("transfer_log").select();
-      if(error){setErr("Load error: "+JSON.stringify(error));setLogs([]);}
-      else setLogs((data||[]).sort((a,b)=>new Date(b.transfer_date)-new Date(a.transfer_date)));
+      const [pt,mc,mac,mp,map]=await Promise.all([
+        db.from("point_transactions").select(),
+        db.from("my_cards").select(),
+        db.from("master_cards").select(),
+        db.from("my_programs").select(),
+        db.from("master_programs").select(),
+      ]);
+      if(pt.error){setErr("Load error: "+JSON.stringify(pt.error));setPairs([]);setBusy(false);return;}
+      setPairs(computeTransferPairs(pt.data||[],mc.data||[],mac.data||[],mp.data||[],map.data||[]));
     }catch(e){setErr("Exception: "+e.message);}
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
 
-  const del=async id=>{if(!confirm("Delete this record?")) return;await db.from("transfer_log").delete(id);load();};
+  const filtered=pairs
+    .filter(l=>l.fromName.toLowerCase().includes(search.toLowerCase())||l.toName.toLowerCase().includes(search.toLowerCase()))
+    .sort((a,b)=>sort==="sent"?b.sent-a.sent:sort==="received"?b.received-a.received:new Date(b.date)-new Date(a.date));
 
-  const filtered=logs
-    .filter(l=>(l.from_name||"").toLowerCase().includes(search.toLowerCase())||(l.to_name||"").toLowerCase().includes(search.toLowerCase())||(l.notes||"").toLowerCase().includes(search.toLowerCase()))
-    .sort((a,b)=>sort==="sent"?b.points_sent-a.points_sent:sort==="received"?b.points_received-a.points_received:new Date(b.transfer_date)-new Date(a.transfer_date));
-
-  const tSent=filtered.reduce((a,l)=>a+(l.points_sent||0),0);
-  const tRec=filtered.reduce((a,l)=>a+(l.points_received||0)+(l.bonus_miles||0),0);
+  const tSent=filtered.reduce((a,l)=>a+l.sent,0);
+  const tRec=filtered.reduce((a,l)=>a+l.received,0);
 
   return(
     <div>
       <Hdr title="Transfer History" sub="A record of all points moved between cards and programs"/>
       {err&&<div style={{color:red,fontSize:12,padding:"10px 14px",background:"#fef2f2",borderRadius:8,marginBottom:16}}>{err}</div>}
-      {logs.length>0&&(
+      {pairs.length>0&&(
         <div style={{display:"flex",gap:12,marginBottom:20,flexWrap:"wrap"}}>
-          {[{label:"Total Transfers",value:String(logs.length)},{label:"Total Sent",value:tSent.toLocaleString(),color:red},{label:"Total Received",value:tRec.toLocaleString(),color:grn}].map((s,i)=>(
+          {[{label:"Total Transfers",value:String(pairs.length)},{label:"Total Sent",value:tSent.toLocaleString(),color:red},{label:"Total Received",value:tRec.toLocaleString(),color:grn}].map((s,i)=>(
             <div key={i} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"12px 16px",minWidth:120}}>
               <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4,fontWeight:600}}>{s.label}</div>
               <div style={{fontSize:20,fontWeight:700,color:s.color||txt}}>{s.value}</div>
@@ -5562,24 +5634,19 @@ function TransferHistory({db,owners}){
           <option value="date">Date</option><option value="sent">Sent</option><option value="received">Received</option>
         </select>
       </div>
-      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="↗️" msg="No transfers logged yet — use Transfer Points to move points between a card and a loyalty program"/>:(
+      {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="↗️" msg="No transfers yet — use Transfer Points to move points between a card and a loyalty program"/>:(
         <Card>
           <Collapsible storageKey="transfer-history-table" header={null}>
           {isMobile?(
             <div style={{display:"flex",flexDirection:"column",gap:8,padding:12}}>
               {filtered.map(l=>(
-                <div key={l.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf,cursor:"pointer"}} onClick={()=>setDetail(detail?.id===l.id?null:l)}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                    <div style={{fontSize:11,color:mut}}>{fmtDate(l.transfer_date)}{l.cross_owner&&<span style={{marginLeft:6,fontSize:10,color:acc,fontWeight:600}}>cross</span>}</div>
-                    <button style={{...dbtnXs}} onClick={e=>{e.stopPropagation();del(l.id);}}>x</button>
-                  </div>
-                  <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:8}}>{l.from_name||"--"} → {l.to_name||"--"}</div>
+                <div key={l.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
+                  <div style={{fontSize:11,color:mut,marginBottom:6}}>{fmtDate(l.date)}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:8}}>{l.fromName} → {l.toName}</div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>-{(l.points_sent||0).toLocaleString()}</div>
-                    <span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{l.ratio_from}:{l.ratio_to}</span>
-                    <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>+{(l.points_received||0).toLocaleString()}</div>
+                    <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>-{l.sent.toLocaleString()}</div>
+                    <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>+{l.received.toLocaleString()}</div>
                   </div>
-                  {l.bonus_miles>0&&<div style={{textAlign:"right",fontSize:11,color:acc,marginTop:4}}>+{l.bonus_miles.toLocaleString()} bonus</div>}
                 </div>
               ))}
             </div>
@@ -5587,34 +5654,21 @@ function TransferHistory({db,owners}){
           <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","From","To","Sent","Ratio","Received","Bonus",""].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Sent"||h==="Received"||h==="Bonus"?"right":"left",fontWeight:600}}>{h}</th>)}
+                {["Date","From","To","Sent","Received"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Sent"||h==="Received"?"right":"left",fontWeight:600}}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {filtered.map(l=>(
-                  <tr key={l.id} style={{borderBottom:`1px solid ${bdr}`,cursor:"pointer"}} onClick={()=>setDetail(detail?.id===l.id?null:l)}>
-                    <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(l.transfer_date)}{l.cross_owner&&<span style={{marginLeft:6,fontSize:10,color:acc,fontWeight:600}}>cross</span>}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.from_name||"--"}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.to_name||"--"}</td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(l.points_sent||0).toLocaleString()}</td>
-                    <td style={{padding:"10px 12px",textAlign:"center"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{l.ratio_from}:{l.ratio_to}</span></td>
-                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{(l.points_received||0).toLocaleString()}</td>
-                    <td style={{padding:"10px 12px",textAlign:"right",color:l.bonus_miles>0?acc:mut}}>{l.bonus_miles>0?"+"+l.bonus_miles.toLocaleString():"--"}</td>
-                    <td style={{padding:"10px 12px",textAlign:"center"}}><button style={{...dbtn,padding:"3px 7px",fontSize:11}} onClick={e=>{e.stopPropagation();del(l.id);}}>x</button></td>
+                  <tr key={l.id} style={{borderBottom:`1px solid ${bdr}`}}>
+                    <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(l.date)}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.fromName}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.toName}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{l.sent.toLocaleString()}</td>
+                    <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{l.received.toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          )}
-          {detail&&(
-            <div style={{background:surf2,borderTop:`1px solid ${bdr}`,padding:"12px 16px"}}>
-              <div style={{display:"flex",gap:20,flexWrap:"wrap",fontSize:13}}>
-                <div><span style={{color:mut,fontSize:11}}>Date: </span>{fmtDate(detail.transfer_date)}</div>
-                {detail.notes&&<div><span style={{color:mut,fontSize:11}}>Notes: </span>{detail.notes}</div>}
-                <div><span style={{color:mut,fontSize:11}}>Total received: </span><strong style={{color:grn}}>{((detail.points_received||0)+(detail.bonus_miles||0)).toLocaleString()}</strong></div>
-                {detail.cross_owner&&<div style={{color:acc,fontWeight:600}}>Cross-owner transfer</div>}
-              </div>
-            </div>
           )}
           </Collapsible>
         </Card>
@@ -5722,57 +5776,104 @@ function RedemptionDashboard({db,owners}){
         </select>
       </div>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="🏷️" msg="No redemptions tagged yet — redeem points on a card or program, or tag an existing one from Points History"/>:(
-        <Card>
-          <Collapsible storageKey="redemption-dashboard-table" header={null}>
-          {isMobile?(
-            <div style={{display:"flex",flexDirection:"column",gap:8,padding:12}}>
-              {filtered.map(r=>{
-                const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
-                return(
-                  <div key={r.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <div style={{fontSize:11,color:mut}}>{fmtDate(r.txnDate)}</div>
-                      <span style={{fontSize:10,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span>
-                    </div>
-                    <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{r.description||"--"}</div>
-                    <div style={{fontSize:11,color:mut,marginBottom:8}}>{r.sourceName} · {r.ownerName}</div>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>{(r.points||0).toLocaleString()} pts</div>
-                      {r.redeemed_value_inr>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(r.redeemed_value_inr)}{perPoint&&<span style={{color:mut,fontWeight:400}}> ({perPoint.toFixed(2)}/pt)</span>}</div>}
-                    </div>
-                    {r.notes&&<div style={{fontSize:11,color:mut,marginTop:6,fontStyle:"italic"}}>{r.notes}</div>}
-                  </div>
-                );
-              })}
-            </div>
-          ):(
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
-              <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","Description","Redeemed From","Type","Points","Value","₹/pt"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Points"||h==="Value"||h==="₹/pt"?"right":"left",fontWeight:600}}>{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {filtered.map(r=>{
-                  const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
-                  return(
-                    <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                      <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.txnDate)}</td>
-                      <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{r.description||"--"}{r.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic"}}>{r.notes}</div>}</td>
-                      <td style={{padding:"10px 12px",color:txt}}>{r.sourceName}<div style={{fontSize:11,color:mut}}>{r.ownerName}</div></td>
-                      <td style={{padding:"10px 12px"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span></td>
-                      <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(r.points||0).toLocaleString()}</td>
-                      <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:r.redeemed_value_inr>0?grn:mut}}>{r.redeemed_value_inr>0?inrFmt(r.redeemed_value_inr):"--"}</td>
-                      <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut}}>{perPoint?"₹"+perPoint.toFixed(2):"--"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          )}
-          </Collapsible>
-        </Card>
+        <RedemptionMonthAccordion filtered={filtered} isMobile={isMobile}/>
       )}
+    </div>
+  );
+}
+
+// RedemptionMonthAccordion — only mounted once RedemptionDashboard has finished
+// its first load, so the initial expandedMonths state can correctly default to
+// the most recent month (mirrors the pattern used by PointsHistoryTable, which
+// is only mounted by its parent once busy is false).
+function RedemptionMonthAccordion({filtered,isMobile}){
+  const monthGroups=[];
+  filtered.forEach(r=>{
+    const key=(r.txnDate||"").slice(0,7);
+    const last=monthGroups[monthGroups.length-1];
+    if(!last||last.key!==key){
+      const [y,m]=key.split("-");
+      monthGroups.push({key,label:MONTH_NAMES[parseInt(m)]+" "+y,rows:[r]});
+    }else last.rows.push(r);
+  });
+  const [expandedMonths,setExpandedMonths]=useState(()=>new Set(monthGroups[0]?[monthGroups[0].key]:[]));
+  const [pageByMonth,setPageByMonth]=useState({});
+  const toggleMonth=key=>setExpandedMonths(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
+  const pageFor=key=>pageByMonth[key]||0;
+  const setPageFor=(key,updater)=>setPageByMonth(prev=>({...prev,[key]:typeof updater==="function"?updater(prev[key]||0):updater}));
+
+  const renderMobileRow=r=>{
+    const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
+    return(
+      <div key={r.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+          <div style={{fontSize:11,color:mut}}>{fmtDate(r.txnDate)}</div>
+          <span style={{fontSize:10,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span>
+        </div>
+        <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{r.description||"--"}</div>
+        <div style={{fontSize:11,color:mut,marginBottom:8}}>{r.sourceName} · {r.ownerName}</div>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+          <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>{(r.points||0).toLocaleString()} pts</div>
+          {r.redeemed_value_inr>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(r.redeemed_value_inr)}{perPoint&&<span style={{color:mut,fontWeight:400}}> ({perPoint.toFixed(2)}/pt)</span>}</div>}
+        </div>
+        {r.notes&&<div style={{fontSize:11,color:mut,marginTop:6,fontStyle:"italic"}}>{r.notes}</div>}
+      </div>
+    );
+  };
+
+  const renderDesktopRow=r=>{
+    const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
+    return(
+      <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
+        <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.txnDate)}</td>
+        <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{r.description||"--"}{r.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic"}}>{r.notes}</div>}</td>
+        <td style={{padding:"10px 12px",color:txt}}>{r.sourceName}<div style={{fontSize:11,color:mut}}>{r.ownerName}</div></td>
+        <td style={{padding:"10px 12px"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span></td>
+        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(r.points||0).toLocaleString()}</td>
+        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:r.redeemed_value_inr>0?grn:mut}}>{r.redeemed_value_inr>0?inrFmt(r.redeemed_value_inr):"--"}</td>
+        <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",color:mut}}>{perPoint?"₹"+perPoint.toFixed(2):"--"}</td>
+      </tr>
+    );
+  };
+
+  const renderRows=rowsIn=>isMobile?(
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>{rowsIn.map(renderMobileRow)}</div>
+  ):(
+    <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+        <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
+          {["Date","Description","Redeemed From","Type","Points","Value","₹/pt"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Points"||h==="Value"||h==="₹/pt"?"right":"left",fontWeight:600}}>{h}</th>)}
+        </tr></thead>
+        <tbody>{rowsIn.map(renderDesktopRow)}</tbody>
+      </table>
+    </div>
+  );
+
+  return(
+    <div>
+      {monthGroups.map(g=>{
+        const isOpen=expandedMonths.has(g.key);
+        const page=pageFor(g.key);
+        const pageRows=g.rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+        return(
+          <div key={g.key} style={{border:`1px solid ${bdr}`,borderRadius:14,overflow:"hidden",marginBottom:10}}>
+            <div onClick={()=>toggleMonth(g.key)} style={{padding:"13px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background 0.12s"}}
+              onMouseEnter={e=>e.currentTarget.style.background=surf2} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <div style={{fontSize:13,fontWeight:600,color:txt}}>{g.label}</div>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div style={{fontSize:11,color:mut}}>{g.rows.length} redemption{g.rows.length===1?"":"s"}</div>
+                <div style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",color:mut2,fontSize:11,transition:"transform 0.18s",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▾</div>
+              </div>
+            </div>
+            {isOpen&&(
+              <div style={{borderTop:`1px solid ${bdr}`,padding:"14px 16px",background:surf2}}>
+                {renderRows(pageRows)}
+                <Pager page={page} setPage={p=>setPageFor(g.key,p)} total={g.rows.length}/>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -6201,14 +6302,10 @@ function DeleteAccountCard({db,owners}){
     setLoadingPreview(true);
     (async()=>{
       if(type==="program"){
-        const [pt,tlOut,tlIn]=await Promise.all([
-          db.from("point_transactions").filter("entity_id",instanceId),
-          db.from("transfer_log").filter("from_id",instanceId),
-          db.from("transfer_log").filter("to_id",instanceId),
-        ]);
+        const {data:pt}=await db.from("point_transactions").filter("entity_id",instanceId);
         setPreview({
-          pointsCount:(pt.data||[]).length,
-          transferCount:(tlOut.data||[]).length+(tlIn.data||[]).length,
+          pointsCount:(pt||[]).length,
+          transferCount:(pt||[]).filter(t=>t.kind==="transfer_out"||t.kind==="transfer_in").length,
         });
       }else{
         const [linesRes,acctsRes,stmtsRes,stagedRes]=await Promise.all([
@@ -6243,17 +6340,15 @@ function DeleteAccountCard({db,owners}){
           const acct=allAccts.find(a=>a.id===instanceId);
           const myCardId=acct?.linked_my_card_id;
           if(myCardId){
-            const [pt,tlOut,tlIn,maps,legacyStmts,legacySpend]=await Promise.all([
+            const [pt,maps,legacyStmts,legacySpend]=await Promise.all([
               db.from("point_transactions").filter("entity_id",myCardId),
-              db.from("transfer_log").filter("from_id",myCardId),
-              db.from("transfer_log").filter("to_id",myCardId),
               db.from("csv_mappings").filter("card_id",myCardId),
               db.from("statements").filter("card_id",myCardId),
               db.from("spend_transactions").filter("card_id",myCardId),
             ]);
             p.myCardId=myCardId;
             p.pointsCount=(pt.data||[]).length;
-            p.transferCount=(tlOut.data||[]).length+(tlIn.data||[]).length;
+            p.transferCount=(pt.data||[]).filter(t=>t.kind==="transfer_out"||t.kind==="transfer_in").length;
             p.mappingsCount=(maps.data||[]).length;
             p.legacyCount=(legacyStmts.data||[]).length+(legacySpend.data||[]).length;
           }
@@ -6282,13 +6377,8 @@ function DeleteAccountCard({db,owners}){
     };
     try{
       if(type==="program"){
-        const [pt,tlOut,tlIn]=await Promise.all([
-          db.from("point_transactions").filter("entity_id",instanceId),
-          db.from("transfer_log").filter("from_id",instanceId),
-          db.from("transfer_log").filter("to_id",instanceId),
-        ]);
-        for(const t of (pt.data||[])) await del("point_transactions",t.id);
-        for(const t of [...(tlOut.data||[]),...(tlIn.data||[])]) await del("transfer_log",t.id);
+        const {data:pt}=await db.from("point_transactions").filter("entity_id",instanceId);
+        for(const t of (pt||[])) await del("point_transactions",t.id);
         await del("my_programs",instanceId);
       }else{
         const linesRes=await db.from("transaction_lines").select();
@@ -6326,16 +6416,13 @@ function DeleteAccountCard({db,owners}){
 
         if(type==="credit_card"&&preview?.myCardId){
           const myCardId=preview.myCardId;
-          const [pt,tlOut,tlIn,maps,legacyStmts,legacySpend]=await Promise.all([
+          const [pt,maps,legacyStmts,legacySpend]=await Promise.all([
             db.from("point_transactions").filter("entity_id",myCardId),
-            db.from("transfer_log").filter("from_id",myCardId),
-            db.from("transfer_log").filter("to_id",myCardId),
             db.from("csv_mappings").filter("card_id",myCardId),
             db.from("statements").filter("card_id",myCardId),
             db.from("spend_transactions").filter("card_id",myCardId),
           ]);
           for(const t of (pt.data||[])) await del("point_transactions",t.id);
-          for(const t of [...(tlOut.data||[]),...(tlIn.data||[])]) await del("transfer_log",t.id);
           for(const m of (maps.data||[])) await del("csv_mappings",m.id);
           for(const s of (legacyStmts.data||[])) await del("statements",s.id);
           for(const t of (legacySpend.data||[])) await del("spend_transactions",t.id);
@@ -6481,8 +6568,7 @@ function SettingsDanger({db,owners,onReset}){
   // Note: account_balances and entity_balances are computed views, not base tables —
   // they're left out on purpose and simply reflect whatever's left after the wipe.
   const ACTIVITY_TABLES=[
-    "point_transactions",   // P&M points history
-    "transfer_log",         // P&M transfer records
+    "point_transactions",   // P&M points history (Transfer History is computed from this, nothing separate to wipe)
     "vouchers",             // P&M vouchers
     "statements",           // legacy Spend Tracker CC statements
     "spend_transactions",   // legacy Spend Tracker spend entries
@@ -8149,18 +8235,27 @@ function SignOutIcon({size=14}){
   );
 }
 
-// Sidebar dark-mode control — a real toggle switch instead of a button whose label
-// flips between "Dark Mode"/"Light Mode", so the switch position itself communicates
-// the current state at a glance.
+// Sidebar dark-mode control — an icon-only pill switch (sun/moon), styled as its own
+// permanently-dark physical widget regardless of app theme, matching the reference:
+// faint sun/moon fixed in the track, active icon shown vividly on the sliding knob.
 function ThemeToggleSwitch({dark,onClick}){
   return(
-    <button onClick={onClick} aria-label="Toggle dark mode"
-      style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",border:`1px solid ${bdr}`,borderRadius:10,background:surf,cursor:"pointer",padding:"8px 12px"}}>
-      <span style={{display:"flex",alignItems:"center",gap:7,fontSize:12,fontWeight:500,color:txt}}>
-        <ThemeIcon dark={dark} size={13}/> Dark Mode
+    <button onClick={onClick} aria-label="Toggle dark mode" title="Toggle dark mode"
+      style={{position:"relative",width:60,height:32,borderRadius:16,border:"none",cursor:"pointer",padding:0,flexShrink:0,
+        background:"linear-gradient(180deg,#1c1c1a,#141412)",
+        boxShadow:"inset 0 2px 5px rgba(0,0,0,0.5), inset 0 -1px 1px rgba(255,255,255,0.04)"}}>
+      <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#6b6a64",display:"flex"}}>
+        <ThemeIcon dark={false} size={13}/>
       </span>
-      <span style={{position:"relative",width:34,height:19,borderRadius:10,background:dark?acc:bdr,transition:"background 0.2s",flexShrink:0}}>
-        <span style={{position:"absolute",top:2,left:dark?17:2,width:15,height:15,borderRadius:"50%",background:"#fff",boxShadow:"0 1px 2px rgba(0,0,0,0.3)",transition:"left 0.2s"}}/>
+      <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",color:"#6b6a64",display:"flex"}}>
+        <ThemeIcon dark={true} size={12}/>
+      </span>
+      <span style={{position:"absolute",top:3,left:dark?31:3,width:26,height:26,borderRadius:"50%",
+        background:"linear-gradient(150deg,#3d3d38,#221f1c)",
+        boxShadow:"0 2px 4px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.1)",
+        display:"flex",alignItems:"center",justifyContent:"center",color:"#f2f0ea",
+        transition:"left 0.22s cubic-bezier(0.4,0,0.2,1)"}}>
+        <ThemeIcon dark={dark} size={14}/>
       </span>
     </button>
   );
@@ -8194,6 +8289,51 @@ function DeleteIcon({size=14}){
     </svg>
   );
 }
+function StarIcon({size=14,filled=false}){
+  return(
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={filled?"currentColor":"none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+    </svg>
+  );
+}
+// Corner favourite toggle — sits bottom-right of a card/tab across Accounts, Ledgers,
+// Credit Cards and Loyalty Programs. Stops propagation so it doesn't trigger the
+// card's own click-through to its detail page.
+function FavouriteButton({active,onToggle,size=15,inline=false}){
+  return(
+    <button onClick={e=>{e.stopPropagation();onToggle();}} title={active?"Remove from Favourites":"Add to Favourites"}
+      style={inline?{background:"none",border:"none",cursor:"pointer",padding:4,color:active?acc:mut,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}
+        :{position:"absolute",bottom:10,right:10,background:"none",border:"none",cursor:"pointer",padding:2,color:active?acc:mut,display:"flex",alignItems:"center",justifyContent:"center",zIndex:1}}>
+      <StarIcon size={size} filled={active}/>
+    </button>
+  );
+}
+// Shared favourite-toggle DB helper — optimistic local update, revert + one-time
+// alert if the is_favourite column hasn't been migrated in yet.
+async function toggleFavouriteRow(db,table,row,setRows){
+  const next=!row.is_favourite;
+  setRows(rs=>rs.map(x=>x.id===row.id?{...x,is_favourite:next}:x));
+  const {error}=await db.from(table).update(row.id,{is_favourite:next});
+  if(error&&(error.code==="42703"||error.code==="PGRST204")){
+    alert(`Your database is missing the "is_favourite" column on ${table}. Run in Supabase SQL: ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS is_favourite boolean DEFAULT false;`);
+    setRows(rs=>rs.map(x=>x.id===row.id?{...x,is_favourite:!next}:x));
+  }
+}
+// Shared "Favourites" section header — a copy of favourited items renders above the
+// normal list/grid on each page; the originals stay exactly where they are.
+function FavouritesSection({children,count}){
+  if(!count) return null;
+  return(
+    <div style={{marginBottom:22}}>
+      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,fontWeight:700,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:10}}>
+        <StarIcon size={12} filled={true}/> Favourites
+      </div>
+      {children}
+      <div style={{borderBottom:`1px solid ${bdr}`,marginTop:20}}/>
+    </div>
+  );
+}
+
 // A round icon-only button — the shared shape for all row-level Edit/Tag/Delete
 // actions. `tone` picks the color (neutral for edit/tag, danger red for delete).
 function IconBtn({onClick,title,tone="neutral",children,disabled}){
@@ -8687,6 +8827,28 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
   if(hideSettled) filtered=filtered.filter(e=>e.groups.some(g=>g.net!==0));
   if(search.trim()) filtered=filtered.filter(e=>e.name.toLowerCase().includes(search.trim().toLowerCase()));
   filtered=filtered.sort((a,b)=>Math.max(0,...b.groups.map(g=>Math.abs(g.net)),0)-Math.max(0,...a.groups.map(g=>Math.abs(g.net)),0));
+  const favouriteEntities=filtered.filter(e=>e.is_favourite);
+
+  const renderEntityRow=(e,last)=>(
+    <ListRow key={e.id} onClick={()=>setSelEntity(e.id)} last={last}>
+      <div style={{fontSize:14,fontWeight:600,color:txt}}>{e.name}</div>
+      <div style={{display:"flex",alignItems:"center",gap:10}}>
+        {e.groups.length>0?(
+          <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
+            {e.groups.map(g=>(
+              <div key={g.ownerId} style={{display:"flex",alignItems:"baseline",gap:8}}>
+                {e.groups.length>1&&<div style={{fontSize:10,color:mut}}>{g.ownerName}</div>}
+                <div className="pv-num" style={{fontSize:14,fontWeight:700,color:g.net>0?grn:g.net<0?red:mut,whiteSpace:"nowrap"}}>
+                  {g.net===0?"Settled":(g.net>0?"+":"-")+"₹"+Math.abs(g.net).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                </div>
+              </div>
+            ))}
+          </div>
+        ):<div style={{fontSize:11,color:mut}}>No activity yet</div>}
+        <FavouriteButton inline active={!!e.is_favourite} onToggle={()=>toggleFavouriteRow(db,"entities",e,setEntities)}/>
+      </div>
+    </ListRow>
+  );
 
   return(
     <div>
@@ -8696,6 +8858,9 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
             <OwnerFilterSelect value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)} owners={owners}/>
           </Toolbar>
         }/>
+      <FavouritesSection count={favouriteEntities.length}>
+        <div>{favouriteEntities.map((e,idx)=>renderEntityRow(e,idx===favouriteEntities.length-1))}</div>
+      </FavouritesSection>
       <CollapsibleSection title="All Ledgers" count={filtered.length} open={ledgersOpen} setOpen={setLedgersOpen}
         right={<>
           <label style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:mut,cursor:"pointer"}}>
@@ -8706,23 +8871,7 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
         </>}>
         {filtered.length===0?<Empty icon="🧾" msg="No people or companies yet"/>:(
           <div>
-            {filtered.map((e,idx)=>(
-              <ListRow key={e.id} onClick={()=>setSelEntity(e.id)} last={idx===filtered.length-1}>
-                <div style={{fontSize:14,fontWeight:600,color:txt}}>{e.name}</div>
-                {e.groups.length>0?(
-                  <div style={{display:"flex",flexDirection:"column",gap:4,alignItems:"flex-end"}}>
-                    {e.groups.map(g=>(
-                      <div key={g.ownerId} style={{display:"flex",alignItems:"baseline",gap:8}}>
-                        {e.groups.length>1&&<div style={{fontSize:10,color:mut}}>{g.ownerName}</div>}
-                        <div className="pv-num" style={{fontSize:14,fontWeight:700,color:g.net>0?grn:g.net<0?red:mut,whiteSpace:"nowrap"}}>
-                          {g.net===0?"Settled":(g.net>0?"+":"-")+"₹"+Math.abs(g.net).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                ):<div style={{fontSize:11,color:mut}}>No activity yet</div>}
-              </ListRow>
-            ))}
+            {filtered.map((e,idx)=>renderEntityRow(e,idx===filtered.length-1))}
           </div>
         )}
       </CollapsibleSection>
@@ -11772,6 +11921,7 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
 
 function BooksAccounts({db,owners,onNavigate,initialSelectId}){
   const [accounts,setAccounts]=useState([]);
+  const toggleAcctFavourite=a=>toggleFavouriteRow(db,"accounts",a,setAccounts);
   const [balances,setBalances]=useState([]);
   const [myCards,setMyCards]=useState([]);
   const [masterCards,setMasterCards]=useState([]);
@@ -11849,6 +11999,27 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
   };
   const filteredAccounts=ownerFilter==="all"?accounts:accounts.filter(a=>a.owner_id===ownerFilter);
   const groups=ACCOUNT_GROUPS;
+  const favouriteAccounts=filteredAccounts.filter(a=>a.is_favourite);
+
+  const renderAcctRow=(a,idx,last)=>{
+    const {maskedNum,subtitle}=acctDisplay(a);
+    return(
+      <ListRow key={a.id} onClick={()=>setSelAccountId(a.id)} last={last} minHeight={72}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <LogoCircle url={acctLogo(a)} name={a.name} size={32}/>
+          <div>
+            <div style={{fontSize:14,fontWeight:600,color:txt}}>{a.name}</div>
+            {maskedNum&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:2,fontWeight:600,letterSpacing:"0.02em"}}>{maskedNum}</div>}
+            <div style={{fontSize:11,color:mut,marginTop:2}}>{subtitle}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{Math.abs(balFor(a.id)).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <FavouriteButton inline active={!!a.is_favourite} onToggle={()=>toggleAcctFavourite(a)}/>
+        </div>
+      </ListRow>
+    );
+  };
 
   return(
     <div>
@@ -11859,6 +12030,9 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
             <RoundAddButton onClick={()=>setShowAddAccount(true)} title="Add Account"/>
           </Toolbar>
         }/>
+      <FavouritesSection count={favouriteAccounts.length}>
+        <div>{favouriteAccounts.map((a,idx)=>renderAcctRow(a,idx,idx===favouriteAccounts.length-1))}</div>
+      </FavouritesSection>
       {filteredAccounts.length===0?<Empty icon="🏦" msg="No accounts yet — add your first one to get started"/>:groups.map(g=>{
         const items=filteredAccounts.filter(g.filter);
         if(items.length===0) return null;
@@ -11867,22 +12041,7 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
         return(
           <CollapsibleSection key={g.label} title={g.label} count={items.length} open={isOpen} setOpen={setOpen}>
             <div>
-              {items.map((a,idx)=>{
-                const {maskedNum,subtitle}=acctDisplay(a);
-                return(
-                <ListRow key={a.id} onClick={()=>setSelAccountId(a.id)} last={idx===items.length-1} minHeight={72}>
-                  <div style={{display:"flex",alignItems:"center",gap:12}}>
-                    <LogoCircle url={acctLogo(a)} name={a.name} size={32}/>
-                    <div>
-                      <div style={{fontSize:14,fontWeight:600,color:txt}}>{a.name}</div>
-                      {maskedNum&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:2,fontWeight:600,letterSpacing:"0.02em"}}>{maskedNum}</div>}
-                      <div style={{fontSize:11,color:mut,marginTop:2}}>{subtitle}</div>
-                    </div>
-                  </div>
-                  <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{Math.abs(balFor(a.id)).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-                </ListRow>
-                );
-              })}
+              {items.map((a,idx)=>renderAcctRow(a,idx,idx===items.length-1))}
             </div>
           </CollapsibleSection>
         );
@@ -12140,7 +12299,7 @@ export default function App(){
           })}
         </div>
 
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
           <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
           <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
             <SignOutIcon size={12}/> Sign Out
@@ -12258,7 +12417,7 @@ export default function App(){
           aside{display:none!important;}
           .mobile-header{display:flex!important;flex-direction:column;}
           .mobile-bottom-nav{display:flex!important;}
-          main{padding:12px 14px 80px!important;overflow-x:hidden!important;max-width:100vw!important;}
+          main{padding:12px 14px calc(84px + env(safe-area-inset-bottom,0px))!important;overflow-x:hidden!important;max-width:100vw!important;}
           table{font-size:12px!important;}
           body,#root{overflow-x:hidden!important;max-width:100vw!important;}
           .mobile-header > div:first-child {display:none!important;}
@@ -12281,7 +12440,7 @@ export default function App(){
       {/* ── Main content ── */}
       <main style={{flex:1,overflowY:"auto",padding:"28px 32px",background:bg}}>
         <style>{`
-          @media(max-width:700px){main{padding:16px!important;}}
+          @media(max-width:700px){main{padding:16px 16px calc(84px + env(safe-area-inset-bottom,0px))!important;}}
           .ov-grid{display:grid;grid-template-columns:1fr 1fr;gap:16;margin-bottom:0}
           .ov-col{display:flex;flex-direction:column}
           @media(max-width:700px){
@@ -13958,10 +14117,10 @@ function LandingPage({db,user,owners,navigate,goTo}){
     if(!db) return;
     let cancelled=false;
     (async()=>{
-      const [cards,progs,transfers,accts,stmts,txns,cats,budgets,people]=await Promise.all([
+      const [cards,progs,pts,accts,stmts,txns,cats,budgets,people]=await Promise.all([
         db.from("my_cards").select(),
         db.from("my_programs").select(),
-        db.from("transfer_log").select(),
+        db.from("point_transactions").select(),
         db.from("accounts").select(),
         db.from("account_statements").select(),
         db.from("transactions").select(),
@@ -13974,7 +14133,7 @@ function LandingPage({db,user,owners,navigate,goTo}){
       setCounts({
         cards:(cards.data||[]).length,
         progs:(progs.data||[]).length,
-        transfers:(transfers.data||[]).length,
+        transfers:(pts.data||[]).filter(t=>t.kind==="transfer_out"||t.kind==="transfer_in").length,
         accounts:(accts.data||[]).filter(a=>(a.type==="asset"||a.type==="liability")&&!a.entity_id).length,
         statements:(stmts.data||[]).length,
         taggedTxns:(txns.data||[]).filter(t=>t.action==="expense").length,
@@ -14468,6 +14627,98 @@ function OverspendDeltaChart({data}){
   );
 }
 
+// SpendTxnMonthAccordion — only mounted once SpendTrackerHome has finished its
+// first load (rendered inside the "Transactions" CollapsibleSection, which
+// itself only appears after the parent's busy gate), so expandedMonths can
+// correctly default to the most recent month. Same pattern as
+// RedemptionMonthAccordion / PointsHistoryTable's month grouping.
+function SpendTxnMonthAccordion({rows,isMobile}){
+  const monthGroups=[];
+  rows.forEach(r=>{
+    const key=(r.date||"").slice(0,7);
+    const last=monthGroups[monthGroups.length-1];
+    if(!last||last.key!==key){
+      const [y,m]=key.split("-");
+      monthGroups.push({key,label:MONTH_NAMES[parseInt(m)]+" "+y,rows:[r]});
+    }else last.rows.push(r);
+  });
+  const [expandedMonths,setExpandedMonths]=useState(()=>new Set(monthGroups[0]?[monthGroups[0].key]:[]));
+  const [pageByMonth,setPageByMonth]=useState({});
+  const toggleMonth=key=>setExpandedMonths(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
+  const pageFor=key=>pageByMonth[key]||0;
+  const setPageFor=(key,updater)=>setPageByMonth(prev=>({...prev,[key]:typeof updater==="function"?updater(prev[key]||0):updater}));
+
+  const renderMobileRow=r=>(
+    <div key={r.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+        <div style={{fontSize:11,color:mut}}>{fmtDate(r.date)}</div>
+        <div className="pv-num" style={{fontSize:13,fontWeight:700,color:red}}>-{inrFmt(r.amount)}</div>
+      </div>
+      <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{r.description||"—"}</div>
+      <div style={{fontSize:11,color:mut}}>{r.categoryName} · {r.accountName}</div>
+    </div>
+  );
+
+  const renderDesktopRow=r=>(
+    <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
+      <td style={{padding:"8px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.date)}</td>
+      <td style={{padding:"8px",color:txt,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}}>{r.description||"—"}</td>
+      <td style={{padding:"8px",color:txt}}>{r.categoryName}</td>
+      <td style={{padding:"8px",color:mut}}>{r.accountName}</td>
+      <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,color:red,whiteSpace:"nowrap"}}>-{inrFmt(r.amount)}</td>
+    </tr>
+  );
+
+  const renderRows=rowsIn=>isMobile?(
+    <div style={{display:"flex",flexDirection:"column",gap:8}}>{rowsIn.map(renderMobileRow)}</div>
+  ):(
+    <div style={{overflowX:"auto"}}>
+      <table style={{borderCollapse:"collapse",fontSize:12,width:"100%"}}>
+        <thead>
+          <tr style={{background:surf3,borderBottom:`1px solid ${bdr}`}}>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Date</th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Description</th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Category</th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Spent From</th>
+            <th style={{padding:"8px",textAlign:"right",fontSize:10,textTransform:"uppercase",color:mut}}>Amount</th>
+          </tr>
+        </thead>
+        <tbody>{rowsIn.map(renderDesktopRow)}</tbody>
+      </table>
+    </div>
+  );
+
+  return(
+    <div>
+      {monthGroups.map(g=>{
+        const isOpen=expandedMonths.has(g.key);
+        const page=pageFor(g.key);
+        const pageRows=g.rows.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE);
+        const monthTotal=g.rows.reduce((a,r)=>a+r.amount,0);
+        return(
+          <div key={g.key} style={{border:`1px solid ${bdr}`,borderRadius:14,overflow:"hidden",marginBottom:10}}>
+            <div onClick={()=>toggleMonth(g.key)} style={{padding:"13px 16px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background 0.12s"}}
+              onMouseEnter={e=>e.currentTarget.style.background=surf2} onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
+              <div style={{fontSize:13,fontWeight:600,color:txt}}>{g.label}</div>
+              <div style={{display:"flex",alignItems:"center",gap:14}}>
+                <div className="pv-num" style={{fontSize:12,fontWeight:600,color:red}}>-{inrFmt(monthTotal)}</div>
+                <div style={{fontSize:11,color:mut}}>{g.rows.length} txn{g.rows.length===1?"":"s"}</div>
+                <div style={{width:20,height:20,display:"flex",alignItems:"center",justifyContent:"center",color:mut2,fontSize:11,transition:"transform 0.18s",transform:isOpen?"rotate(0deg)":"rotate(-90deg)"}}>▾</div>
+              </div>
+            </div>
+            {isOpen&&(
+              <div style={{borderTop:`1px solid ${bdr}`,padding:"14px 16px",background:surf2}}>
+                {renderRows(pageRows)}
+                <Pager page={page} setPage={p=>setPageFor(g.key,p)} total={g.rows.length}/>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── SpendTrackerHome — the new single Spend Tracker page. Reads only tagged
 // (action==="expense") Books transactions; nothing here writes transaction
 // data — all entry/editing happens in Books, this is a pure analytics layer.
@@ -14483,8 +14734,8 @@ function SpendTrackerHome({db,owners,onNavigate}){
   const [typeF,setTypeF]=useState("all");
   const [chartPeriod,setChartPeriod]=useState("3m");
   const [txnsOpen,setTxnsOpen]=useState(false);
-  const [page,setPage]=useState(0);
   const [showBudget,setShowBudget]=useState(false);
+  const isMobile=useIsMobile();
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -14734,31 +14985,7 @@ function SpendTrackerHome({db,owners,onNavigate}){
 
       <CollapsibleSection title="Transactions" count={sortedTxns.length} open={txnsOpen} setOpen={setTxnsOpen}>
         {sortedTxns.length===0?<Empty icon="🧾" msg="No tagged spend yet"/>:(
-          <div style={{overflowX:"auto",border:`1px solid ${bdr}`,borderRadius:10,background:surf}}>
-            <table style={{borderCollapse:"collapse",fontSize:12,width:"100%"}}>
-              <thead>
-                <tr style={{background:surf3,borderBottom:`1px solid ${bdr}`}}>
-                  <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Date</th>
-                  <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Description</th>
-                  <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Category</th>
-                  <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Spent From</th>
-                  <th style={{padding:"8px",textAlign:"right",fontSize:10,textTransform:"uppercase",color:mut}}>Amount</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sortedTxns.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).map(r=>(
-                  <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
-                    <td style={{padding:"8px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.date)}</td>
-                    <td style={{padding:"8px",color:txt,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}}>{r.description||"—"}</td>
-                    <td style={{padding:"8px",color:txt}}>{r.categoryName}</td>
-                    <td style={{padding:"8px",color:mut}}>{r.accountName}</td>
-                    <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,color:red,whiteSpace:"nowrap"}}>-{inrFmt(r.amount)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <Pager page={page} setPage={setPage} total={sortedTxns.length}/>
-          </div>
+          <SpendTxnMonthAccordion rows={sortedTxns} isMobile={isMobile}/>
         )}
       </CollapsibleSection>
 
