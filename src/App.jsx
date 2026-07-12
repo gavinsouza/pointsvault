@@ -1482,8 +1482,8 @@ function Overview({db,owners,onNavigate}){
                 {transfers.slice(0,5).map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.date,"noYear")}</td>
-                    <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.fromName}</td>
-                    <td style={{padding:"9px 10px",color:txt,fontWeight:500}}>{t.toName}</td>
+                    <td style={{padding:"9px 10px",color:txt,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}} title={t.fromName}>{t.fromName}</td>
+                    <td style={{padding:"9px 10px",color:txt,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}} title={t.toName}>{t.toName}</td>
                     <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:red}}>{t.sent.toLocaleString()}</td>
                     <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:grn}}>{t.received.toLocaleString()}</td>
                   </tr>
@@ -4467,7 +4467,7 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
       <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.id==="__ob__"?surf2:"transparent"}}>
         <td style={{padding:"9px 8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
         <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
-        <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal"}}>{t.description||"—"}</td>
+        <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240}} title={t.description||undefined}>{t.description||"—"}</td>
         <td style={{padding:"10px 12px"}}><SourceBadge t={t}/></td>
         <td style={{padding:"10px 12px"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
         <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
@@ -5660,8 +5660,8 @@ function TransferHistory({db,owners}){
                 {filtered.map(l=>(
                   <tr key={l.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(l.date)}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.fromName}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{l.toName}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}} title={l.fromName}>{l.fromName}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}} title={l.toName}>{l.toName}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{l.sent.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{l.received.toLocaleString()}</td>
                   </tr>
@@ -5826,8 +5826,14 @@ function RedemptionMonthAccordion({filtered,isMobile}){
     return(
       <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
         <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.txnDate)}</td>
-        <td style={{padding:"10px 12px",fontWeight:500,color:txt}}>{r.description||"--"}{r.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic"}}>{r.notes}</div>}</td>
-        <td style={{padding:"10px 12px",color:txt}}>{r.sourceName}<div style={{fontSize:11,color:mut}}>{r.ownerName}</div></td>
+        <td style={{padding:"10px 12px",fontWeight:500,color:txt,maxWidth:240}}>
+          <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.description||undefined}>{r.description||"--"}</div>
+          {r.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.notes}>{r.notes}</div>}
+        </td>
+        <td style={{padding:"10px 12px",color:txt,maxWidth:160}}>
+          <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.sourceName}>{r.sourceName}</div>
+          <div style={{fontSize:11,color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.ownerName}>{r.ownerName}</div>
+        </td>
         <td style={{padding:"10px 12px"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span></td>
         <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{(r.points||0).toLocaleString()}</td>
         <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:r.redeemed_value_inr>0?grn:mut}}>{r.redeemed_value_inr>0?inrFmt(r.redeemed_value_inr):"--"}</td>
@@ -6033,7 +6039,7 @@ function Vouchers({db,owners,onNavigate}){
             <div key={v.id} style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:"14px 18px",display:"flex",alignItems:"center",gap:16,opacity:expired(v)?0.5:1}}>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{v.title}</span>
+                  <span style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={v.title||undefined}>{v.title}</span>
                   {v.code&&<span style={{fontSize:11,fontFamily:"monospace",background:surf2,padding:"2px 7px",borderRadius:6,color:txt,flexShrink:0}}>{v.code}</span>}
                   {expired(v)&&<span style={{fontSize:9,fontWeight:600,color:red,textTransform:"uppercase",letterSpacing:"0.07em",background:red+"15",padding:"2px 8px",borderRadius:10,flexShrink:0}}>Expired</span>}
                 </div>
@@ -8732,7 +8738,7 @@ function BooksEntityDetail({entity,db,owners,onBack}){
                   <div key={r.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div style={{minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.txn.description}</div>
+                        <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.txn.description||undefined}>{r.txn.description}</div>
                         <div style={{fontSize:11,color:mut,marginTop:2}}>{fmtDate(r.txn.txn_date)} · {sourceLabel(r.txn,staged,statements,allAccts,owners)}</div>
                         {r.txn.notes&&<div style={{fontSize:11,color:mut,marginTop:1,fontStyle:"italic"}}>{r.txn.notes}</div>}
                       </div>
@@ -10061,7 +10067,7 @@ function BooksImportInbox({db,owners,onNavigate}){
             <Card key={s.id} style={{padding:"14px 18px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
                 <div style={{minWidth:0,flex:1}}>
-                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{s.raw_description}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={s.raw_description||undefined}>{s.raw_description}</div>
                   <div style={{fontSize:11,color:mut,marginTop:2}}>{fmtDate(s.txn_date)} · {acctName(s.source_account_id)}</div>
                 </div>
                 <div className="pv-num" style={{fontSize:15,fontWeight:700,color:Number(s.amount)>0?grn:red,flexShrink:0}}>
@@ -12926,7 +12932,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
                 <div key={t.id} style={{padding:"12px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf2}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,marginBottom:8}}>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narration}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.narration||undefined}>{t.narration}</div>
                       <div style={{fontSize:11,color:mut,marginTop:2}}>{fmtDate(t.txn_date)}</div>
                     </div>
                     <div style={{textAlign:"right",flexShrink:0}}>
@@ -12937,7 +12943,7 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                     <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap",minWidth:0}}>
                       <span style={{fontSize:10,fontWeight:600,color:typ?.color||mut,background:(typ?.color||mut)+"18",padding:"2px 8px",borderRadius:8,flexShrink:0}}>{typ?.label||"Spend"}</span>
-                      {t.category&&<span style={{fontSize:11,color:mut,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.category}</span>}
+                      {t.category&&<span style={{fontSize:11,color:mut,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.category}>{t.category}</span>}
                     </div>
                     <div style={{display:"flex",gap:4,flexShrink:0}}>
                       <button onClick={()=>setEditTxn(t)} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:15,padding:"4px 6px"}}>✎</button>
@@ -12983,11 +12989,11 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
                   return(
                     <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:i%2===0?"transparent":surf2}}>
                       <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.txn_date)}</td>
-                      <td style={{padding:"9px 10px",color:txt,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.narration}</td>
+                      <td style={{padding:"9px 10px",color:txt,maxWidth:280,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.narration||undefined}>{t.narration}</td>
                       <td style={{padding:"9px 10px"}}>
                         <span style={{fontSize:10,fontWeight:600,color:typ?.color||mut,background:(typ?.color||mut)+"18",padding:"2px 8px",borderRadius:8}}>{typ?.label||"Spend"}</span>
                       </td>
-                      <td style={{padding:"9px 10px",color:mut,fontSize:11}}>{t.category||"—"}</td>
+                      <td style={{padding:"9px 10px",color:mut,fontSize:11,maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={t.category||undefined}>{t.category||"—"}</td>
                       <td className="pv-num" style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:isCredit?grn:red,whiteSpace:"nowrap"}}>
                         {isCredit?"+":"-"}₹{Math.abs(t.amount).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
                       </td>
@@ -14662,9 +14668,9 @@ function SpendTxnMonthAccordion({rows,isMobile}){
   const renderDesktopRow=r=>(
     <tr key={r.id} style={{borderBottom:`1px solid ${bdr}`}}>
       <td style={{padding:"8px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.date)}</td>
-      <td style={{padding:"8px",color:txt,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}}>{r.description||"—"}</td>
-      <td style={{padding:"8px",color:txt}}>{r.categoryName}</td>
-      <td style={{padding:"8px",color:mut}}>{r.accountName}</td>
+      <td style={{padding:"8px",color:txt,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}} title={r.description||undefined}>{r.description||"—"}</td>
+      <td style={{padding:"8px",color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}} title={r.categoryName}>{r.categoryName}</td>
+      <td style={{padding:"8px",color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}} title={r.accountName}>{r.accountName}</td>
       <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,color:red,whiteSpace:"nowrap"}}>-{inrFmt(r.amount)}</td>
     </tr>
   );
@@ -15821,7 +15827,7 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
             ))}
           </div>
         ):(
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
             <colgroup>
               {colW.map((w,i)=><col key={i} style={{width:w,minWidth:i===1?100:60}}/>)}
             </colgroup>
@@ -15841,9 +15847,9 @@ function SpendCardDetail({card,mCard,db,owners,onBack,allCards,allMCards,onNavig
             <tbody>
               {pageTxns.map(t=>(
                 <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`,background:t.is_reimbursable?acc+"06":surf}}>
-                  <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
-                  <td style={{padding:"7px 8px",color:txt,wordBreak:"break-word"}}>{t.description}</td>
-                  <td style={{padding:"7px 8px",wordBreak:"break-word"}}>
+                  <td style={{padding:"7px 8px",color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fmtDate(t.txn_date)}</td>
+                  <td style={{padding:"7px 8px",color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={t.description||undefined}>{t.description}</td>
+                  <td style={{padding:"7px 8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     <span style={{background:surf2,padding:"2px 7px",borderRadius:10,fontSize:10,color:mut}}>{t.category}</span>
                   </td>
                   <td style={{padding:"7px 8px",textAlign:"right",fontWeight:600,color:txt}}>₹{Number(t.amount||0).toLocaleString("en-IN")}</td>
@@ -16279,8 +16285,8 @@ function SpendTransactions({db,owners}){
                   <td style={{padding:"8px 10px",color:txt,maxWidth:220,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {editId===t.id?<input style={{...ss2,width:"100%"}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
                   </td>
-                  <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{cardName(t.card_id)}</td>
-                  <td style={{padding:"8px 10px"}}>
+                  <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}} title={cardName(t.card_id)||undefined}>{cardName(t.card_id)}</td>
+                  <td style={{padding:"8px 10px",maxWidth:140,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {editId===t.id?
                       <select style={ss2} value={editRow.category} onChange={e=>setEditRow(r=>({...r,category:e.target.value}))}>
                         {categories.map(c=><option key={c} value={c}>{c}</option>)}
@@ -16603,8 +16609,8 @@ function SpendLedger({db,owners,onNavigate}){
                 {pageEntries.map(e=>(
                   <tr key={e.id} style={{borderBottom:`1px solid ${bdr}`,background:surf}}>
                     <td style={{padding:"8px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(e.entry_date)}</td>
-                    <td style={{padding:"8px 10px",color:txt,wordBreak:"break-word"}}>{e.description}</td>
-                    <td style={{padding:"8px 10px",fontSize:11,color:mut,whiteSpace:"nowrap"}}>{entrySource(e)}</td>
+                    <td style={{padding:"8px 10px",color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:220}} title={e.description||undefined}>{e.description}</td>
+                    <td style={{padding:"8px 10px",fontSize:11,color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}}>{entrySource(e)}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:400}}>{e._yp>0?"₹"+e._yp.toLocaleString("en-IN"):"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",color:txt,fontWeight:400}}>{e._tp>0?"₹"+e._tp.toLocaleString("en-IN"):"—"}</td>
                     <td style={{padding:"8px 10px",textAlign:"right",fontWeight:400,color:txt}}>{e._bal===0?"₹0":(e._bal>0?"+":"")+"₹"+e._bal.toLocaleString("en-IN")}</td>
@@ -17239,11 +17245,11 @@ function StmtDetail({stmt,db,owners,onBack,onSave}){
                 <td style={{padding:"7px 8px",textAlign:"center"}}>
                   <input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)} style={{accentColor:acc,cursor:"pointer"}}/>
                 </td>
-                <td style={{padding:"7px 8px",color:mut,wordBreak:"break-word"}}>{fmtDate(t.txn_date)}</td>
-                <td style={{padding:"7px 8px",color:txt,wordBreak:"break-word"}}>
+                <td style={{padding:"7px 8px",color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{fmtDate(t.txn_date)}</td>
+                <td style={{padding:"7px 8px",color:txt,whiteSpace:editId===t.id?"normal":"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={editId===t.id?undefined:(t.description||undefined)}>
                   {editId===t.id?<input style={{...inp,marginBottom:0,width:"100%",fontSize:11}} value={editRow.description} onChange={e=>setEditRow(r=>({...r,description:e.target.value}))}/>:t.description}
                 </td>
-                <td style={{padding:"7px 8px",wordBreak:"break-word"}}>
+                <td style={{padding:"7px 8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                   {editId===t.id?
                     <select style={{fontSize:11,border:`1px solid ${bdr}`,borderRadius:6,padding:"3px 6px",background:surf,color:txt,outline:"none",width:"100%"}} value={editRow.category} onChange={e=>setEditRow(r=>({...r,category:e.target.value}))}>
                       {categories.map(c=><option key={c} value={c}>{c}</option>)}
