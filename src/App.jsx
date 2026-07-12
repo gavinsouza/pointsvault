@@ -4318,6 +4318,8 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
   const toggleMonth=key=>setExpandedMonths(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const pageFor=key=>pageByMonth[key]||0;
   const setPageFor=(key,updater)=>setPageByMonth(prev=>({...prev,[key]:typeof updater==="function"?updater(prev[key]||0):updater}));
+  const [colW,setColW]=useState([32,90,220,140,140,90,100,70]); // check,date,desc,source,tag,points,balance,actions
+  const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   useEffect(()=>{
     (async()=>{
@@ -4468,8 +4470,8 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
         <td style={{padding:"9px 8px"}}>{t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)}/>}</td>
         <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{t.txn_date?fmtDate(t.txn_date):"—"}</td>
         <td style={{padding:"10px 12px",color:t.id==="__ob__"?mut:txt,fontWeight:t.id==="__ob__"?500:400,fontStyle:t.id==="__ob__"?"italic":"normal",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:240}} title={t.description||undefined}>{t.description||"—"}</td>
-        <td style={{padding:"10px 12px"}}><SourceBadge t={t}/></td>
-        <td style={{padding:"10px 12px"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
+        <td style={{padding:"10px 12px",overflow:"hidden"}}><SourceBadge t={t}/></td>
+        <td style={{padding:"10px 12px",overflow:"hidden"}}>{t.id!=="__ob__"&&<TagCell t={t} tag={tag}/>}</td>
         <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:t.id==="__ob__"?mut:t.points>0?grn:t.points<0?red:mut}}>
           {t.id==="__ob__"?"—":t.points>0?"+"+t.points.toLocaleString():t.points.toLocaleString()}
         </td>
@@ -4485,10 +4487,11 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
     <div style={{display:"flex",flexDirection:"column",gap:8}}>{rows.map(renderMobileRow)}</div>
   ):(
     <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed"}}>
+        <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
         <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",borderBottom:`2px solid ${bdr}`}}>
-          <th style={{padding:"7px 8px"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/></th>
-          {["Date","Description","Source","Tag","Points","Balance",""].map(h=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontWeight:600}}>{h}</th>)}
+          <th style={{padding:"7px 8px",position:"relative"}}><input type="checkbox" checked={taggable.length>0&&selected.size===taggable.length} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
+          {["Date","Description","Source","Tag","Points","Balance",""].map((h,i)=><th key={h} style={{padding:"7px 10px",textAlign:h==="Date"||h==="Description"||h==="Source"||h==="Tag"?"left":"right",fontWeight:600,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h}{i<6&&<ColResizeHandle width={colW[i+1]} onResize={w=>setColWAt(i+1,w)}/>}</th>)}
         </tr></thead>
         <tbody>{rows.map(renderDesktopRow)}</tbody>
       </table>
@@ -5586,6 +5589,8 @@ function TransferHistory({db,owners}){
   const [err,setErr]=useState("");
   const [search,setSearch]=useState("");
   const [sort,setSort]=useState("date");
+  const [colW,setColW]=useState([90,220,220,110,110]); // date,from,to,sent,received
+  const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   const load=useCallback(async()=>{
     setBusy(true);setErr("");
@@ -5652,9 +5657,10 @@ function TransferHistory({db,owners}){
             </div>
           ):(
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed"}}>
+              <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
               <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
-                {["Date","From","To","Sent","Received"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Sent"||h==="Received"?"right":"left",fontWeight:600}}>{h}</th>)}
+                {["Date","From","To","Sent","Received"].map((h,i)=><th key={h} style={{padding:"8px 12px",textAlign:h==="Sent"||h==="Received"?"right":"left",fontWeight:600,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h}{i<4&&<ColResizeHandle width={colW[i+1]} onResize={w=>setColWAt(i+1,w)}/>}</th>)}
               </tr></thead>
               <tbody>
                 {filtered.map(l=>(
@@ -5801,6 +5807,8 @@ function RedemptionMonthAccordion({filtered,isMobile}){
   const toggleMonth=key=>setExpandedMonths(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const pageFor=key=>pageByMonth[key]||0;
   const setPageFor=(key,updater)=>setPageByMonth(prev=>({...prev,[key]:typeof updater==="function"?updater(prev[key]||0):updater}));
+  const [colW,setColW]=useState([90,220,140,110,90,110,80]); // date,desc,source,type,points,value,perpt
+  const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   const renderMobileRow=r=>{
     const perPoint=r.points>0&&r.redeemed_value_inr>0?(r.redeemed_value_inr/r.points):null;
@@ -5846,9 +5854,10 @@ function RedemptionMonthAccordion({filtered,isMobile}){
     <div style={{display:"flex",flexDirection:"column",gap:8}}>{rowsIn.map(renderMobileRow)}</div>
   ):(
     <div style={{overflowX:"auto"}}>
-      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:13,tableLayout:"fixed"}}>
+        <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
         <thead><tr style={{color:mut,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",borderBottom:`2px solid ${bdr}`}}>
-          {["Date","Description","Redeemed From","Type","Points","Value","₹/pt"].map(h=><th key={h} style={{padding:"8px 12px",textAlign:h==="Points"||h==="Value"||h==="₹/pt"?"right":"left",fontWeight:600}}>{h}</th>)}
+          {["Date","Description","Redeemed From","Type","Points","Value","₹/pt"].map((h,i)=><th key={h} style={{padding:"8px 12px",textAlign:h==="Points"||h==="Value"||h==="₹/pt"?"right":"left",fontWeight:600,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{h}{i<6&&<ColResizeHandle width={colW[i+1]} onResize={w=>setColWAt(i+1,w)}/>}</th>)}
         </tr></thead>
         <tbody>{rowsIn.map(renderDesktopRow)}</tbody>
       </table>
@@ -12728,6 +12737,8 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
   const [page,setPage]=useState(0);
   const PAGE_SIZE=20;
   const isMobile=useIsMobile();
+  const [colW,setColW]=useState([90,280,110,140,110,110,50]); // date,narration,type,category,amount,balance,actions
+  const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   const owner=owners.find(o=>o.id===accountData.owner_id);
   const isCash=accountData.account_type==="cash";
@@ -12962,14 +12973,15 @@ function BankAccountDetail({account:initAccount,db,owners,allAccounts,onBack,onN
           </div>
         ):(
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+              <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
               <thead><tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",color:mut}}>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Date</th>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Narration</th>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Type</th>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Category</th>
-                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Amount</th>
-                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Balance</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Date<ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Narration<ColResizeHandle width={colW[1]} onResize={w=>setColWAt(1,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Type<ColResizeHandle width={colW[2]} onResize={w=>setColWAt(2,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Category<ColResizeHandle width={colW[3]} onResize={w=>setColWAt(3,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500,position:"relative"}}>Amount<ColResizeHandle width={colW[4]} onResize={w=>setColWAt(4,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500,position:"relative"}}>Balance<ColResizeHandle width={colW[5]} onResize={w=>setColWAt(5,w)}/></th>
                 <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>✎</th>
               </tr></thead>
               <tbody>
@@ -13162,6 +13174,8 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
   const [splitsMap,setSplitsMap]=useState({});
   const [people,setPeople]=useState([]);
   const [cats,setCats]=useState([]);
+  const [colW,setColW]=useState([90,260,110,140,110,110,60]); // date,narration,type,category,amount,balance,split
+  const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   useEffect(()=>{
     db.from("people").select().then(r=>setPeople(r.data||[]));
@@ -13370,14 +13384,15 @@ function BankStatementDetail({stmt,txns:initTxns,account,db,owners,allStmts=[],o
           </div>
         ):(
           <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+              <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
               <thead><tr style={{borderBottom:`2px solid ${bdr}`,fontSize:10,textTransform:"uppercase",letterSpacing:"0.07em",color:mut}}>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Date</th>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Narration</th>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Type</th>
-                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500}}>Category</th>
-                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Amount</th>
-                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500}}>Balance</th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Date<ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Narration<ColResizeHandle width={colW[1]} onResize={w=>setColWAt(1,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Type<ColResizeHandle width={colW[2]} onResize={w=>setColWAt(2,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"left",fontWeight:500,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Category<ColResizeHandle width={colW[3]} onResize={w=>setColWAt(3,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500,position:"relative"}}>Amount<ColResizeHandle width={colW[4]} onResize={w=>setColWAt(4,w)}/></th>
+                <th style={{padding:"8px 10px",textAlign:"right",fontWeight:500,position:"relative"}}>Balance<ColResizeHandle width={colW[5]} onResize={w=>setColWAt(5,w)}/></th>
                 <th style={{padding:"8px 4px",textAlign:"center",fontWeight:500}}>Split</th>
               </tr></thead>
               <tbody>
@@ -14653,6 +14668,8 @@ function SpendTxnMonthAccordion({rows,isMobile}){
   const toggleMonth=key=>setExpandedMonths(prev=>{const n=new Set(prev);n.has(key)?n.delete(key):n.add(key);return n;});
   const pageFor=key=>pageByMonth[key]||0;
   const setPageFor=(key,updater)=>setPageByMonth(prev=>({...prev,[key]:typeof updater==="function"?updater(prev[key]||0):updater}));
+  const [colW,setColW]=useState([90,220,140,140,100]); // date,desc,category,account,amount
+  const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   const renderMobileRow=r=>(
     <div key={r.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
@@ -14679,13 +14696,14 @@ function SpendTxnMonthAccordion({rows,isMobile}){
     <div style={{display:"flex",flexDirection:"column",gap:8}}>{rowsIn.map(renderMobileRow)}</div>
   ):(
     <div style={{overflowX:"auto"}}>
-      <table style={{borderCollapse:"collapse",fontSize:12,width:"100%"}}>
+      <table style={{borderCollapse:"collapse",fontSize:12,width:"100%",tableLayout:"fixed"}}>
+        <colgroup>{colW.map((w,i)=><col key={i} style={{width:w,minWidth:COL_MIN_WIDTH}}/>)}</colgroup>
         <thead>
           <tr style={{background:surf3,borderBottom:`1px solid ${bdr}`}}>
-            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Date</th>
-            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Description</th>
-            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Category</th>
-            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut}}>Spent From</th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Date<ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Description<ColResizeHandle width={colW[1]} onResize={w=>setColWAt(1,w)}/></th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Category<ColResizeHandle width={colW[2]} onResize={w=>setColWAt(2,w)}/></th>
+            <th style={{padding:"8px",textAlign:"left",fontSize:10,textTransform:"uppercase",color:mut,position:"relative",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>Spent From<ColResizeHandle width={colW[3]} onResize={w=>setColWAt(3,w)}/></th>
             <th style={{padding:"8px",textAlign:"right",fontSize:10,textTransform:"uppercase",color:mut}}>Amount</th>
           </tr>
         </thead>
