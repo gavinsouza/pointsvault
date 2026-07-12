@@ -1272,7 +1272,7 @@ function OvList({title,items,filterOptions,onNav}){
               <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
                 <LogoCircle url={item.logo} name={item.name} size={64}/>
                 <div style={{minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{item.name}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}} title={item.name||undefined}>{item.name}</div>
                   {item.sub&&<div style={{fontSize:10,color:mut,marginTop:1,fontWeight:400}}>{item.sub}</div>}
                 </div>
               </div>
@@ -3076,7 +3076,7 @@ function MyCards({db,owners,onNavigate}){
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
           <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
           <div style={{minWidth:0,flex:1}}>
-            <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{c.nickname||m?.name}</div>
+            <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}} title={c.nickname||m?.name||undefined}>{c.nickname||m?.name}</div>
             {c.last4&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:2,fontWeight:600,letterSpacing:"0.02em"}}>•••• •••• •••• {c.last4}</div>}
             <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{[owner?.name,m?.name,m?.bank,m?.network].filter(Boolean).join(" · ")}</div>
             {m?.auto_transfer_to&&<div style={{fontSize:10,color:acc,fontWeight:600,marginTop:2}}>Co-branded · {mProgNames[m.auto_transfer_to]||"Linked LP"}</div>}
@@ -3105,7 +3105,7 @@ function MyCards({db,owners,onNavigate}){
         onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
         <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{c.nickname||m?.name}</div>
+          <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={c.nickname||m?.name||undefined}>{c.nickname||m?.name}</div>
           {c.last4&&<div className="pv-num" style={{fontSize:11,color:mut2,marginTop:1,fontWeight:600,letterSpacing:"0.02em"}}>•••• •••• •••• {c.last4}</div>}
           <div style={{fontSize:11,color:mut,marginTop:1}}>{[owner?.name,m?.name,m?.bank,m?.network].filter(Boolean).join(" · ")}{m?.auto_transfer_to&&<span style={{color:acc,fontWeight:600}}> · Co-branded</span>}</div>
         </div>
@@ -4442,7 +4442,7 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
           <div style={{minWidth:0,display:"flex",gap:6,alignItems:"flex-start"}}>
             {t.id!=="__ob__"&&!isNativeTransfer(t)&&<input type="checkbox" checked={selected.has(t.id)} onChange={()=>toggleSelect(t.id)} style={{marginTop:3,accentColor:acc,cursor:"pointer"}}/>}
             <div>
-              <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt}}>{t.description||"—"}</div>
+              <div style={{fontSize:13,fontWeight:t.id==="__ob__"?500:600,fontStyle:t.id==="__ob__"?"italic":"normal",color:t.id==="__ob__"?mut:txt}} title={t.description||undefined}>{t.description||"—"}</div>
               <div style={{fontSize:11,color:mut,marginTop:2}}>{t.txn_date?fmtDate(t.txn_date):"—"}{t.id!=="__ob__"&&<> · <SourceBadge t={t}/></>}</div>
             </div>
           </div>
@@ -4586,7 +4586,7 @@ function ImportsList({db,txns,onReload}){
           {list.map(b=>(
             <div key={b.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,border:`1px solid ${bdr}`}}>
               <div>
-                <div style={{fontSize:13,fontWeight:600,color:txt}}>{b.name}</div>
+                <div style={{fontSize:13,fontWeight:600,color:txt}} title={b.name||undefined}>{b.name}</div>
                 <div style={{fontSize:11,color:mut,marginTop:2}}>{b.count} transaction{b.count===1?"":"s"}</div>
               </div>
               <IconBtn title="Delete this import" tone="danger" disabled={deleting===b.id} onClick={()=>deleteBatch(b)}><DeleteIcon/></IconBtn>
@@ -4968,7 +4968,7 @@ function MyPrograms({db,owners,onNavigate}){
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:18}}>
           <LogoCircle url={m?.logo_url} name={m?.name} size={64}/>
           <div style={{minWidth:0,flex:1}}>
-            <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}}>{p.nickname||m?.name}</div>
+            <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",letterSpacing:"-0.01em"}} title={p.nickname||m?.name||undefined}>{p.nickname||m?.name}</div>
             <div style={{fontSize:11,color:mut,marginTop:2,fontWeight:400}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
           </div>
         </div>
@@ -4995,7 +4995,7 @@ function MyPrograms({db,owners,onNavigate}){
         onMouseLeave={e=>{e.currentTarget.style.boxShadow="none";e.currentTarget.style.borderColor=bdr;}}>
         <LogoCircle url={m?.logo_url} name={m?.name} size={44}/>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.nickname||m?.name}</div>
+          <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={p.nickname||m?.name||undefined}>{p.nickname||m?.name}</div>
           <div style={{fontSize:11,color:mut,marginTop:1}}>{owner?.name||""}{p.membership_number&&" · #"+p.membership_number}</div>
         </div>
         <div style={{textAlign:"right",flexShrink:0,minWidth:90}}>
@@ -5823,13 +5823,13 @@ function RedemptionMonthAccordion({filtered,isMobile}){
           <div style={{fontSize:11,color:mut}}>{fmtDate(r.txnDate)}</div>
           <span style={{fontSize:10,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span>
         </div>
-        <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{r.description||"--"}</div>
-        <div style={{fontSize:11,color:mut,marginBottom:8}}>{r.sourceName} · {r.ownerName}</div>
+        <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}} title={r.description||undefined}>{r.description||"--"}</div>
+        <div style={{fontSize:11,color:mut,marginBottom:8}} title={`${r.sourceName} · ${r.ownerName}`}>{r.sourceName} · {r.ownerName}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>{(r.points||0).toLocaleString()} pts</div>
           {r.redeemed_value_inr>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(r.redeemed_value_inr)}{perPoint&&<span style={{color:mut,fontWeight:400}}> ({perPoint.toFixed(2)}/pt)</span>}</div>}
         </div>
-        {r.notes&&<div style={{fontSize:11,color:mut,marginTop:6,fontStyle:"italic"}}>{r.notes}</div>}
+        {r.notes&&<div style={{fontSize:11,color:mut,marginTop:6,fontStyle:"italic"}} title={r.notes}>{r.notes}</div>}
       </div>
     );
   };
@@ -6034,7 +6034,7 @@ function Vouchers({db,owners,onNavigate}){
           {filteredRows.map(v=>(
             <Card key={v.id} style={{opacity:expired(v)?0.5:1,position:"relative"}}>
               {expired(v)&&<div style={{position:"absolute",top:12,right:12,fontSize:9,fontWeight:600,color:red,textTransform:"uppercase",letterSpacing:"0.07em",background:red+"15",padding:"2px 8px",borderRadius:10}}>Expired</div>}
-              <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:4,letterSpacing:"-0.01em"}}>{v.title}</div>
+              <div style={{fontSize:14,fontWeight:700,color:txt,marginBottom:4,letterSpacing:"-0.01em",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={v.title||undefined}>{v.title}</div>
               {v.code&&<div style={{fontSize:12,fontFamily:"monospace",background:surf2,padding:"4px 8px",borderRadius:6,color:txt,marginBottom:6,display:"inline-block"}}>{v.code}</div>}
               <div style={{fontSize:12,color:mut,marginBottom:2}}>{owners.find(o=>o.id===v.owner_id)?.name||"—"}</div>
               {v.value&&<div style={{fontSize:13,fontWeight:600,color:grn,marginBottom:2}}>{inrFmt(v.value)}</div>}
@@ -12621,7 +12621,7 @@ function BankAccounts({db,owners,onNavigate}){
                     <LogoCircle url={BANK_LOGOS[a.bank_name]} name={a.bank_name} size={48}/>
                   )}
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:13,fontWeight:700,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{a.nickname||a.bank_name||"Account"}</div>
+                    <div style={{fontSize:13,fontWeight:700,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.nickname||a.bank_name||undefined}>{a.nickname||a.bank_name||"Account"}</div>
                     <div style={{fontSize:11,color:mut,marginTop:2}}>{isCash?"Cash":a.bank_name}{a.last4?" ···· "+a.last4:""}{owner?" · "+owner.name:""}</div>
                   </div>
                   {a.currency&&a.currency!=="INR"&&<div style={{fontSize:10,fontWeight:600,color:acc,background:acc+"15",padding:"2px 8px",borderRadius:10}}>{a.currency}</div>}
@@ -12653,7 +12653,7 @@ function BankAccounts({db,owners,onNavigate}){
                   <LogoCircle url={BANK_LOGOS[a.bank_name]} name={a.bank_name} size={40}/>
                 )}
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:13,fontWeight:600,color:txt}}>{a.nickname||a.bank_name}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={a.nickname||a.bank_name||undefined}>{a.nickname||a.bank_name}</div>
                   <div style={{fontSize:11,color:mut}}>{isCash?"Cash":a.bank_name}{a.last4?" ···· "+a.last4:""}{owner?" · "+owner.name:""}</div>
                 </div>
                 <div style={{textAlign:"right"}}>
