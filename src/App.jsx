@@ -8378,11 +8378,11 @@ function BrandLogo({onClick,width=160}){
       <div style={{fontSize:9,color:mut,marginTop:2,textTransform:"uppercase",letterSpacing:"0.1em",fontWeight:500}}>Wealth Tracker</div>
     </div>
   );
-  // The source file has a solid white background baked in (no transparency), so
-  // it's wrapped in its own white card rather than sitting bare on the sidebar —
-  // otherwise it reads as a broken/mismatched image the moment dark mode is on.
+  // logo.png has a transparent background, so its wrapper just matches the
+  // sidebar/header surface it sits on rather than a hardcoded color — it
+  // blends in light mode and dark mode alike.
   return(
-    <div onClick={onClick} style={{display:"inline-block",background:"#fff",border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 10px",cursor:onClick?"pointer":"default",userSelect:"none"}}>
+    <div onClick={onClick} style={{display:"inline-block",background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 10px",cursor:onClick?"pointer":"default",userSelect:"none"}}>
       <img src="/logo.png" alt="PointsVault" onError={()=>setFailed(true)}
         style={{width,height:"auto",display:"block"}}/>
     </div>
