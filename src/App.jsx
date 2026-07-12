@@ -8262,18 +8262,18 @@ function ThemeToggleSwitch({dark,onClick}){
   return(
     <button onClick={onClick} aria-label="Toggle dark mode" title="Toggle dark mode"
       style={{position:"relative",width:60,height:32,borderRadius:16,border:"none",cursor:"pointer",padding:0,flexShrink:0,
-        background:"linear-gradient(180deg,#1c1c1a,#141412)",
-        boxShadow:"inset 0 2px 5px rgba(0,0,0,0.5), inset 0 -1px 1px rgba(255,255,255,0.04)"}}>
-      <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:"#6b6a64",display:"flex"}}>
+        background:dark?"linear-gradient(180deg,#1c1c1a,#141412)":"linear-gradient(180deg,#ffffff,#e6e4dd)",
+        boxShadow:dark?"inset 0 2px 5px rgba(0,0,0,0.5), inset 0 -1px 1px rgba(255,255,255,0.04)":"inset 0 2px 5px rgba(0,0,0,0.1), inset 0 -1px 1px rgba(255,255,255,0.8)"}}>
+      <span style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",color:dark?"#6b6a64":"#a19e93",display:"flex"}}>
         <ThemeIcon dark={false} size={13}/>
       </span>
-      <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",color:"#6b6a64",display:"flex"}}>
+      <span style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",color:dark?"#6b6a64":"#a19e93",display:"flex"}}>
         <ThemeIcon dark={true} size={12}/>
       </span>
       <span style={{position:"absolute",top:3,left:dark?31:3,width:26,height:26,borderRadius:"50%",
-        background:"linear-gradient(150deg,#3d3d38,#221f1c)",
-        boxShadow:"0 2px 4px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.1)",
-        display:"flex",alignItems:"center",justifyContent:"center",color:"#f2f0ea",
+        background:dark?"linear-gradient(150deg,#3d3d38,#221f1c)":"linear-gradient(150deg,#ffffff,#dedcd3)",
+        boxShadow:dark?"0 2px 4px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.1)":"0 2px 4px rgba(0,0,0,0.18), inset 0 1px 1px rgba(255,255,255,0.9)",
+        display:"flex",alignItems:"center",justifyContent:"center",color:dark?"#f2f0ea":"#3d3d38",
         transition:"left 0.22s cubic-bezier(0.4,0,0.2,1)"}}>
         <ThemeIcon dark={dark} size={14}/>
       </span>
