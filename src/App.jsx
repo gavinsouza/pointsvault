@@ -11402,7 +11402,8 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
             <div style={{background:surf,borderRadius:10,border:`1px solid ${bdr}`,padding:"16px 20px",marginBottom:16}}>
               <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:14}}>Statement Summary</div>
               {isCC?(
-              <div className="stmt-summary-grid" style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto 1fr auto 1.3fr",alignItems:"end",gap:"0 14px"}}>
+              <div style={{overflowX:"auto"}}>
+              <div className="stmt-summary-grid" style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto 1fr auto 1.3fr",alignItems:"end",gap:"0 14px",minWidth:"max-content"}}>
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Previous Dues</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>₹{previousDues.toLocaleString("en-IN")}</div>
@@ -11420,16 +11421,18 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>=</div>
                 <div style={{borderLeft:`1px solid ${bdr}`,paddingLeft:14}}>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Total Amount Due</div>
-                  <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt}}>₹{calculatedTotalDue.toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{calculatedTotalDue.toLocaleString("en-IN")}</div>
                   {fetchedTotalDue!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(fetchedTotalDue-calculatedTotalDue)>1?amber:mut,marginTop:3}}>
+                    <div className="pv-num" style={{fontSize:10,color:Math.abs(fetchedTotalDue-calculatedTotalDue)>1?amber:mut,marginTop:3,whiteSpace:"nowrap"}}>
                       Bank's figure: ₹{fetchedTotalDue.toLocaleString("en-IN")}
                     </div>
                   )}
                 </div>
               </div>
+              </div>
               ):(
-              <div className="stmt-summary-grid" style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto 1fr auto 1.3fr",alignItems:"end",gap:"0 14px"}}>
+              <div style={{overflowX:"auto"}}>
+              <div className="stmt-summary-grid" style={{display:"grid",gridTemplateColumns:"1fr auto 1fr auto 1fr auto 1.3fr",alignItems:"end",gap:"0 14px",minWidth:"max-content"}}>
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Opening Balance</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>₹{openingBalance.toLocaleString("en-IN")}</div>
@@ -11456,11 +11459,12 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>=</div>
                 <div style={{borderLeft:`1px solid ${bdr}`,paddingLeft:14}}>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Closing Balance</div>
-                  <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt}}>₹{bankClosingBalance.toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{bankClosingBalance.toLocaleString("en-IN")}</div>
                   {parsedClosing!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(parsedClosing-bankClosingBalance)>1?amber:mut,marginTop:3}}>Bank's figure: ₹{parsedClosing.toLocaleString("en-IN")}</div>
+                    <div className="pv-num" style={{fontSize:10,color:Math.abs(parsedClosing-bankClosingBalance)>1?amber:mut,marginTop:3,whiteSpace:"nowrap"}}>Bank's figure: ₹{parsedClosing.toLocaleString("en-IN")}</div>
                   )}
                 </div>
+              </div>
               </div>
               )}
             </div>
