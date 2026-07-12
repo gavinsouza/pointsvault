@@ -4541,7 +4541,12 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
           </div>
         );
       })}
-      {obRow&&<div style={{marginTop:10}}>{renderRows([obRow])}</div>}
+      {obRow&&(
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"10px 14px",borderRadius:10,border:`1px solid ${bdr}`,background:surf,marginTop:10}}>
+          <div style={{fontSize:12,color:mut,fontStyle:"italic"}}>Opening Balance</div>
+          <div className="pv-num" style={{fontSize:13,fontWeight:700,color:mut}}>{obRow.closing!=null?obRow.closing.toLocaleString("en-IN"):"—"}</div>
+        </div>
+      )}
     </div>
   );
 }
