@@ -14540,7 +14540,15 @@ function bucketSpendRows(rows,periodId){
   const cutoff=periodId==="LT"?null:new Date(now.getTime()-period.days*86400000);
   const inRange=cutoff?rows.filter(r=>new Date(r.date)>=cutoff):rows;
   if(inRange.length===0) return [];
-  const gran=periodId==="1w"||periodId==="1m"?"day":periodId==="3m"||periodId==="6m"?"week":periodId==="1y"||periodId==="3y"?"month":"year";
+  // Lifetime has no fixed window, so a flat "year" bucket collapses to a single
+  // point whenever all the data falls in one calendar year. Pick granularity
+  // from the actual date span instead, so it still reads as a trend.
+  const ltGran=()=>{
+    const times=inRange.map(r=>new Date(r.date).getTime());
+    const spanDays=(Math.max(...times)-Math.min(...times))/86400000;
+    return spanDays<=90?"week":spanDays<=730?"month":"year";
+  };
+  const gran=periodId==="1w"||periodId==="1m"?"day":periodId==="3m"||periodId==="6m"?"week":periodId==="1y"||periodId==="3y"?"month":periodId==="LT"?ltGran():"year";
   const bucketKey=(dateStr)=>{
     if(gran==="day") return dateStr;
     if(gran==="week"){
