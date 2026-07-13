@@ -14756,6 +14756,77 @@ function SpendTxnMonthAccordion({rows,isMobile}){
   );
 }
 
+const SPEND_PIE_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4","#f6c94e","#7b9e87","#c87dd4","#8fb0d4"];
+
+// ── SpendCategoryPieChart — half-width donut of this month's category split,
+// sitting between the budget breakdown and the trend line. Categories can be
+// excluded via the dropdown (e.g. to ignore EMI/rent skewing the picture)
+// without affecting the budget breakdown or trend chart above/below it.
+function SpendCategoryPieChart({categoryBreakdown,excludedCats,setExcludedCats}){
+  const [open,setOpen]=useState(false);
+  const included=categoryBreakdown.filter(c=>!excludedCats.has(c.id)).sort((a,b)=>b.actual-a.actual);
+  const total=included.reduce((a,c)=>a+c.actual,0);
+  let angle=0;
+  const pieSlices=total>0?included.map((c,i)=>{
+    const pct=c.actual/total;const a1=angle;const a2=angle+pct*2*Math.PI;angle=a2;
+    const cx=50,cy=50,r=42;
+    const x1=cx+r*Math.sin(a1),y1=cy-r*Math.cos(a1);
+    const x2=cx+r*Math.sin(a2),y2=cy-r*Math.cos(a2);
+    return{...c,pct,color:SPEND_PIE_COLORS[i%SPEND_PIE_COLORS.length],d:`M${cx},${cy} L${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${pct>0.5?1:0},1 ${x2.toFixed(1)},${y2.toFixed(1)} Z`};
+  }):[];
+  const allIncluded=excludedCats.size===0;
+  const toggleAll=()=>setExcludedCats(allIncluded?new Set(categoryBreakdown.map(c=>c.id)):new Set());
+  const toggleOne=id=>setExcludedCats(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+
+  return(
+    <Card className="ov-col" style={{marginBottom:16}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by category — this month</div>
+        <div style={{position:"relative"}}>
+          <button onClick={()=>setOpen(v=>!v)} style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${bdr}`,background:surf,color:txt,fontSize:11,fontWeight:500,fontFamily:"'Manrope',sans-serif",cursor:"pointer",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
+            Categories ({categoryBreakdown.length-excludedCats.size}/{categoryBreakdown.length}) <span style={{fontSize:9,color:mut}}>▾</span>
+          </button>
+          {open&&(<>
+            <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:998}}/>
+            <div style={{position:"absolute",top:32,right:0,zIndex:999,background:surf,border:`1px solid ${bdr}`,borderRadius:12,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",padding:10,minWidth:200,maxHeight:280,overflowY:"auto"}}>
+              <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12,fontWeight:600,color:txt,padding:"6px 8px",borderBottom:`1px solid ${bdr}`,marginBottom:4}}>
+                <input type="checkbox" checked={allIncluded} onChange={toggleAll} style={{accentColor:acc}}/>
+                All categories
+              </label>
+              {categoryBreakdown.map(c=>(
+                <label key={c.id} style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12,color:txt,padding:"6px 8px"}}>
+                  <input type="checkbox" checked={!excludedCats.has(c.id)} onChange={()=>toggleOne(c.id)} style={{accentColor:acc}}/>
+                  {c.name}
+                </label>
+              ))}
+            </div>
+          </>)}
+        </div>
+      </div>
+      {pieSlices.length===0?(
+        <div style={{color:mut,fontSize:12,textAlign:"center",padding:"20px 0"}}>No spend to show</div>
+      ):(
+        <div style={{display:"flex",gap:20,alignItems:"center",flexWrap:"wrap"}}>
+          <svg width="120" height="120" viewBox="0 0 100 100" style={{flexShrink:0}}>
+            {pieSlices.map((s,i)=><path key={i} d={s.d} fill={s.color} stroke={surf} strokeWidth="1"/>)}
+          </svg>
+          <div style={{flex:1,minWidth:160}}>
+            {pieSlices.map((s,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5,gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,minWidth:0}}>
+                  <div style={{width:8,height:8,borderRadius:2,background:s.color,flexShrink:0}}/>
+                  <span style={{fontSize:12,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={s.name}>{s.name}</span>
+                </div>
+                <span className="pv-num" style={{fontSize:11,fontWeight:500,color:mut,flexShrink:0}}>{inrFmt(s.actual)} · {(s.pct*100).toFixed(0)}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── SpendTrackerHome — the new single Spend Tracker page. Reads only tagged
 // (action==="expense") Books transactions; nothing here writes transaction
 // data — all entry/editing happens in Books, this is a pure analytics layer.
@@ -14772,6 +14843,7 @@ function SpendTrackerHome({db,owners,onNavigate}){
   const [chartPeriod,setChartPeriod]=useState("3m");
   const [txnsOpen,setTxnsOpen]=useState(false);
   const [showBudget,setShowBudget]=useState(false);
+  const [excludedCats,setExcludedCats]=useState(()=>new Set());
   const isMobile=useIsMobile();
 
   const load=useCallback(async()=>{
@@ -15017,6 +15089,12 @@ function SpendTrackerHome({db,owners,onNavigate}){
       )}
 
       {totalMonthlyBudget>0&&<OverspendDeltaChart data={deltaMonths}/>}
+
+      {categoryBreakdown.length>0&&(
+        <div className="ov-grid" style={{marginBottom:16}}>
+          <SpendCategoryPieChart categoryBreakdown={categoryBreakdown} excludedCats={excludedCats} setExcludedCats={setExcludedCats}/>
+        </div>
+      )}
 
       <SpendTrendChart rows={spendRows} period={chartPeriod} setPeriod={setChartPeriod}/>
 
