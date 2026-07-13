@@ -14788,7 +14788,7 @@ function SpendCategoryPieChart({categoryBreakdown,excludedCats,setExcludedCats})
           </button>
           {open&&(<>
             <div onClick={()=>setOpen(false)} style={{position:"fixed",inset:0,zIndex:998}}/>
-            <div style={{position:"absolute",top:32,right:0,zIndex:999,background:surf,border:`1px solid ${bdr}`,borderRadius:12,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",padding:10,minWidth:200,maxHeight:280,overflowY:"auto"}}>
+            <div style={{position:"absolute",top:32,left:0,zIndex:999,background:surf,border:`1px solid ${bdr}`,borderRadius:12,boxShadow:"0 8px 24px rgba(0,0,0,0.12)",padding:10,minWidth:200,maxHeight:280,overflowY:"auto"}}>
               <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",fontSize:12,fontWeight:600,color:txt,padding:"6px 8px",borderBottom:`1px solid ${bdr}`,marginBottom:4}}>
                 <input type="checkbox" checked={allIncluded} onChange={toggleAll} style={{accentColor:acc}}/>
                 All categories
