@@ -12097,6 +12097,7 @@ const NAV=[
     {id:"settings-danger",  label:"Danger Zone"},
   ], sub:[
     {label:"Setup", items:[
+      {id:"setup-overview",    label:"Overview"},
       {id:"setup-catalog",     label:"Owners & Categories"},
       {id:"setup-mappings",    label:"Mappings"},
     ]},
@@ -12472,7 +12473,8 @@ export default function App(){
             .stat-grid-4{grid-template-columns:1fr 1fr!important;}
           }
         `}</style>
-        {tab==="home"&&<LandingPage key={resetTick} db={db} user={user} owners={owners} navigate={navigate} goTo={goTo}/>}
+        {tab==="home"&&<WelcomePage/>}
+        {tab==="setup-overview"&&<LandingPage key={resetTick} db={db} user={user} owners={owners} navigate={navigate} goTo={goTo}/>}
         {tab==="overview"          &&<Overview key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
         {tab==="my-cards"          &&<MyCards key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
         {tab==="my-programs"       &&<MyPrograms key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
@@ -14128,6 +14130,16 @@ async function parseAmexPointsPDF(file){
     }
   }
   return{statementYear,statementMonthNum,items};
+}
+
+// ── WelcomePage — the new Home tab. Placeholder for now; the old guided
+// checklist landing page moved to Settings → Setup → Overview.
+function WelcomePage(){
+  return(
+    <div style={{maxWidth:760,margin:"0 auto",padding:"80px 0 60px",textAlign:"center"}}>
+      <div style={{fontFamily:fontDisplay,fontSize:"clamp(28px,5vw,40px)",fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>Welcome</div>
+    </div>
+  );
 }
 
 // ── LandingPage ──────────────────────────────────────────────────────────────
