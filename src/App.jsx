@@ -9284,8 +9284,6 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
                   <option value="">Select existing category…</option>
                   {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
                 </select>
-                <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
-                <input style={inp} placeholder="New category name" value={row.newName} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,newName:e.target.value,selId:""}:r))}/>
               </>):(<>
                 <select style={inp} value={row.selId?entities.find(en=>en.id===row.selId)?.name||"":row.newName} onChange={e=>{
                   const val=e.target.value;
@@ -9295,8 +9293,6 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
                   <option value="">Select existing person/company…</option>
                   {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
                 </select>
-                <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
-                <input style={inp} placeholder="New person/company name" value={row.newName} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,newName:e.target.value,selId:""}:r))}/>
               </>))}
 
               <input style={{...inp,marginTop:8,marginBottom:0}} type="number" placeholder="Amount ₹" value={row.amount} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,amount:e.target.value}:r))}/>
@@ -9493,8 +9489,8 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
     const amt=parseFloat(amount);
     if(!amt||amt<=0) return setErr("Enter a valid amount");
     if(needsDest&&!destAcctId) return setErr("Choose a destination account");
-    if(needsEntity&&!entityId&&!newEntityName.trim()) return setErr("Choose or type a person/company");
-    if(needsCategory&&!categoryId&&!newCategoryName.trim()) return setErr("Choose or type a category");
+    if(needsEntity&&!entityId&&!newEntityName.trim()) return setErr("Choose a person/company");
+    if(needsCategory&&!categoryId&&!newCategoryName.trim()) return setErr("Choose a category");
     setSaving(true);
     try{
       const uid=getCurrentUserId();
@@ -9612,8 +9608,6 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
           <option value="">Select existing…</option>
           {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
         </select>
-        <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
-        <input style={inp} placeholder="New person/company name" value={newEntityName} onChange={e=>{setNewEntityName(e.target.value);setEntityId("");}}/>
       </>)}
 
       {needsCategory&&(<>
@@ -9631,8 +9625,6 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
           <option value="">Select existing…</option>
           {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
         </select>
-        <div style={{fontSize:11,color:mut,margin:"6px 0"}}>or add new</div>
-        <input style={inp} placeholder="New category name" value={newCategoryName} onChange={e=>{setNewCategoryName(e.target.value);setCategoryId("");setAutoTagged(false);}}/>
       </>)}
 
       {lbl("Amount (₹)")}<input style={inp} type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)}/>
