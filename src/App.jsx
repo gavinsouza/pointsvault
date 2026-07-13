@@ -11570,26 +11570,27 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Previous Dues</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>₹{previousDues.toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:10,marginTop:3,visibility:"hidden"}}>&nbsp;</div>
                 </div>
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>−</div>
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Payments/Credits</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:grn}}>₹{paymentsCredits.toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:10,marginTop:3,visibility:"hidden"}}>&nbsp;</div>
                 </div>
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>+</div>
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Debits/Purchases</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:red}}>₹{purchases.toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:10,marginTop:3,visibility:"hidden"}}>&nbsp;</div>
                 </div>
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>=</div>
                 <div style={{borderLeft:`1px solid ${bdr}`,paddingLeft:14}}>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Total Amount Due</div>
                   <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{calculatedTotalDue.toLocaleString("en-IN")}</div>
-                  {fetchedTotalDue!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(fetchedTotalDue-calculatedTotalDue)>1?amber:mut,marginTop:3,whiteSpace:"nowrap"}}>
-                      Bank's figure: ₹{fetchedTotalDue.toLocaleString("en-IN")}
-                    </div>
-                  )}
+                  <div className="pv-num" style={{fontSize:10,color:fetchedTotalDue!=null&&Math.abs(fetchedTotalDue-calculatedTotalDue)>1?amber:mut,marginTop:3,whiteSpace:"nowrap",visibility:fetchedTotalDue!=null?"visible":"hidden"}}>
+                    {fetchedTotalDue!=null?`Bank's figure: ₹${fetchedTotalDue.toLocaleString("en-IN")}`:" "}
+                  </div>
                 </div>
               </div>
               </div>
@@ -11599,33 +11600,33 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Opening Balance</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:txt}}>₹{openingBalance.toLocaleString("en-IN")}</div>
-                  {parsedOpening!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(parsedOpening-openingBalance)>1?amber:mut,marginTop:3}}>Statement's figure: ₹{parsedOpening.toLocaleString("en-IN")}</div>
-                  )}
+                  <div className="pv-num" style={{fontSize:10,color:parsedOpening!=null&&Math.abs(parsedOpening-openingBalance)>1?amber:mut,marginTop:3,visibility:parsedOpening!=null?"visible":"hidden"}}>
+                    {parsedOpening!=null?`Statement's figure: ₹${parsedOpening.toLocaleString("en-IN")}`:" "}
+                  </div>
                 </div>
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>−</div>
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Debits</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:red}}>₹{bankDebits.toLocaleString("en-IN")}</div>
-                  {parsedDebits!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(parsedDebits-bankDebits)>1?amber:mut,marginTop:3}}>Statement's figure: ₹{parsedDebits.toLocaleString("en-IN")}</div>
-                  )}
+                  <div className="pv-num" style={{fontSize:10,color:parsedDebits!=null&&Math.abs(parsedDebits-bankDebits)>1?amber:mut,marginTop:3,visibility:parsedDebits!=null?"visible":"hidden"}}>
+                    {parsedDebits!=null?`Statement's figure: ₹${parsedDebits.toLocaleString("en-IN")}`:" "}
+                  </div>
                 </div>
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>+</div>
                 <div>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Credits</div>
                   <div className="pv-num" style={{fontSize:16,fontWeight:700,color:grn}}>₹{bankCredits.toLocaleString("en-IN")}</div>
-                  {parsedCredits!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(parsedCredits-bankCredits)>1?amber:mut,marginTop:3}}>Statement's figure: ₹{parsedCredits.toLocaleString("en-IN")}</div>
-                  )}
+                  <div className="pv-num" style={{fontSize:10,color:parsedCredits!=null&&Math.abs(parsedCredits-bankCredits)>1?amber:mut,marginTop:3,visibility:parsedCredits!=null?"visible":"hidden"}}>
+                    {parsedCredits!=null?`Statement's figure: ₹${parsedCredits.toLocaleString("en-IN")}`:" "}
+                  </div>
                 </div>
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>=</div>
                 <div style={{borderLeft:`1px solid ${bdr}`,paddingLeft:14}}>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Closing Balance</div>
                   <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{bankClosingBalance.toLocaleString("en-IN")}</div>
-                  {parsedClosing!=null&&(
-                    <div className="pv-num" style={{fontSize:10,color:Math.abs(parsedClosing-bankClosingBalance)>1?amber:mut,marginTop:3,whiteSpace:"nowrap"}}>Bank's figure: ₹{parsedClosing.toLocaleString("en-IN")}</div>
-                  )}
+                  <div className="pv-num" style={{fontSize:10,color:parsedClosing!=null&&Math.abs(parsedClosing-bankClosingBalance)>1?amber:mut,marginTop:3,whiteSpace:"nowrap",visibility:parsedClosing!=null?"visible":"hidden"}}>
+                    {parsedClosing!=null?`Bank's figure: ₹${parsedClosing.toLocaleString("en-IN")}`:" "}
+                  </div>
                 </div>
               </div>
               </div>
@@ -16203,7 +16204,7 @@ function SpendCards({db,owners,onNavigate}){
                 <div style={{fontSize:20,fontWeight:700,color:lastStmt?.total_due>0?red:txt,fontFamily:"'Manrope',sans-serif",marginBottom:4}}>
                   {lastStmt?.total_due>0?"₹"+lastStmt.total_due.toLocaleString("en-IN"):"—"}
                 </div>
-                <div style={{fontSize:11,color:mut}}>{lastStmt?.total_due>0?"Amount Due · ":""}{stmtCount} statement{stmtCount!==1?"s":" "}{lastStmt&&"· Last: "+fmtMonth(lastStmt.statement_month)}</div>
+                <div style={{fontSize:11,color:mut}}>{lastStmt?.total_due>0?"Amount Due · ":""}{stmtCount} statement{stmtCount!==1?"s":" "}{lastStmt&&"· Last: "+fmtMonth(lastStmt.statement_month)}</div>
               </Card>
             );
           })}
