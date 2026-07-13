@@ -8370,7 +8370,7 @@ function IconBtn({onClick,title,tone="neutral",children,disabled}){
 // ── BrandLogo — the wordmark shown at the top of the sidebar/mobile header.
 // Tries /logo.png first; if that file isn't in /public yet (404), falls back
 // to the plain text lockup so the nav never breaks or shows a missing-image icon.
-function BrandLogo({onClick,width=160}){
+function BrandLogo({onClick,width=160,dark=false}){
   const [failed,setFailed]=useState(false);
   if(failed) return(
     <div onClick={onClick} style={{cursor:onClick?"pointer":"default",userSelect:"none"}}>
@@ -8380,10 +8380,12 @@ function BrandLogo({onClick,width=160}){
   );
   // logo.png has a transparent background, so its wrapper just matches the
   // sidebar/header surface it sits on rather than a hardcoded color — it
-  // blends in light mode and dark mode alike.
+  // blends in light mode and dark mode alike. The navy wordmark is unreadable
+  // on a dark background though, so dark mode swaps in logo-dark.png — same
+  // artwork with the text recolored to white and the blue dot left alone.
   return(
     <div onClick={onClick} style={{display:"inline-block",cursor:onClick?"pointer":"default",userSelect:"none"}}>
-      <img src="/logo.png" alt="PointsVault" onError={()=>setFailed(true)}
+      <img src={dark?"/logo-dark.png":"/logo.png"} alt="PointsVault" onError={()=>setFailed(true)}
         style={{width,height:"auto",display:"block"}}/>
     </div>
   );
@@ -12264,7 +12266,7 @@ export default function App(){
       {/* ── Desktop Sidebar ── */}
       <aside style={{width:220,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
         <div style={{padding:"22px 20px 44px"}}>
-          <BrandLogo width={175} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
+          <BrandLogo width={175} dark={theme==="dark"} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
         </div>
 
         <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
@@ -12331,7 +12333,7 @@ export default function App(){
       {/* ── Mobile Header ── */}
       <div style={{display:"none"}} className="mobile-header">
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`,position:"sticky",top:0,zIndex:50}}>
-          <BrandLogo width={135} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
+          <BrandLogo width={135} dark={theme==="dark"} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
         </div>
 
         {/* Full-screen overlay menu */}
