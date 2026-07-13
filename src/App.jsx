@@ -8382,7 +8382,7 @@ function BrandLogo({onClick,width=160}){
   // sidebar/header surface it sits on rather than a hardcoded color — it
   // blends in light mode and dark mode alike.
   return(
-    <div onClick={onClick} style={{display:"inline-block",background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"8px 10px",cursor:onClick?"pointer":"default",userSelect:"none"}}>
+    <div onClick={onClick} style={{display:"inline-block",cursor:onClick?"pointer":"default",userSelect:"none"}}>
       <img src="/logo.png" alt="PointsVault" onError={()=>setFailed(true)}
         style={{width,height:"auto",display:"block"}}/>
     </div>
@@ -12263,8 +12263,8 @@ export default function App(){
 
       {/* ── Desktop Sidebar ── */}
       <aside style={{width:220,background:surf,borderRight:`1px solid ${bdr}`,display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto"}}>
-        <div style={{padding:"22px 20px 12px"}}>
-          <BrandLogo width={150} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
+        <div style={{padding:"22px 20px 44px"}}>
+          <BrandLogo width={175} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
         </div>
 
         <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
@@ -12331,7 +12331,7 @@ export default function App(){
       {/* ── Mobile Header ── */}
       <div style={{display:"none"}} className="mobile-header">
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px",background:surf,borderBottom:`1px solid ${bdr}`,position:"sticky",top:0,zIndex:50}}>
-          <BrandLogo width={120} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
+          <BrandLogo width={135} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
         </div>
 
         {/* Full-screen overlay menu */}
