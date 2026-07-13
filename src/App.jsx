@@ -48,7 +48,7 @@ const LIBRARY = {
   cards: [
     {
       lid:"cc_infinia", logo_url:"/logos/hdfc.png",
-      name:"HDFC Infinia Metal", bank:"HDFC Bank", network:"Visa",
+      name:"Infinia Metal", bank:"HDFC Bank", network:"Visa",
       points_currency:"Reward Points", inr_per_point:1.00, annual_fee:14750,
       auto_transfer_to:null,
       milestones:[
@@ -83,7 +83,7 @@ const LIBRARY = {
     },
     {
       lid:"cc_bizblack", logo_url:"/logos/hdfc.png",
-      name:"HDFC Biz Black Metal", bank:"HDFC Bank", network:"Diners Club",
+      name:"Biz Black Metal", bank:"HDFC Bank", network:"Diners Club",
       points_currency:"Reward Points", inr_per_point:1.00, annual_fee:11800,
       auto_transfer_to:null,
       milestones:[
@@ -97,7 +97,7 @@ const LIBRARY = {
     },
     {
       lid:"cc_marriotthdfc", logo_url:"/logos/marriott.png",
-      name:"HDFC Marriott Bonvoy", bank:"HDFC Bank", network:"Diners Club",
+      name:"Marriott Bonvoy", bank:"HDFC Bank", network:"Diners Club",
       points_currency:"Marriott Bonvoy Points", inr_per_point:0.50, annual_fee:3540,
       auto_transfer_to:"lp_marriott",
       auto_transfer_ratio_from:1, auto_transfer_ratio_to:1,
@@ -110,7 +110,7 @@ const LIBRARY = {
     },
     {
       lid:"cc_magnusburgundy", logo_url:"/logos/axis.png",
-      name:"Axis Magnus for Burgundy", bank:"Axis Bank", network:"Mastercard",
+      name:"Magnus for Burgundy", bank:"Axis Bank", network:"Mastercard",
       points_currency:"EDGE Reward Points", inr_per_point:1.00, annual_fee:35400,
       auto_transfer_to:null,
       milestones:[
@@ -142,7 +142,7 @@ const LIBRARY = {
     },
     {
       lid:"cc_atlas", logo_url:"/logos/axis.png",
-      name:"Axis Atlas", bank:"Axis Bank", network:"Visa",
+      name:"Atlas", bank:"Axis Bank", network:"Visa",
       points_currency:"EDGE Miles", inr_per_point:1.00, annual_fee:5900,
       auto_transfer_to:null,
       milestones:[
@@ -179,7 +179,7 @@ const LIBRARY = {
     },
     {
       lid:"cc_mrcc", logo_url:"/logos/amex.png",
-      name:"Amex Membership Rewards Credit Card", bank:"American Express", network:"Amex",
+      name:"Membership Rewards Credit Card", bank:"American Express", network:"Amex",
       points_currency:"Membership Rewards Points", inr_per_point:0.50, annual_fee:1770,
       auto_transfer_to:null,
       milestones:[
@@ -200,7 +200,7 @@ const LIBRARY = {
     },
     {
       lid:"cc_scapia", logo_url:"/logos/scapia.png",
-      name:"Scapia Federal Bank Credit Card", bank:"Federal Bank", network:"Visa",
+      name:"Scapia Credit Card", bank:"Federal Bank", network:"Visa",
       points_currency:"Scapia Coins", inr_per_point:0.20, annual_fee:0,
       auto_transfer_to:null,
       milestones:[
@@ -2933,7 +2933,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId,initialTab}){
       </div>}
       <Modal show={showCard} onClose={()=>{setShowCard(false);setEditItem(null);setLogoFile(null);setLogoPrev(null);}} title={editItem?"Edit Master Card":"Add Master Card"}>
         <LogoUpload current={logoPrev} onUpload={(f,p)=>{setLogoFile(f);setLogoPrev(p);}}/>
-        {lbl("Card Name *")}<input style={inp} placeholder="HDFC Infinia" value={fC.name} onChange={ucC("name")}/>
+        {lbl("Card Name *")}<input style={inp} placeholder="Infinia" value={fC.name} onChange={ucC("name")}/>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
           <div>{lbl("Bank")}<input style={inp} placeholder="HDFC" value={fC.bank} onChange={ucC("bank")}/></div>
           <div>{lbl("Network")}<select style={inp} value={fC.network} onChange={ucC("network")}>{nets.map(n=><option key={n}>{n}</option>)}</select></div>
@@ -10733,7 +10733,7 @@ function AddAccountModal({show,onClose,db,owners,onSaved,lockType,embedded}){
             <div style={{fontSize:11,fontWeight:600,color:acc,textTransform:"uppercase",letterSpacing:"0.07em"}}>New Card Type</div>
             <button style={gbtnXs} onClick={()=>setNewCardMode(false)}>Pick existing instead</button>
           </div>
-          {lbl("Card name")}<input style={inp} placeholder="HDFC Infinia Metal" value={newCardName} onChange={e=>setNewCardName(e.target.value)}/>
+          {lbl("Card name")}<input style={inp} placeholder="Infinia Metal" value={newCardName} onChange={e=>setNewCardName(e.target.value)}/>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
             <div>{lbl("Bank")}<input style={inp} placeholder="HDFC Bank" value={newCardBank} onChange={e=>setNewCardBank(e.target.value)}/></div>
             <div>{lbl("Network")}<input style={inp} placeholder="Visa, Diners…" value={newCardNetwork} onChange={e=>setNewCardNetwork(e.target.value)}/></div>
