@@ -11314,7 +11314,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   const [prevStmt,setPrevStmt]=useState(null);
   const [sameAcctStmtsList,setSameAcctStmtsList]=useState([]);
   const [acctStagedMap,setAcctStagedMap]=useState({});
-  const [colW,setColW]=useState([36,80,140,110,110,90,90,80]); // check,date,desc,source,tag,amount,balance,actions
+  const [colW,setColW]=useState([36,80,180,110,90,90,80]); // check,date,desc,tag,amount,balance,actions
   const setColWAt=(i,w)=>setColW(prev=>{const n=[...prev];n[i]=w;return n;});
 
   const isCC=account.subtype==="credit_card";
@@ -11483,7 +11483,10 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   };
 
   const deleteRow=async(s)=>{
-    if(!confirm("Delete this transaction?"+(s.resulting_transaction_id?" Its ledger entry (if any) will be removed too.":"")+" This cannot be undone.")) return;
+    const msg=s.resulting_transaction_id
+      ?`This transaction is tagged to ${describeTag(s)||"another ledger/account"}. Deleting it will also delete that entry. This cannot be undone. Are you sure you want to continue?`
+      :"Delete this transaction? This cannot be undone.";
+    if(!confirm(msg)) return;
     // staged_transactions.resulting_transaction_id references transactions — delete
     // the staged row first, or the transaction delete is blocked by that FK
     // (fk_resulting_txn) while this row still points at it.
@@ -11640,17 +11643,16 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
             {staged.length===0?<Empty icon="🧾" msg="No transactions in this statement"/>:(
               <div style={{overflowX:"auto",border:`1px solid ${bdr}`,borderRadius:10,background:surf}}>
                 <table style={{borderCollapse:"collapse",fontSize:12,width:"100%",tableLayout:"fixed"}}>
-                  <colgroup>{colW.map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
+                  <colgroup>{(isCC?colW.filter((_,i)=>i!==5):colW).map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
                   <thead>
                     <tr style={{background:surf3,borderBottom:`1px solid ${bdr}`}}>
                       <th style={{padding:"6px 8px",position:"relative"}}><input type="checkbox" checked={untaggedCount>0&&selected.size===untaggedCount} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
                       {sortHdr("date","Date",null,1)}
                       {sortHdr("desc","Description",null,2)}
-                      <th style={{padding:"6px 8px",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,whiteSpace:"nowrap",position:"relative"}}>Source<ColResizeHandle width={colW[3]} onResize={w=>setColWAt(3,w)}/></th>
-                      {sortHdr("status","Tag",null,4)}
-                      {sortHdr("amount","Amount","right",5)}
-                      <th style={{padding:"6px 8px",textAlign:"right",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,whiteSpace:"nowrap",position:"relative"}}>Balance<ColResizeHandle width={colW[6]} onResize={w=>setColWAt(6,w)}/></th>
-                      <th style={{padding:"6px 8px",position:"relative"}}><ColResizeHandle width={colW[7]} onResize={w=>setColWAt(7,w)}/></th>
+                      {sortHdr("status","Tag",null,3)}
+                      {sortHdr("amount","Amount","right",4)}
+                      {!isCC&&<th style={{padding:"6px 8px",textAlign:"right",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:mut,whiteSpace:"nowrap",position:"relative"}}>Balance<ColResizeHandle width={colW[5]} onResize={w=>setColWAt(5,w)}/></th>}
+                      <th style={{padding:"6px 8px",position:"relative"}}><ColResizeHandle width={colW[6]} onResize={w=>setColWAt(6,w)}/></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -11662,7 +11664,6 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                         <td style={{padding:"8px"}}>{!s.is_reconciled&&<input type="checkbox" checked={selected.has(s.id)} onChange={()=>toggleSelect(s.id)}/>}</td>
                         <td style={{padding:"8px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:mut}}>{fmtDate(s.txn_date)}</td>
                         <td title={s.raw_description} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:txt,fontWeight:500}}>{s.raw_description}</td>
-                        <td style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:mut,fontSize:11}}>{txn?(isManual?"Manual Transaction":"Imported Transaction"):"—"}</td>
                         <td title={describeTag(s)||""} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {s.is_reconciled?(
                             <span style={{display:"flex",alignItems:"center",gap:6}}>
@@ -11683,13 +11684,13 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                         <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",color:Number(s.amount)>0?grn:red,whiteSpace:"nowrap"}}>
                           {Number(s.amount)>0?"+":"-"}₹{Math.abs(Number(s.amount)).toLocaleString("en-IN")}
                         </td>
-                        <td className="pv-num" style={{padding:"8px",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",color:mut,whiteSpace:"nowrap"}}>
+                        {!isCC&&<td className="pv-num" style={{padding:"8px",textAlign:"right",overflow:"hidden",textOverflow:"ellipsis",color:mut,whiteSpace:"nowrap"}}>
                           ₹{balanceById[s.id].toLocaleString("en-IN")}
-                        </td>
+                        </td>}
                         <td style={{padding:"8px",textAlign:"right",whiteSpace:"nowrap",overflow:"hidden"}}>
                           <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
                             {isManual&&<IconBtn title="Edit Transaction" onClick={()=>setEditingTxn({txn,stagedId:s.id})}><EditIcon size={12}/></IconBtn>}
-                            {(!s.resulting_transaction_id||isManual)&&<IconBtn title="Delete" tone="danger" onClick={()=>deleteRow(s)}><DeleteIcon size={12}/></IconBtn>}
+                            <IconBtn title="Delete" tone="danger" onClick={()=>deleteRow(s)}><DeleteIcon size={12}/></IconBtn>
                           </div>
                         </td>
                       </tr>
@@ -11699,7 +11700,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                         but don't pad all the way to PAGE_SIZE, which just looks broken/empty. */}
                     {Array.from({length:Math.max(0,MIN_TABLE_ROWS-sorted.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).length)}).map((_,i)=>(
                       <tr key={"filler-"+i} style={{borderBottom:`1px solid ${bdr}`}}>
-                        <td colSpan={8} style={{padding:"8px"}}>&nbsp;</td>
+                        <td colSpan={isCC?6:7} style={{padding:"8px"}}>&nbsp;</td>
                       </tr>
                     ))}
                   </tbody>
