@@ -11608,7 +11608,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                 <div style={{color:mut,fontSize:18,paddingBottom:2}}>=</div>
                 <div style={{borderLeft:`1px solid ${bdr}`,paddingLeft:14}}>
                   <div style={{fontSize:10,color:mut,marginBottom:5,whiteSpace:"nowrap"}}>Closing Balance</div>
-                  <div className="pv-num" style={{fontSize:18,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{bankClosingBalance.toLocaleString("en-IN")}</div>
+                  <div className="pv-num" style={{fontSize:18,fontWeight:700,color:bankClosingBalance<0?red:txt,whiteSpace:"nowrap"}}>₹{bankClosingBalance.toLocaleString("en-IN")}</div>
                   <div className="pv-num" style={{fontSize:10,color:parsedClosing!=null&&Math.abs(parsedClosing-bankClosingBalance)>1?amber:mut,marginTop:3,whiteSpace:"nowrap",visibility:parsedClosing!=null?"visible":"hidden"}}>
                     {parsedClosing!=null?`Bank's figure: ₹${parsedClosing.toLocaleString("en-IN")}`:" "}
                   </div>
@@ -11832,14 +11832,19 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
   ].filter(Boolean);
 
   const stats=[
-    !isCC&&{label:account.type==="liability"?"Owed":"Balance",value:"₹"+Math.abs(balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),color:account.type==="liability"?red:txt,
-      sub:balanceBankFigure!=null?"Bank's figure: ₹"+Math.abs(balanceBankFigure).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}):null,
+    !isCC&&{label:account.type==="liability"?"Owed":"Closing Balance",
+      value:(account.type!=="liability"&&balance<0?"-":"")+"₹"+Math.abs(balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),
+      color:(account.type==="liability"||balance<0)?red:txt,
+      sub:(lastStmt?.period_end||balanceBankFigure!=null)?(<>
+        {lastStmt?.period_end&&<>As on {fmtDate(lastStmt.period_end)}</>}
+        {balanceBankFigure!=null&&<><br/>{"Bank's figure: ₹"+Math.abs(balanceBankFigure).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</>}
+      </>):null,
       subColor:balanceBankFigure!=null&&Math.abs(balanceBankFigure-balance)>1?amber:mut},
     isCC&&lastStmt&&{label:"Total Due",value:"₹"+Number(lastStmt.total_due||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
     isCC&&lastStmt&&lastStmt.due_date&&{label:"Due Date",value:fmtDate(lastStmt.due_date)},
     isCC&&{label:"Cal. YTD",value:"₹"+ytd.cal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
     isCC&&{label:"FY to Date",value:"₹"+ytd.fy.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
-    {label:"Statements",value:statements.length,plain:true},
+    isCC&&{label:"Statements",value:statements.length,plain:true},
   ].filter(Boolean);
 
   const toggleStmt=id=>setExpandedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
