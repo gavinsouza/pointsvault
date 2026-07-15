@@ -9643,11 +9643,11 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
   const [savedMappings,setSavedMappings]=useState([]);
   const [acctId,setAcctId]=useState("");
   const [mapping,setMapping]=useState({skip_rows:1,date_col:0,desc_col:1,ref_col:-1,amount_type:"split",debit_col:2,credit_col:3,amount_col:2,credit_ind_col:-1,balance_col:-1,date_format:"DD/MM/YYYY",delimiter:"auto"});
-  const [headerMap,setHeaderMap]=useState({total_due_row:-1,total_due_col:-1,min_due_row:-1,min_due_col:-1});
+  const [headerMap,setHeaderMap]=useState({total_due_row:-1,total_due_col:-1});
   const [file,setFile]=useState(null);
   const [rawRows,setRawRows]=useState(null);
   const [parsed,setParsed]=useState(null);
-  const [stmtFields,setStmtFields]=useState({totalDue:"",minDue:"",dueDate:""});
+  const [stmtFields,setStmtFields]=useState({totalDue:"",dueDate:""});
   const [busy,setBusy]=useState(false);
   const [err,setErr]=useState("");
   const [detected,setDetected]=useState(null); // {name} | null
@@ -9687,7 +9687,7 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
     return `${dueY}-${String(dueM).padStart(2,"0")}-${String(linkedCard.due_date_day).padStart(2,"0")}`;
   };
 
-  const reset=()=>{setFile(null);setRawRows(null);setParsed(null);setStmtFields({totalDue:"",minDue:"",dueDate:""});setErr("");setDetected(null);setDetectFailed(false);setMappingExpanded(false);setActivePresetName("");setStmtMonth("");setStmtName("");};
+  const reset=()=>{setFile(null);setRawRows(null);setParsed(null);setStmtFields({totalDue:"",dueDate:""});setErr("");setDetected(null);setDetectFailed(false);setMappingExpanded(false);setActivePresetName("");setStmtMonth("");setStmtName("");};
 
   const presetToMapping=p=>({skip_rows:p.skip_rows??1,date_col:p.date_col??0,desc_col:p.desc_col??1,ref_col:p.ref_col??-1,
     amount_type:p.amount_type||"split",debit_col:p.debit_col??2,credit_col:p.credit_col??3,
@@ -9762,7 +9762,6 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
       if(isCreditCard){
         setStmtFields({
           totalDue:cellAt(rows,headerMap.total_due_row,headerMap.total_due_col),
-          minDue:cellAt(rows,headerMap.min_due_row,headerMap.min_due_col),
           dueDate:computeDueDate()||"",
         });
       }
@@ -9805,7 +9804,6 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
         label:stmtName.trim()||null,
         due_date:isCreditCard?(stmtFields.dueDate||null):null,
         total_due:isCreditCard?(parseFloat(stmtFields.totalDue)||0):null,
-        minimum_due:isCreditCard?(parseFloat(stmtFields.minDue)||0):null,
         closing_balance:parsed.closing_balance||0,
         parsed_debits:parsed.total_debits??null,
         parsed_credits:parsed.total_credits??null,
@@ -9991,13 +9989,9 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
 
             {isCreditCard&&(<>
               <div style={{fontSize:11,fontWeight:600,color:acc,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:10}}>Statement summary cell locations (optional — leave as -1 to skip; auto-fetched from these cells)</div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
                 <div>{lbl("Total due — row")}<input type="number" style={inp} value={headerMap.total_due_row} onChange={e=>setHeaderMap(m=>({...m,total_due_row:parseInt(e.target.value)}))}/></div>
                 <div>{lbl("Total due — column")}<input type="number" style={inp} value={headerMap.total_due_col} onChange={e=>setHeaderMap(m=>({...m,total_due_col:parseInt(e.target.value)}))}/></div>
-              </div>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-                <div>{lbl("Minimum due — row")}<input type="number" style={inp} value={headerMap.min_due_row} onChange={e=>setHeaderMap(m=>({...m,min_due_row:parseInt(e.target.value)}))}/></div>
-                <div>{lbl("Minimum due — column")}<input type="number" style={inp} value={headerMap.min_due_col} onChange={e=>setHeaderMap(m=>({...m,min_due_col:parseInt(e.target.value)}))}/></div>
               </div>
               {!linkedCard?.due_date_day&&(
                 <div style={{fontSize:11,color:amber,marginBottom:12}}>This card has no due date set — add one by editing the card, or the due date will be left blank.</div>
@@ -10020,14 +10014,10 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
             {parsed.total_credits?<span> · Credits ₹{parsed.total_credits.toLocaleString("en-IN")}</span>:null}
           </div>
           {isCreditCard&&(
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
               <div>
                 <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6}}>Total Due</div>
                 <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt}}>{stmtFields.totalDue?"₹"+Number(stmtFields.totalDue).toLocaleString("en-IN"):"—"}</div>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6}}>Minimum Due</div>
-                <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt}}>{stmtFields.minDue?"₹"+Number(stmtFields.minDue).toLocaleString("en-IN"):"—"}</div>
               </div>
               <div>
                 <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6}}>Due Date</div>
@@ -11238,7 +11228,6 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
   const [stmtName,setStmtName]=useState("");
   const [dueDate,setDueDate]=useState("");
   const [totalDue,setTotalDue]=useState("");
-  const [minDue,setMinDue]=useState("");
   const [closingBalance,setClosingBalance]=useState("");
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState("");
@@ -11249,7 +11238,6 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
     setStmtName(statement.label||"");
     setDueDate(statement.due_date?statement.due_date.slice(0,10):"");
     setTotalDue(statement.total_due!=null?String(statement.total_due):"");
-    setMinDue(statement.minimum_due!=null?String(statement.minimum_due):"");
     setClosingBalance(statement.closing_balance!=null?String(statement.closing_balance):"");
     setErr("");
   },[show,statement]);
@@ -11268,11 +11256,7 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
         ...common,
         due_date:dueDate||null,
         total_due:totalDue!==""?parseFloat(totalDue):null,
-        minimum_due:minDue!==""?parseFloat(minDue):null,
-      }:{
-        ...common,
-        closing_balance:closingBalance!==""?parseFloat(closingBalance):null,
-      };
+      }:common;
       const {error}=await db.from("account_statements").update(statement.id,patch);
       if(error){
         if(error.code==="42703"||error.code==="PGRST204") throw new Error("Your database is missing the \"label\" column. Run in Supabase SQL: ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS label text;");
@@ -11289,18 +11273,16 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
       <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"end",marginBottom:4}}>
         <div>{lbl("Statement month")}<input style={{...inp,marginBottom:0}} type="month" value={stmtMonth} onChange={e=>setStmtMonth(e.target.value)}/></div>
         <div style={{fontSize:11,color:mut,paddingBottom:11}}>or</div>
-        <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. Dubai Trip" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
+        <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. June 2026" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
       </div>
       <div style={{fontSize:11,color:mut,marginBottom:16}}>Enter one of the two — whichever fits this statement.</div>
       {isCC?(<>
         {lbl("Due date")}<input style={inp} type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)}/>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-          <div>{lbl("Total due (₹)")}<input style={inp} type="number" value={totalDue} onChange={e=>setTotalDue(e.target.value)}/></div>
-          <div>{lbl("Minimum due (₹, optional)")}<input style={inp} type="number" value={minDue} onChange={e=>setMinDue(e.target.value)}/></div>
-        </div>
-      </>):(
-        <>{lbl("Closing balance (₹)")}<input style={inp} type="number" value={closingBalance} onChange={e=>setClosingBalance(e.target.value)}/></>
-      )}
+        {lbl("Total due (₹)")}<input style={inp} type="number" value={totalDue} onChange={e=>setTotalDue(e.target.value)}/>
+      </>):(<>
+        {lbl("Closing balance (₹)")}
+        <input style={{...inp,opacity:0.6,cursor:"not-allowed"}} type="number" value={closingBalance} disabled title="Parsed from the uploaded statement — not editable here"/>
+      </>)}
       {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
       <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.5:1}} disabled={saving} onClick={save}>{saving?"Saving…":"Save Changes"}</button>
     </Modal>
@@ -11633,15 +11615,6 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
               )}
             </div>
 
-            {isCC&&statement.minimum_due>0&&(
-              <div className="stat-grid-4" style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:16}}>
-                <div style={{background:surf,borderRadius:10,padding:"10px 14px",border:`1px solid ${bdr}`}}>
-                  <div style={{fontSize:9,color:mut,textTransform:"uppercase",letterSpacing:"0.08em",fontWeight:600,marginBottom:6}}>Minimum Due</div>
-                  <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt}}>₹{Number(statement.minimum_due).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
-                </div>
-              </div>
-            )}
-
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
               <div style={{fontSize:12,fontWeight:600,color:txt}}>Transactions ({staged.length}){untaggedCount>0&&<span style={{color:amber,fontWeight:500}}> · {untaggedCount} untagged</span>}</div>
               <input style={{...inp,marginBottom:0,width:200}} placeholder="Search date, description, amount…" value={search} onChange={e=>{setSearch(e.target.value);setPage(0);}}/>
@@ -11862,7 +11835,6 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
       sub:balanceBankFigure!=null?"Bank's figure: ₹"+Math.abs(balanceBankFigure).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}):null,
       subColor:balanceBankFigure!=null&&Math.abs(balanceBankFigure-balance)>1?amber:mut},
     isCC&&lastStmt&&{label:"Total Due",value:"₹"+Number(lastStmt.total_due||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
-    isCC&&lastStmt&&lastStmt.minimum_due>0&&{label:"Minimum Due",value:"₹"+Number(lastStmt.minimum_due).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
     isCC&&lastStmt&&lastStmt.due_date&&{label:"Due Date",value:fmtDate(lastStmt.due_date)},
     isCC&&{label:"Cal. YTD",value:"₹"+ytd.cal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
     isCC&&{label:"FY to Date",value:"₹"+ytd.fy.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
