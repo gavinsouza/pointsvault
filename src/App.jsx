@@ -9142,6 +9142,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   const [entities,setEntities]=useState([]);
   const [people,setPeople]=useState([]);
   const [spendCategories,setSpendCategories]=useState([]);
+  const [owners,setOwners]=useState([]);
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState("");
   const [splitRows,setSplitRows]=useState([{type:"expense",selId:"",newName:"",amount:""}]);
@@ -9150,7 +9151,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   useEffect(()=>{
     if(!show) return;
     (async()=>{
-      const [a,e,c,p,mr]=await Promise.all([db.from("accounts").select(),db.from("entities").select(),db.from("spend_categories").select(),db.from("people").select(),db.from("merchant_rules").select()]);
+      const [a,e,c,p,mr,o]=await Promise.all([db.from("accounts").select(),db.from("entities").select(),db.from("spend_categories").select(),db.from("people").select(),db.from("merchant_rules").select(),db.from("owners").select()]);
       const accts=a.data||[];
       const ents=e.data||[];
       setAccounts(accts);
@@ -9158,6 +9159,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
       setSpendCategories((c.data||[]).map(x=>x.name));
       setPeople((p.data||[]).map(x=>x.name));
       setRules(mr.data||[]);
+      setOwners(o.data||[]);
 
       if(prefill){
         setAmount(String(Math.abs(Number(prefill.amount||0))));
@@ -9222,6 +9224,10 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   const needsDest=direction==="transfer";
 
   const sourceAccts=accounts.filter(a=>(a.type==="asset"||a.type==="liability")&&!a.entity_id);
+  // "Account Name" alone is ambiguous once two owners have similarly-named accounts
+  // (e.g. both have a "CIH" cash account, or both hold an "Atlas" card) — always
+  // show the owner alongside the account name in this picker.
+  const acctLabel=a=>{const on=owners.find(o=>o.id===a.owner_id)?.name;return on?`${a.name} - ${on}`:a.name;};
   const categoryAccts=accounts.filter(a=>a.type===(direction==="in"?"income":"expense"));
   const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(direction==="out"?spendCategories:[])])].sort();
   const entityNames=[...new Set([...entities.map(e=>e.name),...people])].sort();
@@ -9370,11 +9376,11 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
 
       {lbl(direction==="transfer"?"From account":"Account")}
       {prefill?(
-        <div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>{sourceAccts.find(a=>a.id===sourceAcctId)?.name||"—"}</div>
+        <div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>{(()=>{const a=sourceAccts.find(a=>a.id===sourceAcctId);return a?acctLabel(a):"—";})()}</div>
       ):(
         <select style={inp} value={sourceAcctId} onChange={e=>setSourceAcctId(e.target.value)}>
           <option value="">Select…</option>
-          {sourceAccts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+          {sourceAccts.map(a=><option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
         </select>
       )}
 
@@ -9382,7 +9388,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         {lbl("To account")}
         <select style={inp} value={destAcctId} onChange={e=>setDestAcctId(e.target.value)}>
           <option value="">Select…</option>
-          {sourceAccts.filter(a=>a.id!==sourceAcctId).map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+          {sourceAccts.filter(a=>a.id!==sourceAcctId).map(a=><option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
         </select>
       </>)}
 
