@@ -348,8 +348,11 @@ function createClient(url, key) {
 }
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
-const SUPA_URL="https://gmrpweqrclfiaxnzqvtn.supabase.co";
-const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
+// Reads from Vite env vars first (VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY — set per
+// environment in Vercel, or in a local .env.local, never committed), falling back to
+// the real production project so behavior is unchanged wherever those vars aren't set.
+const SUPA_URL=import.meta.env.VITE_SUPABASE_URL||"https://gmrpweqrclfiaxnzqvtn.supabase.co";
+const SUPA_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY||"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
 function getRawSession(){try{const r=localStorage.getItem("pv_session");return r?JSON.parse(r):null;}catch(_){return null;}}
 function getStoredSession(){try{const s=getRawSession();if(!s)return null;if(s.expires_at&&Date.now()/1000>s.expires_at-60)return null;return s;}catch(_){return null;}}
 function storeSession(s){localStorage.setItem("pv_session",JSON.stringify(s));}
