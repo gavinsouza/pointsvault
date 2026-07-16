@@ -377,7 +377,23 @@ function createAuthedClient(token,onAuthError){
   const authH=()=>({apikey:SUPA_KEY,Authorization:`Bearer ${getRawSession()?.access_token||token}`,"Content-Type":"application/json",Prefer:"return=representation"});
   const base=`${SUPA_URL}/rest/v1`;
   const req=async(path,opts={})=>{try{const r=await fetch(`${base}${path}`,{...opts,headers:authH()});if(r.status===401&&onAuthError)onAuthError();let d=null;try{d=await r.json();}catch(_){}return{data:Array.isArray(d)?d:d?[d]:[],error:r.ok?null:d};}catch(e){return{data:[],error:{message:e.message}};}};
-  const storage=createClient(SUPA_URL,SUPA_KEY).storage;
+  // Storage must authenticate as the signed-in user (not the public anon key) so that
+  // bucket policies can require role=authenticated instead of leaving uploads open to anon.
+  const storage={
+    upload: async (bucket, path, file) => {
+      const h={apikey:SUPA_KEY,Authorization:`Bearer ${getRawSession()?.access_token||token}`,"Content-Type":file.type,"x-upsert":"true"};
+      try {
+        const r = await fetch(`${SUPA_URL}/storage/v1/object/${bucket}/${path}`, {method:"POST", body:file, headers:h});
+        const txt = await r.text();
+        let d={}; try{d=JSON.parse(txt);}catch(_){}
+        if(r.ok) return {data:d,error:null};
+        const r2 = await fetch(`${SUPA_URL}/storage/v1/object/${bucket}/${path}`, {method:"PUT", body:file, headers:h});
+        const txt2=await r2.text(); let d2={}; try{d2=JSON.parse(txt2);}catch(_){}
+        return r2.ok?{data:d2,error:null}:{data:null,error:{message:`${r2.status}: ${txt2}`}};
+      } catch(e) { return {data:null,error:{message:e.message}}; }
+    },
+    getPublicUrl: (bucket,path) => `${SUPA_URL}/storage/v1/object/public/${bucket}/${path}`,
+  };
   const rpc=async(fn,params={})=>{
     try{
       const r=await fetch(`${SUPA_URL}/rest/v1/rpc/${fn}`,{method:"POST",headers:authH(),body:JSON.stringify(params)});
