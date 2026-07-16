@@ -301,6 +301,7 @@ function createClient(url, key) {
       insert: row => req(`/${t}`, {method:"POST", body:JSON.stringify(row)}),
       update: (id,row) => req(`/${t}?id=eq.${id}`, {method:"PATCH", body:JSON.stringify(row)}),
       delete: id => req(`/${t}?id=eq.${id}`, {method:"DELETE"}),
+      deleteWhere: (col,val) => req(`/${t}?${col}=eq.${encodeURIComponent(val)}`, {method:"DELETE"}),
       filter: (col,val) => req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`),
     }),
     storage: {
@@ -828,14 +829,14 @@ function Hdr({title,sub,action}){
 
 // ── CC Mapping Library ────────────────────────────────────────────────────────
 const MAPPING_LIBRARY=[
-  {lid:"ml_hdfc_csv",name:"HDFC INFINIA / BIZ BLACK",bank:"HDFC Bank",
+  {lid:"ml_hdfc_csv",name:"HDFC - CC - CSV",bank:"HDFC Bank",
    description:"HDFC Infinia / Biz Black credit card statement (pipe-delimited CSV)",
    delimiter:"|",skip_rows:21,date_col:2,desc_col:3,amount_type:"single",
    amount_col:4,debit_col:-1,credit_col:-1,date_format:"DD/MM/YYYY",
    credit_ind_col:5,total_due_row:6,total_due_col:2,opening_bal_row:13,opening_bal_col:1},
-  {lid:"ml_axis_xlsx",name:"Axis Bank XLSX",bank:"Axis Bank",
+  {lid:"ml_axis_xlsx",name:"Axis - CC - XLSX",bank:"Axis Bank",
    description:"Axis Bank credit card statement (Excel XLSX format)",
-   delimiter:"auto",skip_rows:6,date_col:0,desc_col:1,amount_type:"single",
+   delimiter:"auto",skip_rows:7,date_col:0,desc_col:1,amount_type:"single",
    amount_col:3,debit_col:-1,credit_col:-1,date_format:"DD MMM 'YY",
    credit_ind_col:4,total_due_row:3,total_due_col:1,opening_bal_row:4,opening_bal_col:5},
   // American Express exports "Transaction Details" as the first sheet (which is all
@@ -847,7 +848,7 @@ const MAPPING_LIBRARY=[
   // that header data. Amount column has no separate Cr/Dr indicator — sign is on the
   // value itself (positive = charge, negative = payment/credit), which credit_ind_col:-1
   // now handles directly (see parseBankStatementGeneric).
-  {lid:"ml_amex_xlsx",name:"American Express (XLSX)",bank:"American Express",
+  {lid:"ml_amex_xlsx",name:"Amex - CC - XLSX",bank:"American Express",
    description:"American Express credit card statement (Excel 'Transaction Details' export)",
    delimiter:"auto",skip_rows:7,date_col:0,desc_col:1,amount_type:"single",
    amount_col:2,debit_col:-1,credit_col:-1,date_format:"MM/DD/YYYY",
@@ -903,11 +904,11 @@ const OTHER_TYPES=[
 // The Axis preset matches parseAxisStatement's settings as a starting point —
 // it's the one reported not to work, so treat it as a template to tweak, not a guarantee.
 const BANK_MAPPING_LIBRARY=[
-  {lid:"ml_bank_hdfc_xls",name:"HDFC Bank XLS",bank:"HDFC Bank",
+  {lid:"ml_bank_hdfc_xls",name:"HDFC - Bank - XLS",bank:"HDFC Bank",
    description:"HDFC Bank savings/current account statement (Excel XLS format)",
    skip_rows:22,date_col:0,desc_col:1,ref_col:2,amount_type:"split",
    debit_col:4,credit_col:5,balance_col:6,date_format:"DD/MM/YYYY"},
-  {lid:"ml_bank_axis_xls",name:"Axis Bank XLS (starting point)",bank:"Axis Bank",
+  {lid:"ml_bank_axis_xls",name:"Axis - Bank - XLS",bank:"Axis Bank",
    description:"Axis Bank account statement — matches the current built-in parser's settings; adjust as needed for your export",
    skip_rows:18,date_col:1,desc_col:3,ref_col:2,amount_type:"split",
    debit_col:4,credit_col:5,balance_col:6,date_format:"DD-MM-YYYY"},
@@ -935,6 +936,34 @@ function acctSubtitle(a,{ownerName,bankName,network,lenderName,cardType}){
   else if(a?.subtype==="bank"){ if(bankName) parts.push(bankName); }
   else if(a?.subtype==="loan"){ if(lenderName) parts.push(lenderName); }
   return parts.filter(Boolean).join(" · ");
+}
+
+// Single source of truth for "what is this account's balance right now" — used by
+// every page that lists accounts (Overview, Accounts, and the account's own detail
+// page), so they can't drift out of sync with each other the way they used to:
+// CC uses the latest statement's Amount Due (negative — it's owed); bank/cash walks
+// the account's own opening_balance forward through every statement's staged
+// transactions in chronological order (never trusts a possibly-stale/never-set
+// closing_balance column, and ignores anything not linked to a real staged row, so
+// orphaned transaction_lines can't contaminate the figure).
+function computeAccountBalance(account,allStatements,allStaged){
+  const acctStmts=allStatements.filter(s=>s.account_id===account.id);
+  if(account.subtype==="credit_card"){
+    const sorted=[...acctStmts].sort((a,b)=>new Date(b.period_end)-new Date(a.period_end));
+    return -(Number(sorted[0]?.total_due)||0);
+  }
+  const chrono=[...acctStmts].sort((a,b)=>new Date(a.period_start)-new Date(b.period_start));
+  const stagedForAcct=allStaged.filter(x=>x.source_account_id===account.id);
+  const stmtStagedMap={};
+  stagedForAcct.forEach(x=>{(stmtStagedMap[x.statement_id]=stmtStagedMap[x.statement_id]||[]).push(x);});
+  let running=Number(account.opening_balance)||0;
+  for(const stmt of chrono){
+    const rows=stmtStagedMap[stmt.id]||[];
+    const d=rows.filter(r=>Number(r.amount)<0).reduce((a,r)=>a+Math.abs(Number(r.amount)),0);
+    const c=rows.filter(r=>Number(r.amount)>0).reduce((a,r)=>a+Number(r.amount),0);
+    running=running-d+c;
+  }
+  return running;
 }
 
 function LogoCircle({url,name,size=56}){
@@ -1482,8 +1511,8 @@ function Overview({db,owners,onNavigate}){
                 {transfers.slice(0,5).map(t=>(
                   <tr key={t.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"9px 10px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(t.date,"noYear")}</td>
-                    <td style={{padding:"9px 10px",color:txt,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}} title={t.fromName}>{t.fromName}</td>
-                    <td style={{padding:"9px 10px",color:txt,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}} title={t.toName}>{t.toName}</td>
+                    <td style={{padding:"9px 10px",color:txt,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}} title={t.fromName}>{t.fromId?<span onClick={e=>{e.stopPropagation();onNavigate(t.fromType==="card"?"my-cards":"my-programs",t.fromId);}} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{t.fromName}</span>:t.fromName}</td>
+                    <td style={{padding:"9px 10px",color:txt,fontWeight:500,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:160}} title={t.toName}>{t.toId?<span onClick={e=>{e.stopPropagation();onNavigate(t.toType==="card"?"my-cards":"my-programs",t.toId);}} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{t.toName}</span>:t.toName}</td>
                     <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:red}}>{t.sent.toLocaleString()}</td>
                     <td style={{padding:"9px 10px",textAlign:"right",fontWeight:600,color:grn}}>{t.received.toLocaleString()}</td>
                   </tr>
@@ -3030,7 +3059,7 @@ function Catalog({db,ownersData=[],reloadOwners,userId,initialTab}){
 }
 
 // MyCards
-function MyCards({db,owners,onNavigate}){
+function MyCards({db,owners,onNavigate,initialSelectId}){
   const [cards,setCards]=useState([]);
   const [viewMode,setViewMode]=useState(()=>localStorage.getItem("pv_mycards_view")||"grid");
   const [mCards,setMCards]=useState([]);
@@ -3040,6 +3069,7 @@ function MyCards({db,owners,onNavigate}){
   const [detail,setDetail]=useState(null);
   const [search,setSearch]=useState("");
   const [ownerF,setOwnerF]=useState("all");
+  const [autoSelected,setAutoSelected]=useState(false);
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -3049,6 +3079,14 @@ function MyCards({db,owners,onNavigate}){
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
+
+  // Preset target (from Redemptions/Transfer History) resolves once the list is in.
+  useEffect(()=>{
+    if(initialSelectId&&!autoSelected&&cards.length>0){
+      const match=cards.find(c=>c.id===initialSelectId);
+      if(match){setDetail(match);setAutoSelected(true);}
+    }
+  },[initialSelectId,cards,autoSelected]);
 
   if(detail){
     const master=mCards.find(m=>m.id===detail.master_id);
@@ -4413,8 +4451,8 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
     const isManual=t.source==="manual";
     return(
       <div style={{display:"flex",gap:6,justifyContent:isMobile?"flex-start":"flex-end",alignItems:"center"}}>
-        {isManual&&<IconBtn title="Edit" onClick={()=>isTransferKind?onEditTransfer(t):onEdit(t)}><EditIcon/></IconBtn>}
-        {isManual&&<IconBtn title="Delete" tone="danger" onClick={()=>onDelete(t)}><DeleteIcon/></IconBtn>}
+        {isManual&&<IconBtn title="Edit" onClick={()=>isTransferKind?onEditTransfer(t):onEdit(t)}><EditIcon size={12}/></IconBtn>}
+        {isManual&&<IconBtn title="Delete" tone="danger" onClick={()=>onDelete(t)}><DeleteIcon size={12}/></IconBtn>}
         <NotesButton t={t}/>
       </div>
     );
@@ -4425,7 +4463,7 @@ function PointsHistoryTable({db,disp,isMobile,entity,eligibleTransferPrograms,on
     return(
       <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <span style={{fontSize:12,color:tag.amber?amber:(tag.color||txt),fontWeight:tag.amber?600:500}}>{tag.text}</span>
-        {showTagBtn&&<button style={{...gbtnXs,display:"inline-flex",alignItems:"center",gap:5}} onClick={()=>onTag(t)}><TagIcon size={11}/>{tag.amber?"Tag":"Edit Tag"}</button>}
+        {showTagBtn&&<button title={tag.amber?"Tag":"Edit Tag"} onClick={()=>onTag(t)} style={{display:"inline-flex",alignItems:"center",gap:3,border:"none",background:"none",color:mut2,cursor:"pointer",padding:0,fontSize:11}}><TagIcon size={11}/>{tag.amber?"Tag":"Edit Tag"}</button>}
       </div>
     );
   };
@@ -4589,7 +4627,7 @@ function ImportsList({db,txns,onReload}){
                 <div style={{fontSize:13,fontWeight:600,color:txt}} title={b.name||undefined}>{b.name}</div>
                 <div style={{fontSize:11,color:mut,marginTop:2}}>{b.count} transaction{b.count===1?"":"s"}</div>
               </div>
-              <IconBtn title="Delete this import" tone="danger" disabled={deleting===b.id} onClick={()=>deleteBatch(b)}><DeleteIcon/></IconBtn>
+              <IconBtn title="Delete this import" tone="danger" disabled={deleting===b.id} onClick={()=>deleteBatch(b)}><DeleteIcon size={12}/></IconBtn>
             </div>
           ))}
         </div>
@@ -4924,7 +4962,7 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
 }
 
 // MyPrograms
-function MyPrograms({db,owners,onNavigate}){
+function MyPrograms({db,owners,onNavigate,initialSelectId}){
   const [progs,setProgs]=useState([]);
   const [viewMode,setViewMode]=useState(()=>localStorage.getItem("pv_myprogs_view")||"grid");
   const [mProgs,setMProgs]=useState([]);
@@ -4933,6 +4971,7 @@ function MyPrograms({db,owners,onNavigate}){
   const [detail,setDetail]=useState(null);
   const [search,setSearch]=useState("");
   const [ownerF,setOwnerF]=useState("all");
+  const [autoSelected,setAutoSelected]=useState(false);
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -4941,6 +4980,14 @@ function MyPrograms({db,owners,onNavigate}){
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
+
+  // Preset target (from Redemptions/Transfer History) resolves once the list is in.
+  useEffect(()=>{
+    if(initialSelectId&&!autoSelected&&progs.length>0){
+      const match=progs.find(p=>p.id===initialSelectId);
+      if(match){setDetail(match);setAutoSelected(true);}
+    }
+  },[initialSelectId,progs,autoSelected]);
 
   if(detail){
     const master=mProgs.find(m=>m.id===detail.master_id);
@@ -5575,6 +5622,8 @@ function computeTransferPairs(ptRows,mcRows,macRows,mpRows,mapRows){
       date:out?.txn_date||inn?.txn_date,
       fromName:out?nameFor(out.entity_type,out.entity_id):"—",
       toName:inn?nameFor(inn.entity_type,inn.entity_id):"—",
+      fromType:out?.entity_type||null,fromId:out?.entity_id||null,
+      toType:inn?.entity_type||null,toId:inn?.entity_id||null,
       sent:Math.abs(out?.points||0),
       received:inn?.points||0,
     };
@@ -5587,7 +5636,7 @@ function computeTransferPairs(ptRows,mcRows,macRows,mpRows,mapRows){
 // nothing that can ever fall out of sync with the real ledger. View-only: to
 // delete or edit a transfer, do it from the sending or receiving card/program
 // page, where the pair-aware delete/edit logic already lives.
-function TransferHistory({db,owners}){
+function TransferHistory({db,owners,onNavigate}){
   const isMobile=useIsMobile();
   const [pairs,setPairs]=useState([]);
   const [busy,setBusy]=useState(true);
@@ -5621,6 +5670,10 @@ function TransferHistory({db,owners}){
   const tSent=filtered.reduce((a,l)=>a+l.sent,0);
   const tRec=filtered.reduce((a,l)=>a+l.received,0);
 
+  const EntityLink=({type,id,name})=>id?(
+    <span onClick={e=>{e.stopPropagation();onNavigate&&onNavigate(type==="card"?"my-cards":"my-programs",id);}} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{name}</span>
+  ):name;
+
   return(
     <div>
       <Hdr title="Transfer History" sub="A record of all points moved between cards and programs"/>
@@ -5652,7 +5705,7 @@ function TransferHistory({db,owners}){
               {filtered.map(l=>(
                 <div key={l.id} style={{padding:"10px 14px",borderRadius:12,border:`1px solid ${bdr}`,background:surf}}>
                   <div style={{fontSize:11,color:mut,marginBottom:6}}>{fmtDate(l.date)}</div>
-                  <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:8}}>{l.fromName} → {l.toName}</div>
+                  <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:8}}><EntityLink type={l.fromType} id={l.fromId} name={l.fromName}/> → <EntityLink type={l.toType} id={l.toId} name={l.toName}/></div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>-{l.sent.toLocaleString()}</div>
                     <div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>+{l.received.toLocaleString()}</div>
@@ -5671,8 +5724,8 @@ function TransferHistory({db,owners}){
                 {filtered.map(l=>(
                   <tr key={l.id} style={{borderBottom:`1px solid ${bdr}`}}>
                     <td style={{padding:"10px 12px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(l.date)}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}} title={l.fromName}>{l.fromName}</td>
-                    <td style={{padding:"10px 12px",fontWeight:500,color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}} title={l.toName}>{l.toName}</td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}} title={l.fromName}><EntityLink type={l.fromType} id={l.fromId} name={l.fromName}/></td>
+                    <td style={{padding:"10px 12px",fontWeight:500,color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:200}} title={l.toName}><EntityLink type={l.toType} id={l.toId} name={l.toName}/></td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:red}}>{l.sent.toLocaleString()}</td>
                     <td className="pv-num" style={{padding:"10px 12px",textAlign:"right",fontWeight:600,color:grn}}>{l.received.toLocaleString()}</td>
                   </tr>
@@ -5692,7 +5745,7 @@ function TransferHistory({db,owners}){
 // program, in one place. Reads redemption_details (not point_transactions
 // directly) so a split redemption shows as several independent, individually
 // tagged rows here rather than one lump sum.
-function RedemptionDashboard({db,owners}){
+function RedemptionDashboard({db,owners,onNavigate}){
   const isMobile=useIsMobile();
   const [rows,setRows]=useState([]);
   const [busy,setBusy]=useState(true);
@@ -5716,8 +5769,10 @@ function RedemptionDashboard({db,owners}){
       const ptMap={};(pt.data||[]).forEach(p=>{ptMap[p.id]=p;});
       const resolved=(rd.data||[]).map(d=>{
         const parent=ptMap[d.point_transaction_id];
-        let sourceName="--",ownerId=null;
+        let sourceName="--",ownerId=null,sourceType=null,sourceId=null;
         if(parent){
+          sourceType=parent.entity_type;
+          sourceId=parent.entity_id;
           if(parent.entity_type==="card"){
             const card=(myc.data||[]).find(c=>c.id===parent.entity_id);
             const master=card?(mc.data||[]).find(m=>m.id===card.master_id):null;
@@ -5731,7 +5786,7 @@ function RedemptionDashboard({db,owners}){
           }
         }
         const ownerName=owners.find(o=>o.id===ownerId)?.name||"--";
-        return{...d,sourceName,ownerId,ownerName,txnDate:d.txn_date||parent?.txn_date};
+        return{...d,sourceName,sourceType,sourceId,ownerId,ownerName,txnDate:d.txn_date||parent?.txn_date};
       });
       setRows(resolved);
     }catch(e){setErr("Exception: "+e.message);}
@@ -5787,7 +5842,7 @@ function RedemptionDashboard({db,owners}){
         </select>
       </div>
       {busy?<div style={{color:mut,textAlign:"center",padding:40}}>Loading...</div>:filtered.length===0?<Empty icon="🏷️" msg="No redemptions tagged yet — redeem points on a card or program, or tag an existing one from Points History"/>:(
-        <RedemptionMonthAccordion filtered={filtered} isMobile={isMobile}/>
+        <RedemptionMonthAccordion filtered={filtered} isMobile={isMobile} onNavigate={onNavigate}/>
       )}
     </div>
   );
@@ -5797,7 +5852,10 @@ function RedemptionDashboard({db,owners}){
 // its first load, so the initial expandedMonths state can correctly default to
 // the most recent month (mirrors the pattern used by PointsHistoryTable, which
 // is only mounted by its parent once busy is false).
-function RedemptionMonthAccordion({filtered,isMobile}){
+function RedemptionMonthAccordion({filtered,isMobile,onNavigate}){
+  const SourceLink=({r})=>r.sourceId?(
+    <span onClick={e=>{e.stopPropagation();onNavigate&&onNavigate(r.sourceType==="card"?"my-cards":"my-programs",r.sourceId);}} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{r.sourceName}</span>
+  ):r.sourceName;
   const monthGroups=[];
   filtered.forEach(r=>{
     const key=(r.txnDate||"").slice(0,7);
@@ -5824,7 +5882,7 @@ function RedemptionMonthAccordion({filtered,isMobile}){
           <span style={{fontSize:10,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span>
         </div>
         <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}} title={r.description||undefined}>{r.description||"--"}</div>
-        <div style={{fontSize:11,color:mut,marginBottom:8}} title={`${r.sourceName} · ${r.ownerName}`}>{r.sourceName} · {r.ownerName}</div>
+        <div style={{fontSize:11,color:mut,marginBottom:8}} title={`${r.sourceName} · ${r.ownerName}`}><SourceLink r={r}/> · {r.ownerName}</div>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
           <div className="pv-num" style={{fontSize:13,fontWeight:600,color:red}}>{(r.points||0).toLocaleString()} pts</div>
           {r.redeemed_value_inr>0&&<div className="pv-num" style={{fontSize:13,fontWeight:600,color:grn}}>{inrFmt(r.redeemed_value_inr)}{perPoint&&<span style={{color:mut,fontWeight:400}}> ({perPoint.toFixed(2)}/pt)</span>}</div>}
@@ -5844,7 +5902,7 @@ function RedemptionMonthAccordion({filtered,isMobile}){
           {r.notes&&<div style={{fontSize:11,color:mut,fontStyle:"italic",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.notes}>{r.notes}</div>}
         </td>
         <td style={{padding:"10px 12px",color:txt,maxWidth:160}}>
-          <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.sourceName}>{r.sourceName}</div>
+          <div style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.sourceName}><SourceLink r={r}/></div>
           <div style={{fontSize:11,color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}} title={r.ownerName}>{r.ownerName}</div>
         </td>
         <td style={{padding:"10px 12px"}}><span style={{fontSize:11,fontWeight:700,color:acc,background:acc+"12",padding:"2px 7px",borderRadius:20}}>{redemptionTypeLabel(r.redemption_type)}</span></td>
@@ -6226,46 +6284,67 @@ function SettingsGeneral({db,user,onUserUpdated,onSignOut}){
   );
 }
 
+// ── LIBRARY_COMING_SOON — placeholder entries shown alongside each catalog's live
+// (already-supported) items, so the Settings Library page also communicates what's
+// planned next. Purely display text — none of these are wired to real import logic.
+const LIBRARY_COMING_SOON={
+  programs:["Emirates Skywards","Delta SkyMiles","Korean Air SKYPASS","IndiGo BluChip","Taj InnerCircle","EVA Air Infinity MileageLands","Malaysia Airlines Enrich","Saudia ALFURSAN"],
+  cards:["SBI Card ELITE","ICICI Bank Emeralde Private Metal","Kotak White Reserve","RBL Bank World Safari","Standard Chartered Ultimate","IndusInd Bank Legend","Yes Bank Marquee","AU Small Finance Zenith"],
+  banks:["ICICI Bank","State Bank of India","Kotak Mahindra Bank","Yes Bank","IDFC First Bank","RBL Bank","IndusInd Bank","Standard Chartered","Federal Bank","Citibank India"],
+  ccmap:["ICICI Bank","SBI Card","Kotak Mahindra Bank","RBL Bank","Standard Chartered","Yes Bank"],
+  bankmap:["ICICI Bank","State Bank of India","Kotak Mahindra Bank","Yes Bank","IDFC First Bank","Federal Bank","RBL Bank","IndusInd Bank"],
+  ptsmap:["ICICI Bank Rewards (CSV)","SBI Card Rewardz (CSV)","Axis EDGE Rewards (CSV)","Kotak Points (CSV)"],
+};
+
 // ── SettingsLibrary — a read-only directory of every hardcoded reference catalog
 // the app ships with (loyalty programs, credit cards, banks, statement mapping
 // presets, default spend categories). Nothing here is editable or per-user data;
-// it's just "what's available to import/pick from" surfaced in one place.
+// it's just "what's available to import/pick from" surfaced in one place. Styled to
+// match Books Overview's compact CollapsibleSection/ListRow look rather than
+// wrapping every catalog in its own bulky Card.
 function SettingsLibrary(){
   const LIBRARIES=[
-    {id:"programs",  title:"Loyalty Programs",              items:LIBRARY.programs.map(p=>p.name)},
-    {id:"cards",     title:"Credit Cards",                  items:LIBRARY.cards.map(c=>c.name)},
-    {id:"banks",     title:"Banks",                         items:BANK_LIBRARY.map(b=>b.name)},
-    {id:"ccmap",     title:"Credit Card Statement Mappings", items:MAPPING_LIBRARY.map(m=>m.name)},
-    {id:"bankmap",   title:"Bank Statement Mappings",       items:BANK_MAPPING_LIBRARY.map(m=>m.name)},
-    {id:"ptsmap",    title:"Points Statement Mappings",     items:POINTS_MAPPING_LIBRARY.map(m=>m.name)},
+    {id:"programs",  title:"Loyalty Programs",              items:LIBRARY.programs.map(p=>p.name), soon:LIBRARY_COMING_SOON.programs},
+    {id:"cards",     title:"Credit Cards",                  items:LIBRARY.cards.map(c=>c.name), soon:LIBRARY_COMING_SOON.cards},
+    {id:"banks",     title:"Banks",                         items:BANK_LIBRARY.map(b=>b.name), soon:LIBRARY_COMING_SOON.banks},
+    {id:"ccmap",     title:"Credit Card Statement Mappings", items:MAPPING_LIBRARY.map(m=>m.name), soon:LIBRARY_COMING_SOON.ccmap},
+    {id:"bankmap",   title:"Bank Statement Mappings",       items:BANK_MAPPING_LIBRARY.map(m=>m.name), soon:LIBRARY_COMING_SOON.bankmap},
+    {id:"ptsmap",    title:"Points Statement Mappings",     items:POINTS_MAPPING_LIBRARY.map(m=>m.name), soon:LIBRARY_COMING_SOON.ptsmap},
     {id:"cats",      title:"Default Spend Categories",      items:CATEGORIES},
   ];
+  const [open,setOpen]=useState({});
+
+  const chip=(name,i,soon)=>(
+    <span key={i} style={soon
+      ?{fontSize:12,color:mut,background:"transparent",border:`1px dashed ${bdr}`,borderRadius:8,padding:"5px 10px"}
+      :{fontSize:12,color:txt,background:surf2,border:`1px solid ${bdr}`,borderRadius:8,padding:"5px 10px"}}>{name}</span>
+  );
 
   return(
     <div>
       <Hdr title="Library" sub="Reference catalogs built into the app — loyalty programs, cards, banks, and import presets you can pick from"/>
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        {LIBRARIES.map(lib=>{
-          const sorted=[...lib.items].sort((a,b)=>a.localeCompare(b));
-          const header=(
-            <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between"}}>
-              <div style={{fontSize:16,fontWeight:700,color:txt,fontFamily:fontDisplay}}>{lib.title}</div>
-              <div style={{fontSize:11,color:mut,fontWeight:600}}>{lib.items.length}</div>
-            </div>
-          );
-          return(
-            <Card key={lib.id}>
-              <Collapsible storageKey={"library_"+lib.id} header={header} defaultOpen={false}>
-                <div style={{marginTop:14,display:"flex",flexWrap:"wrap",gap:8}}>
-                  {sorted.map((name,i)=>(
-                    <span key={i} style={{fontSize:12,color:txt,background:surf2,border:`1px solid ${bdr}`,borderRadius:8,padding:"5px 10px"}}>{name}</span>
-                  ))}
+      {LIBRARIES.map(lib=>{
+        const isOpen=open[lib.id]??false;
+        const setLibOpen=fn=>setOpen(prev=>({...prev,[lib.id]:typeof fn==="function"?fn(prev[lib.id]??false):fn}));
+        const sortedLive=[...lib.items].sort((a,b)=>a.localeCompare(b));
+        const sortedSoon=lib.soon?[...lib.soon].sort((a,b)=>a.localeCompare(b)):null;
+        return(
+          <CollapsibleSection key={lib.id} title={lib.title} count={lib.items.length+(sortedSoon?.length||0)} open={isOpen} setOpen={setLibOpen}>
+            <div style={{display:"flex",flexDirection:"column",gap:16,paddingBottom:8}}>
+              <div>
+                {sortedSoon&&<div style={{fontSize:10,color:grn,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Live · {sortedLive.length}</div>}
+                <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{sortedLive.map((name,i)=>chip(name,i,false))}</div>
+              </div>
+              {sortedSoon&&sortedSoon.length>0&&(
+                <div>
+                  <div style={{fontSize:10,color:mut,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em",marginBottom:8}}>Coming Soon · {sortedSoon.length}</div>
+                  <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{sortedSoon.map((name,i)=>chip(name,i,true))}</div>
                 </div>
-              </Collapsible>
-            </Card>
-          );
-        })}
-      </div>
+              )}
+            </div>
+          </CollapsibleSection>
+        );
+      })}
     </div>
   );
 }
@@ -6412,12 +6491,15 @@ function DeleteAccountCard({db,owners}){
         // also blocks the account delete below.
         const stagedRes=await db.from("staged_transactions").select();
         for(const s of (stagedRes.data||[]).filter(s=>s.source_account_id===instanceId)) await del("staged_transactions",s.id);
-        // transaction_lines.transaction_id cascades on delete, so removing the
-        // transaction alone clears its lines atomically — no separate line
-        // delete needed (and deleting lines one at a time here would trip a
-        // balance-check trigger: each transaction's lines must sum to zero
-        // after every delete statement, so the first of a pair always fails).
-        for(const tid of txnIds) await del("transactions",tid);
+        // transaction_lines has no working cascade from transactions — bulk-delete
+        // each transaction's lines in a single statement (not one at a time,
+        // which trips the balance-check trigger: each transaction's remaining
+        // lines must sum to zero after every delete) before the transaction itself.
+        for(const tid of txnIds){
+          const {error:le}=await db.from("transaction_lines").deleteWhere("transaction_id",tid);
+          if(le){ console.error(`delete transaction_lines for txn ${tid} failed:`,le); failed.push("transaction_lines"); }
+          await del("transactions",tid);
+        }
         const stmtsRes=await db.from("account_statements").select();
         for(const s of (stmtsRes.data||[]).filter(s=>s.account_id===instanceId)) await del("account_statements",s.id);
 
@@ -6762,17 +6844,17 @@ function SetupMappings({db}){
     setEditId(null);setEditName("");load();
   };
 
-  const importFromLibrary=async(lib)=>{
+  const importFromLibrary=async(lib,kind)=>{
     setImporting(lib.lid);
     const exists=mappings.find(m=>m.name.toLowerCase()===lib.name.toLowerCase());
     if(exists){alert(`"${lib.name}" is already saved.`);setImporting(null);return;}
     const uid=getCurrentUserId();
     if(!uid){alert("Session error — please sign out and sign back in.");setImporting(null);return;}
     const {error}=await db.from("csv_mappings").insert({
-      name:lib.name,card_id:null,
-      date_col:lib.date_col,desc_col:lib.desc_col,
+      name:lib.name,card_id:null,kind:kind==="bank"?"bank":undefined,
+      date_col:lib.date_col,desc_col:lib.desc_col,ref_col:lib.ref_col,
       amount_type:lib.amount_type,amount_col:lib.amount_col,
-      debit_col:lib.debit_col,credit_col:lib.credit_col,
+      debit_col:lib.debit_col,credit_col:lib.credit_col,balance_col:lib.balance_col,
       date_format:lib.date_format,skip_rows:lib.skip_rows,
       credit_ind_col:lib.credit_ind_col,delimiter:lib.delimiter,
       total_due_row:lib.total_due_row,total_due_col:lib.total_due_col,
@@ -6794,66 +6876,75 @@ function SetupMappings({db}){
       />
 
       {showLibrary&&(
-        <div style={{maxWidth:600,marginBottom:20}}>
-          <Card>
-            <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Mapping Library</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {MAPPING_LIBRARY.map(lib=>{
-                const already=mappings.some(m=>m.name.toLowerCase()===lib.name.toLowerCase());
-                return(
-                  <div key={lib.lid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:13,fontWeight:600,color:txt}}>{lib.name}</div>
-                      <div style={{fontSize:11,color:mut,marginTop:2}}>{lib.description}</div>
+        <div style={{maxWidth:600,marginBottom:20,display:"flex",flexDirection:"column",gap:16}}>
+          {[{title:"Credit Cards",presets:MAPPING_LIBRARY,kind:"cc"},{title:"Bank Accounts",presets:BANK_MAPPING_LIBRARY,kind:"bank"}].map(group=>(
+            <Card key={group.kind}>
+              <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Mapping Library — {group.title}</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                {group.presets.map(lib=>{
+                  const already=mappings.some(m=>m.name.toLowerCase()===lib.name.toLowerCase());
+                  return(
+                    <div key={lib.lid} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,padding:"12px 14px",background:surf2,borderRadius:10,border:`1px solid ${bdr}`}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:600,color:txt}}>{lib.name}</div>
+                        <div style={{fontSize:11,color:mut,marginTop:2}}>{lib.description}</div>
+                      </div>
+                      {already
+                        ?<span style={{fontSize:11,color:grn,fontWeight:500}}>✓ Already saved</span>
+                        :<button style={{...pbtn,fontSize:12,padding:"5px 14px",opacity:importing===lib.lid?0.5:1}} onClick={()=>importFromLibrary(lib,group.kind)} disabled={!!importing}>
+                          {importing===lib.lid?"Importing…":"Import"}
+                        </button>
+                      }
                     </div>
-                    {already
-                      ?<span style={{fontSize:11,color:grn,fontWeight:500}}>✓ Already saved</span>
-                      :<button style={{...pbtn,fontSize:12,padding:"5px 14px",opacity:importing===lib.lid?0.5:1}} onClick={()=>importFromLibrary(lib)} disabled={!!importing}>
-                        {importing===lib.lid?"Importing…":"Import"}
-                      </button>
-                    }
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
+                  );
+                })}
+              </div>
+            </Card>
+          ))}
         </div>
       )}
 
       {mappings.length===0?(
         <Empty icon="🗂️" msg="No mappings saved yet — upload a statement and configure the column layout, then save it. Or import a preset from the Library above"/>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:600}}>
-          {mappings.map(m=>{
-            const card=cards.find(c=>c.id===m.card_id);
-            const mc=card&&mCards.find(x=>x.id===card.master_id);
-            const owner=card&&owners.find(o=>o.id===card.owner_id);
-            return(
-              <Card key={m.id}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
-                  <div style={{flex:1}}>
-                    {editId===m.id?(
-                      <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                        <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
-                        <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
-                        <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+        <div style={{display:"flex",flexDirection:"column",gap:24}}>
+          {[{title:"Credit Card Mappings",rows:mappings.filter(m=>m.kind!=="bank")},{title:"Bank Mappings",rows:mappings.filter(m=>m.kind==="bank")}].filter(g=>g.rows.length>0).map(group=>(
+            <div key={group.title}>
+              <div style={{fontSize:10,fontWeight:600,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:10}}>{group.title} ({group.rows.length})</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10,maxWidth:600}}>
+                {group.rows.map(m=>{
+                  const card=cards.find(c=>c.id===m.card_id);
+                  const mc=card&&mCards.find(x=>x.id===card.master_id);
+                  const owner=card&&owners.find(o=>o.id===card.owner_id);
+                  return(
+                    <Card key={m.id}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                        <div style={{flex:1}}>
+                          {editId===m.id?(
+                            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                              <input style={{...inp,flex:1,marginBottom:0,fontSize:13}} value={editName} onChange={e=>setEditName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveEdit()} autoFocus/>
+                              <button style={{...pbtn,fontSize:12,padding:"4px 12px"}} onClick={saveEdit}>Save</button>
+                              <button style={{...gbtn,fontSize:12,padding:"4px 12px"}} onClick={()=>setEditId(null)}>Cancel</button>
+                            </div>
+                          ):(
+                            <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:3}}>{m.name}</div>
+                          )}
+                          <div style={{fontSize:11,color:mut,marginTop:editId===m.id?6:0}}>
+                            {mc?.name&&<span>{mc.name}{owner?" · "+owner.name:""} · </span>}
+                            {m.delimiter==="auto"?"Auto":m.delimiter==="	"?"Tab":m.delimiter||"Auto"} delimiter · Skip {m.skip_rows||0} rows · Date col {(m.date_col||0)+1} · Desc col {(m.desc_col||0)+1}
+                          </div>
+                        </div>
+                        <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          {editId!==m.id&&<button onClick={()=>{setEditId(m.id);setEditName(m.name);}} style={{...gbtn,fontSize:12,padding:"4px 10px"}}>Edit</button>}
+                          <button onClick={()=>del(m.id)} style={{...dbtn,fontSize:12,padding:"4px 10px"}}>Delete</button>
+                        </div>
                       </div>
-                    ):(
-                      <div style={{fontSize:14,fontWeight:600,color:txt,marginBottom:3}}>{m.name}</div>
-                    )}
-                    <div style={{fontSize:11,color:mut,marginTop:editId===m.id?6:0}}>
-                      {mc?.name&&<span>{mc.name}{owner?" · "+owner.name:""} · </span>}
-                      {m.delimiter==="auto"?"Auto":m.delimiter==="	"?"Tab":m.delimiter||"Auto"} delimiter · Skip {m.skip_rows||0} rows · Date col {(m.date_col||0)+1} · Desc col {(m.desc_col||0)+1}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",gap:6,flexShrink:0}}>
-                    {editId!==m.id&&<button onClick={()=>{setEditId(m.id);setEditName(m.name);}} style={{...gbtn,fontSize:12,padding:"4px 10px"}}>Edit</button>}
-                    <button onClick={()=>del(m.id)} style={{...dbtn,fontSize:12,padding:"4px 10px"}}>Delete</button>
-                  </div>
-                </div>
-              </Card>
-            );
-          })}
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -8430,6 +8521,7 @@ function BooksOverview({db,owners,onNavigate}){
   const [accounts,setAccounts]=useState([]);
   const [accountBalances,setAccountBalances]=useState([]);
   const [statements,setStatements]=useState([]);
+  const [staged,setStaged]=useState([]);
   const [myCards,setMyCards]=useState([]);
   const [masterCards,setMasterCards]=useState([]);
   const [loans,setLoans]=useState([]);
@@ -8446,12 +8538,13 @@ function BooksOverview({db,owners,onNavigate}){
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [e,eb,a,ab,st,mc,mac,ln]=await Promise.all([
+    const [e,eb,a,ab,st,sg,mc,mac,ln]=await Promise.all([
       db.from("entities").select(),
       db.from("entity_balances").select(),
       db.from("accounts").select(),
       db.from("account_balances").select(),
       db.from("account_statements").select(),
+      db.from("staged_transactions").select(),
       db.from("my_cards").select(),
       db.from("master_cards").select(),
       db.from("loans").select(),
@@ -8461,6 +8554,7 @@ function BooksOverview({db,owners,onNavigate}){
     setAccounts(a.data||[]);
     setAccountBalances(ab.data||[]);
     setStatements(st.data||[]);
+    setStaged(sg.data||[]);
     setMyCards(mc.data||[]);
     setMasterCards(mac.data||[]);
     setLoans(ln.data||[]);
@@ -8488,10 +8582,18 @@ function BooksOverview({db,owners,onNavigate}){
   if(peopleSearch.trim()) entitiesWithGroups=entitiesWithGroups.filter(e=>e.name.toLowerCase().includes(peopleSearch.trim().toLowerCase()));
   entitiesWithGroups=entitiesWithGroups.sort((a,b)=>Math.max(0,...b.groups.map(g=>Math.abs(g.net)),0)-Math.max(0,...a.groups.map(g=>Math.abs(g.net)),0));
 
+  // Loans aren't statement/staged-transaction based, so they keep reading the raw
+  // account_balances figure; everything else goes through the same
+  // computeAccountBalance the Accounts page and each account's own detail page use,
+  // so this dashboard can't show a different number than either of those.
+  const balOfShared=a=>{
+    if(a.subtype==="loan"){const b=accountBalances.find(x=>x.account_id===a.id);return b?Number(b.balance):0;}
+    return computeAccountBalance(a,statements,staged);
+  };
   let accountsWithBal=accounts
     .filter(a=>(a.type==="asset"||a.type==="liability")&&!a.entity_id)
     .filter(a=>ownerFilter==="all"||a.owner_id===ownerFilter)
-    .map(a=>{const b=accountBalances.find(x=>x.account_id===a.id);return{...a,balance:b?Number(b.balance):0};});
+    .map(a=>({...a,balance:balOfShared(a)}));
 
   const netWorth=accountBalances
     .filter(ab=>{const a=accounts.find(x=>x.id===ab.account_id);if(!a||(a.type!=="asset"&&a.type!=="liability"))return false;return ownerFilter==="all"||a.owner_id===ownerFilter;})
@@ -8506,9 +8608,9 @@ function BooksOverview({db,owners,onNavigate}){
   const balOf=a=>{const b=accountBalances.find(x=>x.account_id===a.id);return b?Number(b.balance):0;};
 
   const bankAccts=accounts.filter(a=>a.subtype==="bank"&&(ownerFilter==="all"||a.owner_id===ownerFilter));
-  const totalBankBalance=bankAccts.reduce((s,a)=>s+balOf(a),0);
+  const totalBankBalance=bankAccts.reduce((s,a)=>s+balOfShared(a),0);
   const cashAccts=accounts.filter(a=>a.subtype==="cash"&&(ownerFilter==="all"||a.owner_id===ownerFilter));
-  const totalCashBalance=cashAccts.reduce((s,a)=>s+balOf(a),0);
+  const totalCashBalance=cashAccts.reduce((s,a)=>s+balOfShared(a),0);
   const totalAcctBalance=totalBankBalance+totalCashBalance;
 
   const loanAccts=accounts.filter(a=>a.subtype==="loan"&&(ownerFilter==="all"||a.owner_id===ownerFilter));
@@ -8607,9 +8709,8 @@ function BooksOverview({db,owners,onNavigate}){
                         <div style={{fontSize:11,color:mut,marginTop:2}}>{subtitle}</div>
                       </div>
                     </div>
-                    <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>
-                      ₹{Math.abs(a.balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
-                      {a.type==="liability"&&<span style={{fontSize:10,color:mut,fontWeight:400,marginLeft:4}}>owed</span>}
+                    <div className="pv-num" style={{fontSize:15,fontWeight:700,color:a.balance<0?red:txt,whiteSpace:"nowrap"}}>
+                      {mask((a.balance<0?"-":"")+"₹"+Math.abs(a.balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}))}
                     </div>
                   </ListRow>
                 );
@@ -8638,7 +8739,7 @@ function BooksOverview({db,owners,onNavigate}){
                       <div key={g.ownerId} style={{display:"flex",alignItems:"baseline",gap:8}}>
                         {e.groups.length>1&&<div style={{fontSize:10,color:mut}}>{g.ownerName}</div>}
                         <div className="pv-num" style={{fontSize:14,fontWeight:700,color:g.net>0?grn:g.net<0?red:mut,whiteSpace:"nowrap"}}>
-                          {g.net===0?"Settled":(g.net>0?"+":"-")+"₹"+Math.abs(g.net).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                          {g.net===0?"Settled":mask((g.net>0?"+":"-")+"₹"+Math.abs(g.net).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}))}
                         </div>
                       </div>
                     ))}
@@ -8654,16 +8755,21 @@ function BooksOverview({db,owners,onNavigate}){
 }
 
 function sourceLabel(txn,staged,statements,allAccts,owners){
-  if(!txn||txn.source!=="import") return "Manual Entry";
+  // txn.source is "manual" for every transaction this app creates directly
+  // (including the double-entry row a Tag action creates) — it's never "import".
+  // Whether the underlying money movement was imported instead lives on the
+  // staged_transactions row that points at this txn: real imports never set a
+  // "source" of their own (only ManualCashEntryModal-created rows do).
+  if(!txn) return "Manual Entry";
   const stagedRow=staged.find(s=>s.resulting_transaction_id===txn.id);
-  if(!stagedRow) return "Manual Entry";
+  if(!stagedRow||stagedRow.source==="manual") return "Manual Entry";
   const acct=allAccts.find(a=>a.id===stagedRow.source_account_id);
   const stmt=statements.find(st=>st.id===stagedRow.statement_id);
   const ownerName=owners?.find(o=>o.id===acct?.owner_id)?.name;
   return [ownerName,acct?.name||"Account",stmt?stmtLabel(stmt):null].filter(Boolean).join(" · ");
 }
 
-function BooksEntityDetail({entity,db,owners,onBack}){
+function BooksEntityDetail({entity,db,owners,onBack,onNavigate}){
   const isMobile=useIsMobile();
   const [accounts,setAccounts]=useState([]);
   const [allAccts,setAllAccts]=useState([]);
@@ -8723,6 +8829,14 @@ function BooksEntityDetail({entity,db,owners,onBack}){
     return {rows:filtered,finalBal:running};
   };
 
+  // Same origin lookup sourceLabel does internally, exposed here so the Source
+  // cell can link to the account the money actually moved through — null when
+  // this entry was recorded directly (nothing to jump to).
+  const sourceAcctIdFor=txn=>{
+    const stagedRow=staged.find(s=>s.resulting_transaction_id===txn.id);
+    return stagedRow&&stagedRow.source!=="manual"?stagedRow.source_account_id:null;
+  };
+
   return(
     <div>
       <button onClick={onBack} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:12,fontWeight:500,padding:0,display:"flex",alignItems:"center",gap:5,fontFamily:"'Manrope',sans-serif",marginBottom:20}}>← Back</button>
@@ -8755,7 +8869,11 @@ function BooksEntityDetail({entity,db,owners,onBack}){
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:600,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}} title={r.txn.description||undefined}>{r.txn.description}</div>
-                        <div style={{fontSize:11,color:mut,marginTop:2}}>{fmtDate(r.txn.txn_date)} · {sourceLabel(r.txn,staged,statements,allAccts,owners)}</div>
+                        <div style={{fontSize:11,color:mut,marginTop:2}}>
+                          {fmtDate(r.txn.txn_date)} · {(()=>{const sid=sourceAcctIdFor(r.txn);const label=sourceLabel(r.txn,staged,statements,allAccts,owners);return sid?(
+                            <span onClick={()=>onNavigate&&onNavigate("books-accounts",sid)} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{label}</span>
+                          ):label;})()}
+                        </div>
                         {r.txn.notes&&<div style={{fontSize:11,color:mut,marginTop:1,fontStyle:"italic"}}>{r.txn.notes}</div>}
                       </div>
                       <div style={{textAlign:"right",flexShrink:0}}>
@@ -8784,7 +8902,11 @@ function BooksEntityDetail({entity,db,owners,onBack}){
                         <td style={{padding:"8px 10px",color:mut,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{fmtDate(r.txn.txn_date)}</td>
                         <td title={r.txn.description} style={{padding:"8px 10px",color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.txn.description}</td>
                         <td title={r.txn.notes||""} style={{padding:"8px 10px",color:mut,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.txn.notes||"—"}</td>
-                        <td title={sourceLabel(r.txn,staged,statements,allAccts,owners)} style={{padding:"8px 10px",color:mut,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sourceLabel(r.txn,staged,statements,allAccts,owners)}</td>
+                        <td title={sourceLabel(r.txn,staged,statements,allAccts,owners)} style={{padding:"8px 10px",color:mut,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {(()=>{const sid=sourceAcctIdFor(r.txn);const label=sourceLabel(r.txn,staged,statements,allAccts,owners);return sid?(
+                            <span onClick={()=>onNavigate&&onNavigate("books-accounts",sid)} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{label}</span>
+                          ):label;})()}
+                        </td>
                         <td className="pv-num" style={{padding:"8px 10px",textAlign:"right",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",color:r.signedAmt>0?grn:red,whiteSpace:"nowrap"}}>{r.signedAmt>0?"+":"-"}₹{Math.abs(r.signedAmt).toLocaleString("en-IN")}</td>
                         <td className="pv-num" style={{padding:"8px 10px",textAlign:"right",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",color:txt,whiteSpace:"nowrap"}}>{r.running===0?"₹0":(r.running>0?"+":"-")+"₹"+Math.abs(r.running).toLocaleString("en-IN")}</td>
                       </tr>
@@ -8811,6 +8933,9 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
   const [hideSettled,setHideSettled]=useState(true);
   const [ownerFilter,setOwnerFilter]=useState("all");
   const [ledgersOpen,setLedgersOpen]=useState(true);
+  const [hideAmounts,setHideAmounts]=useState(()=>{try{return localStorage.getItem("pv_hide_amounts")==="1";}catch(_){return false;}});
+  const toggleHideAmounts=()=>setHideAmounts(v=>{const n=!v;try{localStorage.setItem("pv_hide_amounts",n?"1":"0");}catch(_){}return n;});
+  const mask=v=>hideAmounts?"••••••":v;
 
   const load=useCallback(async()=>{
     setBusy(true);
@@ -8840,7 +8965,7 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
   if(selEntity){
     const entity=entities.find(e=>e.id===selEntity);
     if(!entity) return null;
-    return <BooksEntityDetail entity={entity} db={db} owners={owners} onBack={()=>{setSelEntity(null);load();}}/>;
+    return <BooksEntityDetail entity={entity} db={db} owners={owners} onBack={()=>{setSelEntity(null);load();}} onNavigate={onNavigate}/>;
   }
 
   let filtered=entities.map(e=>({...e,groups:entityOwnerGroups(e.id,accounts,accountBalances,owners)}))
@@ -8861,7 +8986,7 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
               <div key={g.ownerId} style={{display:"flex",alignItems:"baseline",gap:8}}>
                 {e.groups.length>1&&<div style={{fontSize:10,color:mut}}>{g.ownerName}</div>}
                 <div className="pv-num" style={{fontSize:14,fontWeight:700,color:g.net>0?grn:g.net<0?red:mut,whiteSpace:"nowrap"}}>
-                  {g.net===0?"Settled":(g.net>0?"+":"-")+"₹"+Math.abs(g.net).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}
+                  {g.net===0?"Settled":mask((g.net>0?"+":"-")+"₹"+Math.abs(g.net).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}))}
                 </div>
               </div>
             ))}
@@ -8878,6 +9003,10 @@ function BooksEntities({db,owners,onNavigate,initialSelectId}){
         action={
           <Toolbar>
             <OwnerFilterSelect value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)} owners={owners}/>
+            <button onClick={toggleHideAmounts} title={hideAmounts?"Show amounts":"Hide amounts"}
+              style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${bdr}`,borderRadius:10,background:hideAmounts?surf3:surf,color:mut2,cursor:"pointer",padding:0,flexShrink:0}}>
+              <EyeIcon off={hideAmounts}/>
+            </button>
           </Toolbar>
         }/>
       <FavouritesSection count={favouriteEntities.length}>
@@ -9240,10 +9369,14 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
       )}
 
       {lbl(direction==="transfer"?"From account":"Account")}
-      <select style={inp} value={sourceAcctId} onChange={e=>setSourceAcctId(e.target.value)}>
-        <option value="">Select…</option>
-        {sourceAccts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
-      </select>
+      {prefill?(
+        <div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>{sourceAccts.find(a=>a.id===sourceAcctId)?.name||"—"}</div>
+      ):(
+        <select style={inp} value={sourceAcctId} onChange={e=>setSourceAcctId(e.target.value)}>
+          <option value="">Select…</option>
+          {sourceAccts.map(a=><option key={a.id} value={a.id}>{a.name}</option>)}
+        </select>
+      )}
 
       {needsDest&&(<>
         {lbl("To account")}
@@ -9604,7 +9737,12 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
 
       {needsEntity&&(<>
         {lbl(action==="paid_on_behalf"?"Paid on behalf of":action==="refund_received"?"Refund from":action==="borrowed"?"Borrowed from":"Repaid to")}
-        <select style={inp} value={entityId} onChange={e=>{setEntityId(e.target.value);setNewEntityName("");}}>
+        <select style={inp} value={entityId?entities.find(en=>en.id===entityId)?.name||"":newEntityName} onChange={e=>{
+          const val=e.target.value;
+          const existing=entities.find(en=>en.name===val);
+          setEntityId(existing?existing.id:"");
+          setNewEntityName(existing?"":val);
+        }}>
           <option value="">Select existing…</option>
           {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
         </select>
@@ -9701,25 +9839,40 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
     setMapping(next);
     setActivePresetName(m.name);
     setMappingExpanded(false);
+    setDetected(null);setDetectFailed(false);
     return next;
   };
 
   // Hardcoded library presets use 1-based header-cell columns (row stays as a direct
   // 0-based index) — see MAPPING_LIBRARY / BANK_MAPPING_LIBRARY comments.
+  // Returns the freshly-computed {mapping, headerMap} pair rather than relying on the
+  // caller re-reading React state — setHeaderMap below doesn't commit synchronously, so
+  // a doParse called right after this (same click handler) would otherwise read the
+  // pre-update headerMap and always extract a blank/zero Total Due on the very first
+  // parse of any library-preset upload.
   const applyLibraryPreset=(preset)=>{
     const next=presetToMapping(preset);
     setMapping(next);
+    let nextHeaderMap=headerMap;
     if(isCreditCard&&preset.total_due_row!=null){
-      setHeaderMap(m=>({...m,total_due_row:preset.total_due_row,total_due_col:(preset.total_due_col||1)-1}));
+      nextHeaderMap={...headerMap,total_due_row:preset.total_due_row,total_due_col:(preset.total_due_col||1)-1};
+      setHeaderMap(nextHeaderMap);
     }
     setActivePresetName(preset.name);
     setMappingExpanded(false);
-    return next;
+    setDetected(null);setDetectFailed(false);
+    return {mapping:next,headerMap:nextHeaderMap};
   };
 
   const cellAt=(rows,row,col)=>{
     if(row<0||col<0||!rows[row]) return "";
-    return (rows[row][col]||"").toString().replace(/[,'"₹Rs\s]/g,"");
+    const raw=(rows[row][col]||"").toString();
+    // Some exports (e.g. Axis Atlas XLSX) merge a label and its value into one cell
+    // — "Total Payment Due \n₹ 24,688.00" — so pull out the trailing numeric figure
+    // instead of assuming the whole cell is a bare number.
+    const matches=raw.match(/\d[\d,]*(?:\.\d+)?/g);
+    if(!matches) return "";
+    return matches[matches.length-1].replace(/,/g,"");
   };
 
   // Signature-based auto-detect, mirroring the heuristics already proven in
@@ -9728,31 +9881,40 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
   const detectPreset=(rows,isXLSX,rawText)=>{
     if(isCreditCard){
       if(!isXLSX){
-        const firstLine=(rawText||"").split("\n").find(l=>l.trim().length>15)||"";
-        const pipes=(firstLine.match(/\|/g)||[]).length;
-        const commas=(firstLine.match(/,/g)||[]).length;
-        if(pipes>=2&&pipes>commas) return MAPPING_LIBRARY.find(p=>p.lid==="ml_hdfc_csv");
+        // HDFC's pipe-CSV export uses the literal "~|~" token as its field separator on
+        // every single line, including single-field header rows like "Name~|~GAVIN..." —
+        // those early lines only have one bare "|", so picking just the first sufficiently
+        // long line and requiring >=2 pipes (the old check) missed real HDFC exports
+        // entirely. Checking for the "~|~" pattern itself is specific to this format and
+        // present from line 1, so it doesn't need to find a multi-column row first.
+        if(/~\|~/.test((rawText||"").split("\n").slice(0,5).join("\n"))) return MAPPING_LIBRARY.find(p=>p.lid==="ml_hdfc_csv");
       } else if(rows.length>6){
         const headerText=rows.slice(0,7).map(r=>(r||[]).join(" ")).join(" ").toLowerCase();
         if(headerText.includes("american express")) return MAPPING_LIBRARY.find(p=>p.lid==="ml_amex_xlsx");
-        const r5=rows[5]||[];
-        if(r5[0]&&r5[0].toString().toLowerCase().includes("date")) return MAPPING_LIBRARY.find(p=>p.lid==="ml_axis_xlsx");
+        if(headerText.includes("axis bank")) return MAPPING_LIBRARY.find(p=>p.lid==="ml_axis_xlsx");
       }
     } else {
-      const fullText=rows.slice(0,25).map(r=>r.join(" ")).join(" ").toLowerCase();
-      if(fullText.includes("hdfc bank")||(fullText.includes("narration")&&fullText.includes("withdrawal amt"))) return BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_hdfc_xls");
-      if(fullText.includes("axis bank")) return BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_axis_xls");
+      // Header-only window — transaction rows routinely name other banks as
+      // counterparties (e.g. an Axis statement's "NEFT/.../HDFC BANK" line), so
+      // scanning the full body causes false positives. The issuing bank's own
+      // name reliably appears in the account/branch info near the top instead.
+      const headerText=rows.slice(0,10).map(r=>r.join(" ")).join(" ").toLowerCase();
+      if(headerText.includes("hdfc bank")||(headerText.includes("narration")&&headerText.includes("withdrawal amt"))) return BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_hdfc_xls");
+      // Axis Bank statements don't always spell out "Axis Bank" in the header block —
+      // the IFSC prefix "UTIB" (assigned bank-wide to Axis) is a reliable stand-in.
+      if(headerText.includes("axis bank")||headerText.includes("utib0")) return BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_axis_xls");
     }
     return null;
   };
 
-  const doParse=async(overrideMapping,overrideFile)=>{
+  const doParse=async(overrideMapping,overrideFile,overrideHeaderMap)=>{
     setErr("");setParsed(null);
     const f=overrideFile||file;
     if(!f) return setErr("Choose a file first");
     try{
       let rows;
       const m=overrideMapping||mapping;
+      const hm=overrideHeaderMap||headerMap;
       if(/\.xlsx?$/i.test(f.name)) rows=await parseXLSXFile(f);
       else rows=parseCSV(await f.text(),m.delimiter==="auto"?undefined:m.delimiter);
       const result=parseBankStatementGeneric(rows,m);
@@ -9761,7 +9923,7 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
       setParsed(result);
       if(isCreditCard){
         setStmtFields({
-          totalDue:cellAt(rows,headerMap.total_due_row,headerMap.total_due_col),
+          totalDue:cellAt(rows,hm.total_due_row,hm.total_due_col),
           dueDate:computeDueDate()||"",
         });
       }
@@ -9780,8 +9942,8 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
       const preset=detectPreset(rows,isXLSX,rawText);
       if(preset){
         setDetected({name:preset.name});
-        const nextMapping=applyLibraryPreset(preset);
-        await doParse(nextMapping,f);
+        const{mapping:nextMapping,headerMap:nextHeaderMap}=applyLibraryPreset(preset);
+        await doParse(nextMapping,f,nextHeaderMap);
       } else {
         setDetectFailed(true);
         setMappingExpanded(true);
@@ -9797,11 +9959,24 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
     try{
       const uid=getCurrentUserId();
       const dates=parsed.transactions.map(t=>t.txn_date).sort();
+      const statementDate=stmtMonth?stmtMonth+"-01":null;
+      const label=stmtName.trim()||null;
+
+      // Check for a name/month collision up front, rather than letting a raw DB error
+      // (or a silent duplicate) surface — same "already exists" pattern used elsewhere
+      // in the app (see the Points statement import flow).
+      const {data:existingStmts}=await db.from("account_statements").filter("account_id",acctId);
+      const dup=(existingStmts||[]).find(s=>label?s.label===label:s.statement_date===statementDate);
+      if(dup){
+        setBusy(false);
+        alert("Statement with this name already exists. Change name or delete the old statement and try again.");
+        return;
+      }
 
       const {data:srows,error:serr}=await db.from("account_statements").insert({
         account_id:acctId,period_start:dates[0],period_end:dates[dates.length-1],
-        statement_date:stmtMonth?stmtMonth+"-01":null,
-        label:stmtName.trim()||null,
+        statement_date:statementDate,
+        label,
         due_date:isCreditCard?(stmtFields.dueDate||null):null,
         total_due:isCreditCard?(parseFloat(stmtFields.totalDue)||0):null,
         closing_balance:parsed.closing_balance||0,
@@ -9811,6 +9986,11 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
         source_file:file.name,user_id:uid,
       });
       if(serr){
+        if(serr.code==="23505"){
+          setBusy(false);
+          alert("Statement with this name already exists. Change name or delete the old statement and try again.");
+          return;
+        }
         if(serr.code==="42703"||serr.code==="PGRST204") throw new Error("Statement: your database is missing one or more columns. Run in Supabase SQL: ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS label text; ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS parsed_debits numeric; ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS parsed_credits numeric; ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS parsed_opening_balance numeric;");
         throw new Error("Statement: "+JSON.stringify(serr));
       }
@@ -9879,21 +10059,34 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
           <div style={{fontSize:12,color:amber,fontWeight:500,marginBottom:14}}>Could not auto-detect the statement format — pick a mapping below or configure it manually.</div>
         )}
 
-        {(libraryPresets.length>0||savedMappings.length>0)&&(
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Mapping library</div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-              {libraryPresets.map(p=>(
-                <button key={p.lid} title={p.description} onClick={()=>{const next=applyLibraryPreset(p);if(file)doParse(next);}}
-                  style={{...gbtn,fontSize:12,background:activePresetName===p.name?surf3:surf}}>{p.name}</button>
-              ))}
-              {savedMappings.map(m=>(
-                <button key={m.id} onClick={()=>{const next=applyPreset(m.id);if(file)doParse(next);}}
-                  style={{...gbtn,fontSize:12,background:activePresetName===m.name?surf3:surf}}>{m.name}</button>
-              ))}
+        {(()=>{
+          // Saved custom mappings aren't filtered by kind at the DB level, so without
+          // this the Bank/CC upload flows bleed into each other — a CC mapping saved
+          // earlier would show up as a button while uploading a bank statement, and
+          // vice versa. Match the same isCreditCard/kind split SetupMappings uses.
+          const relevantSaved=savedMappings.filter(m=>isCreditCard?m.kind!=="bank":m.kind==="bank");
+          if(libraryPresets.length===0&&relevantSaved.length===0) return null;
+          return(
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:mut,marginBottom:8,textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Mapping library — {isCreditCard?"Credit Card":"Bank"}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                {libraryPresets.map(p=>(
+                  <button key={p.lid} title={p.description} onClick={()=>{const{mapping:next,headerMap:nextHm}=applyLibraryPreset(p);if(file)doParse(next,undefined,nextHm);}}
+                    style={{...gbtn,fontSize:12,background:activePresetName===p.name?surf3:surf}}>{p.name}</button>
+                ))}
+              </div>
+              {relevantSaved.length>0&&(<>
+                <div style={{fontSize:11,color:mut,margin:"10px 0 8px",textTransform:"uppercase",letterSpacing:"0.07em",fontWeight:500}}>Your saved mappings</div>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                  {relevantSaved.map(m=>(
+                    <button key={m.id} onClick={()=>{const next=applyPreset(m.id);if(file)doParse(next);}}
+                      style={{...gbtn,fontSize:12,background:activePresetName===m.name?surf3:surf}}>{m.name}</button>
+                  ))}
+                </div>
+              </>)}
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         <div style={{marginBottom:16}}>
           <div onClick={()=>setMappingExpanded(e=>!e)}
@@ -11289,7 +11482,7 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
   );
 }
 
-function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,onDeleted}){
+function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,onDeleted,hideAmounts,computedBalance}){
   const [staged,setStaged]=useState(null); // null = not yet loaded
   const [tagging,setTagging]=useState(null);
   const [editingTxn,setEditingTxn]=useState(null); // {txn, stagedId}
@@ -11372,6 +11565,26 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
       return name+(otherLines.length>1?" ₹"+amt.toLocaleString("en-IN"):"");
     });
     return (ACTION_SHORT[txn.action]||txn.action)+": "+(parts.join(", ")||"—");
+  };
+  // Same underlying data as describeTag, but as one line per split instead of a
+  // single comma-joined line — used for the Tag column's on-screen display, while
+  // describeTag (single string) still feeds tooltips/confirm dialogs.
+  const describeTagLines=s=>{
+    if(!s.resulting_transaction_id) return null;
+    const txn=allTxns.find(t=>t.id===s.resulting_transaction_id);
+    if(!txn) return null;
+    const otherLines=allLines.filter(l=>l.transaction_id===txn.id&&l.account_id!==s.source_account_id);
+    const label=ACTION_SHORT[txn.action]||txn.action;
+    if(otherLines.length<=1){
+      const name=otherLines[0]?(a=>a?.entity_id?(entities.find(e=>e.id===a.entity_id)?.name||a?.name||"?"):(a?.name||"?"))(allAccts.find(a=>a.id===otherLines[0].account_id)):"—";
+      return [label+": "+name];
+    }
+    return otherLines.map(l=>{
+      const acct=allAccts.find(a=>a.id===l.account_id);
+      const name=acct?.entity_id?(entities.find(e=>e.id===acct.entity_id)?.name||acct?.name||"?"):(acct?.name||"?");
+      const amt=Number(l.debit)||Number(l.credit);
+      return label+": "+name+" ₹"+amt.toLocaleString("en-IN");
+    });
   };
   const linkedTxn=s=>s.resulting_transaction_id?allTxns.find(t=>t.id===s.resulting_transaction_id):null;
   // Reconciliation math: Previous statement's dues, minus payments/credits received
@@ -11458,12 +11671,18 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   // first or the transactions delete silently fails and leaves an orphaned real
   // transaction (and its ledger entry) behind with no staged row pointing at it anymore.
   const deleteTxnAndLines=async(txnId)=>{
-    // transaction_lines.transaction_id cascades on delete, so removing the
-    // transaction alone clears its lines atomically. (Deleting lines one at a
-    // time here would trip a balance-check trigger — each transaction's lines
-    // must sum to zero after every delete statement, so the first of a pair
-    // always fails.)
-    await db.from("transactions").delete(txnId);
+    // transaction_lines has no ON DELETE CASCADE from transactions in practice —
+    // deleting the transaction first leaves its lines (and the balance-check
+    // trigger on transaction_lines then blocks the transaction delete outright,
+    // since the lines still reference it). Delete all of a transaction's lines
+    // in one bulk statement (not one at a time — the trigger requires each
+    // transaction's remaining lines to sum to zero after every delete, which a
+    // single bulk delete satisfies at zero-remaining but a sequential one-by-one
+    // delete does not) before removing the transaction itself.
+    const {error:le}=await db.from("transaction_lines").deleteWhere("transaction_id",txnId);
+    if(le) throw new Error("Failed to delete transaction lines: "+JSON.stringify(le));
+    const {error:te}=await db.from("transactions").delete(txnId);
+    if(te) throw new Error("Failed to delete transaction: "+JSON.stringify(te));
   };
 
   const deleteStatement=async()=>{
@@ -11479,21 +11698,39 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
       }
       await db.from("account_statements").delete(statement.id);
       onDeleted&&onDeleted();
-    }finally{setDeleting(false);}
+    }catch(e){ alert("Delete failed: "+e.message); }
+    finally{setDeleting(false);}
   };
 
   const deleteRow=async(s)=>{
     const msg=s.resulting_transaction_id
-      ?`This transaction is tagged to ${describeTag(s)||"another ledger/account"}. Deleting it will also delete that entry. This cannot be undone. Are you sure you want to continue?`
+      ?`Delete this transaction entirely? It's tagged to ${describeTag(s)||"another ledger/account"} — deleting will remove both this imported row and that ledger/account entry. This cannot be undone. Are you sure you want to continue?`
       :"Delete this transaction? This cannot be undone.";
     if(!confirm(msg)) return;
-    // staged_transactions.resulting_transaction_id references transactions — delete
-    // the staged row first, or the transaction delete is blocked by that FK
-    // (fk_resulting_txn) while this row still points at it.
-    await db.from("staged_transactions").delete(s.id);
-    if(s.resulting_transaction_id) await deleteTxnAndLines(s.resulting_transaction_id);
-    await load();
-    onSaved&&onSaved();
+    try{
+      // staged_transactions.resulting_transaction_id references transactions —
+      // delete the staged row first, or the transaction delete is blocked by
+      // that FK (fk_resulting_txn) while this row still points at it.
+      await db.from("staged_transactions").delete(s.id);
+      if(s.resulting_transaction_id) await deleteTxnAndLines(s.resulting_transaction_id);
+      await load();
+      onSaved&&onSaved();
+    }catch(e){ alert("Delete failed: "+e.message); }
+  };
+
+  // Unlike deleteRow, this keeps the imported staged_transactions row (so it goes
+  // back to Untagged and can be re-tagged) and only removes the ledger/account
+  // entry the tag created.
+  const untagRow=async(s)=>{
+    const tagDesc=describeTag(s);
+    const msg=`Remove this tag? ${tagDesc?`This transaction is tagged to ${tagDesc}. `:""}Removing the tag will delete that ledger/account entry. This cannot be undone. Are you sure you want to continue?`;
+    if(!confirm(msg)) return;
+    try{
+      if(s.resulting_transaction_id) await deleteTxnAndLines(s.resulting_transaction_id);
+      await db.from("staged_transactions").update(s.id,{is_reconciled:false,resulting_transaction_id:null});
+      await load();
+      onSaved&&onSaved();
+    }catch(e){ alert("Remove tag failed: "+e.message); }
   };
 
   const q=search.trim().toLowerCase();
@@ -11535,7 +11772,9 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
           {statement.due_date&&<div style={{fontSize:11,color:mut,marginTop:2}}>Due {fmtDate(statement.due_date)}</div>}
         </div>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <div className="pv-num" style={{fontSize:14,fontWeight:700,color:txt}}>₹{Number(statement.total_due!=null?statement.total_due:statement.closing_balance||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          {(()=>{const v=Number(statement.total_due!=null?statement.total_due:(computedBalance!=null?computedBalance:statement.closing_balance||0));return(
+            <div className="pv-num" style={{fontSize:14,fontWeight:700,color:v<0?red:txt}}>{hideAmounts?"••••••":(v<0?"-":"")+"₹"+Math.abs(v).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          );})()}
           {expanded&&(<>
             <button style={gbtnXs} onClick={e=>{e.stopPropagation();setShowEditStmt(true);}}>Edit</button>
             <button style={{...dbtnXs,opacity:deleting?0.5:1}} disabled={deleting} onClick={e=>{e.stopPropagation();deleteStatement();}}>{deleting?"Deleting…":"Delete"}</button>
@@ -11664,12 +11903,17 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                         <td style={{padding:"8px"}}>{!s.is_reconciled&&<input type="checkbox" checked={selected.has(s.id)} onChange={()=>toggleSelect(s.id)}/>}</td>
                         <td style={{padding:"8px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",color:mut}}>{fmtDate(s.txn_date)}</td>
                         <td title={s.raw_description} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:txt,fontWeight:500}}>{s.raw_description}</td>
-                        <td title={describeTag(s)||""} style={{padding:"8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                        <td title={describeTag(s)||""} style={{padding:"8px",overflow:"hidden"}}>
                           {s.is_reconciled?(
-                            <span style={{display:"flex",alignItems:"center",gap:6}}>
-                              <span style={{color:grn}}>{describeTag(s)||"Tagged"}</span>
+                            <span style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <span style={{display:"flex",flexDirection:"column",gap:1,color:grn,minWidth:0}}>
+                                {(describeTagLines(s)||["Tagged"]).map((line,i)=><span key={i} style={{whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{line}</span>)}
+                              </span>
                               {s.resulting_transaction_id?(
-                                <button title="Edit Tag" onClick={()=>setTagging(s)} style={{display:"inline-flex",alignItems:"center",gap:3,border:"none",background:"none",color:mut2,cursor:"pointer",padding:0,fontSize:11}}><TagIcon size={11}/>Edit Tag</button>
+                                <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
+                                  <button title="Edit Tag" onClick={()=>setTagging(s)} style={{display:"inline-flex",alignItems:"center",gap:3,border:"none",background:"none",color:mut2,cursor:"pointer",padding:0,fontSize:11}}><TagIcon size={11}/>Edit Tag</button>
+                                  <button title="Remove Tag" onClick={()=>untagRow(s)} style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:14,height:14,border:"none",background:"none",color:mut2,cursor:"pointer",padding:0,fontSize:12,lineHeight:1}}>×</button>
+                                </span>
                               ):(
                                 <button style={{...gbtnXs,padding:"2px 6px",fontSize:10}} onClick={async()=>{await db.from("staged_transactions").update(s.id,{is_reconciled:false});await load();onSaved&&onSaved();}}>Undo</button>
                               )}
@@ -11736,15 +11980,19 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
   const [loan,setLoan]=useState(null);
   const [balance,setBalance]=useState(0);
   const [balanceBankFigure,setBalanceBankFigure]=useState(null);
+  const [computedBalances,setComputedBalances]=useState({});
   const [myCard,setMyCard]=useState(null);
   const [masterCard,setMasterCard]=useState(null);
-  const [ytd,setYtd]=useState({cal:0,fy:0});
+  const [ytd,setYtd]=useState({cal:0,fy:0,billing:0});
   const [busy,setBusy]=useState(true);
   const [showUpload,setShowUpload]=useState(false);
   const [showManualEntry,setShowManualEntry]=useState(false);
   const [showEdit,setShowEdit]=useState(false);
   const [statementsOpen,setStatementsOpen]=useState(true);
   const [expandedIds,setExpandedIds]=useState(new Set());
+  const [hideAmounts,setHideAmounts]=useState(()=>{try{return localStorage.getItem("pv_hide_amounts")==="1";}catch(_){return false;}});
+  const toggleHideAmounts=()=>setHideAmounts(v=>{const n=!v;try{localStorage.setItem("pv_hide_amounts",n?"1":"0");}catch(_){}return n;});
+  const mask=v=>hideAmounts?"••••••":v;
 
   const isCC=account.subtype==="credit_card";
   const isCash=account.subtype==="cash";
@@ -11768,39 +12016,56 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
         const chrono=[...acctStmts].sort((a,b)=>new Date(a.period_start)-new Date(b.period_start));
         let running=Number(account.opening_balance)||0;
         let lastParsedClosing=null;
+        const computedMap={};
         for(const stmt of chrono){
           const rows=stmtStagedMap[stmt.id]||[];
           const d=rows.filter(r=>Number(r.amount)<0).reduce((a,r)=>a+Math.abs(Number(r.amount)),0);
           const c=rows.filter(r=>Number(r.amount)>0).reduce((a,r)=>a+Number(r.amount),0);
           running=running-d+c;
+          computedMap[stmt.id]=running;
           lastParsedClosing=stmt.closing_balance!=null?Number(stmt.closing_balance):null;
         }
         setBalance(running);
         setBalanceBankFigure(lastParsedClosing);
+        setComputedBalances(computedMap);
       }
+      let billingStartMMDD=null;
       if(isCC&&account.linked_my_card_id){
         const [mc,mac]=await Promise.all([db.from("my_cards").select(),db.from("master_cards").select()]);
         const card=(mc.data||[]).find(x=>x.id===account.linked_my_card_id)||null;
         setMyCard(card);
         setMasterCard(card?(mac.data||[]).find(x=>x.id===card.master_id)||null:null);
+        billingStartMMDD=card?.billing_year_start||null;
       }
       if(isCC){
-        const [txAll,tlAll]=await Promise.all([db.from("transactions").select(),db.from("transaction_lines").select()]);
-        const txnById={};
-        (txAll.data||[]).forEach(t=>{txnById[t.id]=t;});
-        const spendActions=new Set(["expense","paid_on_behalf"]);
-        const myLines=(tlAll.data||[]).filter(l=>l.account_id===account.id&&Number(l.credit)>0&&txnById[l.transaction_id]&&spendActions.has(txnById[l.transaction_id].action));
+        // Spend YTD is the card's own outgoings straight from the imported
+        // statements — every debit counts whether or not the user has gotten
+        // around to tagging it into a Books expense/ledger entry. This is
+        // deliberately independent of transaction_lines/tagging.
+        const stagedForAcct=(st.data||[]).filter(x=>x.source_account_id===account.id);
         const now=new Date();
         const calStart=now.getFullYear()+"-01-01";
         const fyStartYear=now.getMonth()>=3?now.getFullYear():now.getFullYear()-1;
         const fyStart=fyStartYear+"-04-01";
-        let cal=0,fy=0;
-        myLines.forEach(l=>{
-          const d=txnById[l.transaction_id].txn_date;
-          if(d>=calStart) cal+=Number(l.credit);
-          if(d>=fyStart) fy+=Number(l.credit);
+        // Billing-year cycle: if today falls before this year's MM-DD anniversary,
+        // the current cycle actually started last year.
+        let billingStart=null;
+        if(billingStartMMDD){
+          const todayMMDD=String(now.getMonth()+1).padStart(2,"0")+"-"+String(now.getDate()).padStart(2,"0");
+          const billingYear=todayMMDD>=billingStartMMDD?now.getFullYear():now.getFullYear()-1;
+          billingStart=billingYear+"-"+billingStartMMDD;
+        }
+        let cal=0,fy=0,billing=0;
+        stagedForAcct.forEach(s=>{
+          const amt=Number(s.amount);
+          if(amt>=0) return; // only outgoings/debits count as spend
+          const spend=Math.abs(amt);
+          const d=s.txn_date;
+          if(d>=calStart) cal+=spend;
+          if(d>=fyStart) fy+=spend;
+          if(billingStart&&d>=billingStart) billing+=spend;
         });
-        setYtd({cal,fy});
+        setYtd({cal,fy,billing});
       }
     }
     setBusy(false);
@@ -11821,30 +12086,35 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
   const maskedNum=acctMaskedNumber(account,isCC?myCard?.last4:account.last4);
   const subtitle=acctSubtitle(account,{ownerName:owner?.name||"",bankName:isCC?masterCard?.bank:account.bank_name,network:masterCard?.network,cardType:isCC?masterCard?.name:null});
 
+  // Both stored as "MM-DD" (see EditCardModal); the header wants DD/MM instead of
+  // the "DD-Mon" format used elsewhere for these same fields.
+  const fmtMMDDasDDMM=s=>{
+    const [mm,dd]=(s||"").split("-");
+    return mm&&dd?dd+"/"+mm:"";
+  };
   const chips=[
-    myCard?.stmt_date&&{label:"Statement Day",value:ordinal(myCard.stmt_date)},
-    myCard?.due_date_day&&{label:"Due Day",value:ordinal(myCard.due_date_day)},
-    fee>0&&{label:"Annual Fee",value:"₹"+Number(fee).toLocaleString("en-IN"),color:red},
     myCard?.card_expiry&&{label:"Expires",value:myCard.card_expiry},
-    myCard?.points_balance>0&&{label:"Points Balance",value:Number(myCard.points_balance).toLocaleString("en-IN")},
-    myCard?.billing_year_start&&{label:"Billing Year Start",value:myCard.billing_year_start},
-    myCard?.fee_charge_date&&{label:"Fee Charge Date",value:myCard.fee_charge_date},
+    myCard?.stmt_date&&{label:"STMT Date",value:ordinal(myCard.stmt_date),sub:"of the month"},
+    myCard?.due_date_day&&{label:"Due Date",value:ordinal(myCard.due_date_day),sub:"of the month"},
+    myCard?.billing_year_start&&{label:"Billing Year Date",value:fmtMMDDasDDMM(myCard.billing_year_start)},
+    myCard?.fee_charge_date&&{label:"Fee Date",value:fmtMMDDasDDMM(myCard.fee_charge_date)},
+    fee>0&&{label:"Annual Fee",value:"₹"+Number(fee).toLocaleString("en-IN"),color:txt},
   ].filter(Boolean);
 
   const stats=[
     !isCC&&{label:account.type==="liability"?"Owed":"Closing Balance",
-      value:(account.type!=="liability"&&balance<0?"-":"")+"₹"+Math.abs(balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),
+      value:mask((account.type!=="liability"&&balance<0?"-":"")+"₹"+Math.abs(balance).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})),
       color:(account.type==="liability"||balance<0)?red:txt,
       sub:(lastStmt?.period_end||balanceBankFigure!=null)?(<>
         {lastStmt?.period_end&&<>As on {fmtDate(lastStmt.period_end)}</>}
-        {balanceBankFigure!=null&&<><br/>{"Bank's figure: ₹"+Math.abs(balanceBankFigure).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</>}
+        {balanceBankFigure!=null&&<><br/>{mask("Bank's figure: ₹"+Math.abs(balanceBankFigure).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}))}</>}
       </>):null,
       subColor:balanceBankFigure!=null&&Math.abs(balanceBankFigure-balance)>1?amber:mut},
-    isCC&&lastStmt&&{label:"Total Due",value:"₹"+Number(lastStmt.total_due||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
-    isCC&&lastStmt&&lastStmt.due_date&&{label:"Due Date",value:fmtDate(lastStmt.due_date)},
+    isCC&&lastStmt&&{label:"Total Due",value:"₹"+Number(lastStmt.total_due||0).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}),
+      color:red,sub:lastStmt.due_date?("Due on "+fmtDate(lastStmt.due_date)):null},
     isCC&&{label:"Cal. YTD",value:"₹"+ytd.cal.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
-    isCC&&{label:"FY to Date",value:"₹"+ytd.fy.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
-    isCC&&{label:"Statements",value:statements.length,plain:true},
+    isCC&&{label:"Fin YTD",value:"₹"+ytd.fy.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
+    isCC&&myCard?.billing_year_start&&{label:"Billing YTD",value:"₹"+ytd.billing.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})},
   ].filter(Boolean);
 
   const toggleStmt=id=>setExpandedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
@@ -11864,6 +12134,12 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
             </div>
           </div>
           <Toolbar>
+            {!isCC&&(
+              <button onClick={toggleHideAmounts} title={hideAmounts?"Show amounts":"Hide amounts"}
+                style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${bdr}`,borderRadius:10,background:hideAmounts?surf3:surf,color:mut2,cursor:"pointer",padding:0,flexShrink:0}}>
+                <EyeIcon off={hideAmounts}/>
+              </button>
+            )}
             <button style={gbtn} onClick={()=>setShowEdit(true)}>Edit</button>
             <button onClick={()=>isCash?setShowManualEntry(true):setShowUpload(true)} title={isCash?"Record Transaction":"Upload Statement"}
               style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"50%",border:"none",background:txt,color:bg,fontSize:18,fontWeight:400,lineHeight:1,cursor:"pointer",padding:0,flexShrink:0}}>
@@ -11874,9 +12150,9 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
         {chips.length>0&&(
           <div style={{display:"flex",gap:10,marginTop:16,flexWrap:"wrap"}}>
             {chips.map((c,i)=>(
-              <div key={i} style={{background:surf2,borderRadius:12,padding:"12px 16px",minWidth:100,border:`1px solid ${bdr}`}}>
+              <div key={i} style={{background:surf2,borderRadius:12,padding:"12px 16px",width:130,minHeight:64,border:`1px solid ${bdr}`}}>
                 <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:6,fontWeight:500}}>{c.label}</div>
-                <div className="pv-num" style={{fontSize:14,fontWeight:700,color:c.color||txt}}>{c.value}</div>
+                <div className="pv-num" style={{fontSize:14,fontWeight:700,color:c.color||txt}}>{c.value}{c.sub&&<span style={{fontSize:10,fontWeight:400,color:mut}}> {c.sub}</span>}</div>
               </div>
             ))}
           </div>
@@ -11900,7 +12176,7 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
         {statements.length===0?<Empty icon="🧾" msg={isCash?"No transactions yet — record one to get started":"No statements yet — upload one to get started"}/>:(
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {statements.map(s=>(
-              <StatementAccordionRow key={s.id} statement={s} account={account} db={db} onSaved={load} expanded={expandedIds.has(s.id)} onToggle={()=>toggleStmt(s.id)} onDeleted={load}/>
+              <StatementAccordionRow key={s.id} statement={s} account={account} db={db} onSaved={load} expanded={expandedIds.has(s.id)} onToggle={()=>toggleStmt(s.id)} onDeleted={load} hideAmounts={!isCC&&hideAmounts} computedBalance={!isCC?computedBalances[s.id]:undefined}/>
             ))}
           </div>
         )}
@@ -11916,6 +12192,8 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
   const [accounts,setAccounts]=useState([]);
   const toggleAcctFavourite=a=>toggleFavouriteRow(db,"accounts",a,setAccounts);
   const [balances,setBalances]=useState([]);
+  const [statements,setStatements]=useState([]);
+  const [staged,setStaged]=useState([]);
   const [myCards,setMyCards]=useState([]);
   const [masterCards,setMasterCards]=useState([]);
   const [loans,setLoans]=useState([]);
@@ -11925,6 +12203,9 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
   const [autoSelected,setAutoSelected]=useState(false);
   const [acctsOpen,setAcctsOpen]=useState({});
   const [ownerFilter,setOwnerFilter]=useState("all");
+  const [hideAmounts,setHideAmounts]=useState(()=>{try{return localStorage.getItem("pv_hide_amounts")==="1";}catch(_){return false;}});
+  const toggleHideAmounts=()=>setHideAmounts(v=>{const n=!v;try{localStorage.setItem("pv_hide_amounts",n?"1":"0");}catch(_){}return n;});
+  const mask=v=>hideAmounts?"••••••":v;
   // Derived (not stored) so an edit that refreshes `accounts` is reflected immediately
   // instead of leaving the detail page pinned to a stale snapshot.
   const selAccount=selAccountId?accounts.find(a=>a.id===selAccountId)||null:null;
@@ -11942,9 +12223,10 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
 
   const load=useCallback(async()=>{
     setBusy(true);
-    let [a,ab,mc,mac,ln]=await Promise.all([
+    let [a,ab,mc,mac,ln,st,sg]=await Promise.all([
       db.from("accounts").select(),db.from("account_balances").select(),
       db.from("my_cards").select(),db.from("master_cards").select(),db.from("loans").select(),
+      db.from("account_statements").select(),db.from("staged_transactions").select(),
     ]);
     let list=(a.data||[]).filter(x=>!x.entity_id&&x.type!=="income"&&x.type!=="expense");
     // Backfill logos for cards created before accounts had their own logo_url,
@@ -11967,6 +12249,8 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
     }
     setAccounts(list);
     setBalances(ab.data||[]);
+    setStatements(st.data||[]);
+    setStaged(sg.data||[]);
     setMyCards(mc.data||[]);
     setMasterCards(mac.data||[]);
     setLoans(ln.data||[]);
@@ -11982,6 +12266,11 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
 
   const ownerName=id=>owners.find(o=>o.id===id)?.name||"Shared";
   const balFor=id=>{const b=balances.find(x=>x.account_id===id);return b?Number(b.balance):0;};
+  // Loans aren't statement/staged-transaction based (they use their own
+  // loans/loan_payments tables) — everything else goes through the shared,
+  // always-consistent computeAccountBalance so this page can't drift from the
+  // account's own detail page or the Overview dashboard.
+  const displayBalFor=a=>a.subtype==="loan"?balFor(a.id):computeAccountBalance(a,statements,staged);
   const acctDisplay=a=>{
     const myCard=a.subtype==="credit_card"&&a.linked_my_card_id?myCards.find(c=>c.id===a.linked_my_card_id):null;
     const masterCard=myCard?masterCards.find(m=>m.id===myCard.master_id):null;
@@ -11996,6 +12285,7 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
 
   const renderAcctRow=(a,idx,last)=>{
     const {maskedNum,subtitle}=acctDisplay(a);
+    const displayVal=displayBalFor(a);
     return(
       <ListRow key={a.id} onClick={()=>setSelAccountId(a.id)} last={last} minHeight={72}>
         <div style={{display:"flex",alignItems:"center",gap:12}}>
@@ -12007,7 +12297,7 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
           </div>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt,whiteSpace:"nowrap"}}>₹{Math.abs(balFor(a.id)).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2})}</div>
+          <div className="pv-num" style={{fontSize:15,fontWeight:700,color:displayVal<0?red:txt,whiteSpace:"nowrap"}}>{mask((displayVal<0?"-":"")+"₹"+Math.abs(displayVal).toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2}))}</div>
           <FavouriteButton inline active={!!a.is_favourite} onToggle={()=>toggleAcctFavourite(a)}/>
         </div>
       </ListRow>
@@ -12020,6 +12310,10 @@ function BooksAccounts({db,owners,onNavigate,initialSelectId}){
         action={
           <Toolbar>
             <OwnerFilterSelect value={ownerFilter} onChange={e=>setOwnerFilter(e.target.value)} owners={owners}/>
+            <button onClick={toggleHideAmounts} title={hideAmounts?"Show amounts":"Hide amounts"}
+              style={{width:38,height:38,display:"flex",alignItems:"center",justifyContent:"center",border:`1px solid ${bdr}`,borderRadius:10,background:hideAmounts?surf3:surf,color:mut2,cursor:"pointer",padding:0,flexShrink:0}}>
+              <EyeIcon off={hideAmounts}/>
+            </button>
             <RoundAddButton onClick={()=>setShowAddAccount(true)} title="Add Account"/>
           </Toolbar>
         }/>
@@ -12095,6 +12389,7 @@ export default function App(){
     setThemeState(next);
   };
   const [owners,setOwners]=useState([]);
+  const [showFabAdd,setShowFabAdd]=useState(false);
   // Everything starts collapsed — every top-level section AND every sub-section
   // (e.g. Settings → Setup) — built dynamically from NAV so it never drifts out
   // of sync if sections are added/removed/reordered later.
@@ -12406,11 +12701,18 @@ export default function App(){
         );
       })()}
 
+      {/* ── Mobile quick-add FAB — floats above the bottom nav, opens Add Transaction ── */}
+      <div style={{display:"none"}} className="mobile-fab" onClick={()=>setShowFabAdd(true)}>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      </div>
+      <AddTransactionModal show={showFabAdd} onClose={()=>setShowFabAdd(false)} db={db} onSaved={()=>setResetTick(v=>v+1)}/>
+
       <style>{`
         @media (max-width:700px){
           aside{display:none!important;}
           .mobile-header{display:flex!important;flex-direction:column;}
           .mobile-bottom-nav{display:flex!important;}
+          .mobile-fab{display:flex!important;}
           main{padding:12px 14px calc(84px + env(safe-area-inset-bottom,0px))!important;overflow-x:hidden!important;max-width:100vw!important;}
           table{font-size:12px!important;}
           body,#root{overflow-x:hidden!important;max-width:100vw!important;}
@@ -12421,6 +12723,15 @@ export default function App(){
           background:${surf};border-top:1px solid ${bdr};
           z-index:50;height:64px;
           padding-bottom:env(safe-area-inset-bottom,0px);
+        }
+        .mobile-fab{
+          position:fixed;right:18px;
+          bottom:calc(64px + 18px + env(safe-area-inset-bottom,0px));
+          width:52px;height:52px;border-radius:50%;
+          background:${acc};color:#fff;
+          align-items:center;justify-content:center;
+          box-shadow:0 4px 14px rgba(0,0,0,0.25);
+          z-index:51;cursor:pointer;
         }
         input[type=number]::-webkit-inner-spin-button,
         input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0;}
@@ -12449,11 +12760,11 @@ export default function App(){
         {tab==="home"&&<WelcomePage/>}
         {tab==="setup-overview"&&<LandingPage key={resetTick} db={db} user={user} owners={owners} navigate={navigate} goTo={goTo}/>}
         {tab==="overview"          &&<Overview key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
-        {tab==="my-cards"          &&<MyCards key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
-        {tab==="my-programs"       &&<MyPrograms key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
+        {tab==="my-cards"          &&<MyCards key={resetTick} db={db} owners={owners} onNavigate={goTo} initialSelectId={navTarget}/>}
+        {tab==="my-programs"       &&<MyPrograms key={resetTick} db={db} owners={owners} onNavigate={goTo} initialSelectId={navTarget}/>}
         {tab==="transfer"          &&<TransferPoints db={db} owners={owners}/>}
-        {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners}/>}
-        {tab==="redemptions"       &&<RedemptionDashboard db={db} owners={owners}/>}
+        {tab==="transfer-history"  &&<TransferHistory db={db} owners={owners} onNavigate={goTo}/>}
+        {tab==="redemptions"       &&<RedemptionDashboard db={db} owners={owners} onNavigate={goTo}/>}
         {tab==="vouchers"          &&<Vouchers key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
         {(tab==="pm-setup-owners"||tab==="setup-owners")&&<SetupOwners db={db} owners={owners} reloadOwners={()=>loadOwners()}/>}
         {(tab==="pm-setup-catalog"||tab==="setup-catalog")&&<Catalog key={resetTick} db={db} ownersData={owners} reloadOwners={()=>loadOwners()} userId={user?.id} initialTab={navTarget}/>}
@@ -14651,7 +14962,12 @@ function OverspendDeltaChart({data}){
 // itself only appears after the parent's busy gate), so expandedMonths can
 // correctly default to the most recent month. Same pattern as
 // RedemptionMonthAccordion / PointsHistoryTable's month grouping.
-function SpendTxnMonthAccordion({rows,isMobile}){
+function SpendTxnMonthAccordion({rows,isMobile,owners,onNavigate}){
+  const ownerName=id=>owners?.find(o=>o.id===id)?.name||"";
+  const spentFromLabel=r=>[r.accountName,ownerName(r.ownerId)].filter(Boolean).join(" - ");
+  const SpentFromLink=({r})=>(
+    <span onClick={e=>{e.stopPropagation();onNavigate&&onNavigate("books-accounts",r.accountId);}} style={{color:acc,cursor:"pointer",textDecoration:"underline"}}>{spentFromLabel(r)}</span>
+  );
   const monthGroups=[];
   rows.forEach(r=>{
     const key=(r.date||"").slice(0,7);
@@ -14676,7 +14992,7 @@ function SpendTxnMonthAccordion({rows,isMobile}){
         <div className="pv-num" style={{fontSize:13,fontWeight:700,color:red}}>-{inrFmt(r.amount)}</div>
       </div>
       <div style={{fontSize:13,fontWeight:600,color:txt,marginBottom:4}}>{r.description||"—"}</div>
-      <div style={{fontSize:11,color:mut}}>{r.categoryName} · {r.accountName}</div>
+      <div style={{fontSize:11,color:mut}}>{r.categoryName} · <SpentFromLink r={r}/></div>
     </div>
   );
 
@@ -14685,7 +15001,7 @@ function SpendTxnMonthAccordion({rows,isMobile}){
       <td style={{padding:"8px",color:mut,whiteSpace:"nowrap"}}>{fmtDate(r.date)}</td>
       <td style={{padding:"8px",color:txt,fontWeight:500,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:220}} title={r.description||undefined}>{r.description||"—"}</td>
       <td style={{padding:"8px",color:txt,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}} title={r.categoryName}>{r.categoryName}</td>
-      <td style={{padding:"8px",color:mut,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}} title={r.accountName}>{r.accountName}</td>
+      <td style={{padding:"8px",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",maxWidth:140}} title={spentFromLabel(r)}><SpentFromLink r={r}/></td>
       <td className="pv-num" style={{padding:"8px",textAlign:"right",fontWeight:700,color:red,whiteSpace:"nowrap"}}>-{inrFmt(r.amount)}</td>
     </tr>
   );
@@ -15085,7 +15401,7 @@ function SpendTrackerHome({db,owners,onNavigate}){
 
       <CollapsibleSection title="Transactions" count={sortedTxns.length} open={txnsOpen} setOpen={setTxnsOpen}>
         {sortedTxns.length===0?<Empty icon="🧾" msg="No tagged spend yet"/>:(
-          <SpendTxnMonthAccordion rows={sortedTxns} isMobile={isMobile}/>
+          <SpendTxnMonthAccordion rows={sortedTxns} isMobile={isMobile} owners={owners} onNavigate={onNavigate}/>
         )}
       </CollapsibleSection>
 
