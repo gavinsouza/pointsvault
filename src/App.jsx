@@ -9845,7 +9845,6 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
   const [mappingExpanded,setMappingExpanded]=useState(false);
   const [activePresetName,setActivePresetName]=useState("");
   const [stmtMonth,setStmtMonth]=useState(""); // "YYYY-MM"
-  const [stmtName,setStmtName]=useState(""); // custom statement name — required if no month
 
   useEffect(()=>{
     if(!show) return;
@@ -9877,7 +9876,7 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
     return `${dueY}-${String(dueM).padStart(2,"0")}-${String(linkedCard.due_date_day).padStart(2,"0")}`;
   };
 
-  const reset=()=>{setFile(null);setRawRows(null);setParsed(null);setStmtFields({totalDue:"",dueDate:""});setErr("");setDetected(null);setDetectFailed(false);setMappingExpanded(false);setActivePresetName("");setStmtMonth("");setStmtName("");};
+  const reset=()=>{setFile(null);setRawRows(null);setParsed(null);setStmtFields({totalDue:"",dueDate:""});setErr("");setDetected(null);setDetectFailed(false);setMappingExpanded(false);setActivePresetName("");setStmtMonth("");};
 
   const presetToMapping=p=>({skip_rows:p.skip_rows??1,date_col:p.date_col??0,desc_col:p.desc_col??1,ref_col:p.ref_col??-1,
     amount_type:p.amount_type||"split",debit_col:p.debit_col??2,credit_col:p.credit_col??3,
@@ -10005,30 +10004,28 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
 
   const doImport=async()=>{
     if(!acctId) return setErr("Choose an account");
-    if(!stmtMonth&&!stmtName.trim()) return setErr("Enter a statement month or a custom statement name");
+    if(!stmtMonth) return setErr("Enter a statement month");
     if(!parsed) return setErr("Parse a file first");
     setBusy(true);setErr("");
     try{
       const uid=getCurrentUserId();
       const dates=parsed.transactions.map(t=>t.txn_date).sort();
-      const statementDate=stmtMonth?stmtMonth+"-01":null;
-      const label=stmtName.trim()||null;
+      const statementDate=stmtMonth+"-01";
 
-      // Check for a name/month collision up front, rather than letting a raw DB error
+      // Check for a month collision up front, rather than letting a raw DB error
       // (or a silent duplicate) surface — same "already exists" pattern used elsewhere
       // in the app (see the Points statement import flow).
       const {data:existingStmts}=await db.from("account_statements").filter("account_id",acctId);
-      const dup=(existingStmts||[]).find(s=>label?s.label===label:s.statement_date===statementDate);
+      const dup=(existingStmts||[]).find(s=>s.statement_date===statementDate);
       if(dup){
         setBusy(false);
-        alert("Statement with this name already exists. Change name or delete the old statement and try again.");
+        alert("A statement for this month already exists. Delete the old statement and try again.");
         return;
       }
 
       const {data:srows,error:serr}=await db.from("account_statements").insert({
         account_id:acctId,period_start:dates[0],period_end:dates[dates.length-1],
         statement_date:statementDate,
-        label,
         due_date:isCreditCard?(stmtFields.dueDate||null):null,
         total_due:isCreditCard?(parseFloat(stmtFields.totalDue)||0):null,
         closing_balance:parsed.closing_balance||0,
@@ -10040,7 +10037,7 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
       if(serr){
         if(serr.code==="23505"){
           setBusy(false);
-          alert("Statement with this name already exists. Change name or delete the old statement and try again.");
+          alert("A statement for this month already exists. Delete the old statement and try again.");
           return;
         }
         if(serr.code==="42703"||serr.code==="PGRST204") throw new Error("Statement: your database is missing one or more columns. Run in Supabase SQL: ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS label text; ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS parsed_debits numeric; ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS parsed_credits numeric; ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS parsed_opening_balance numeric;");
@@ -10091,14 +10088,9 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
         </select>
       </>)}
 
-      {acctId&&(<>
-        <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"end",marginBottom:4}}>
-          <div>{lbl("Statement month")}<MonthYearPicker value={stmtMonth} onChange={setStmtMonth}/></div>
-          <div style={{fontSize:11,color:mut,paddingBottom:11}}>or</div>
-          <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. 22 May to 26 Aug" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
-        </div>
-        <div style={{fontSize:11,color:mut,marginBottom:16}}>Enter one of the two — whichever fits this statement.</div>
-      </>)}
+      {acctId&&(
+        <div style={{marginBottom:16}}>{lbl("Statement month")}<MonthYearPicker value={stmtMonth} onChange={setStmtMonth}/></div>
+      )}
 
       {acctId&&(<>
         {lbl("File (CSV or XLSX)")}
@@ -11470,7 +11462,6 @@ function ColResizeHandle({width,onResize}){
 // ── EditStatementModal — fix the statement month/due date/totals after import ──
 function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
   const [stmtMonth,setStmtMonth]=useState("");
-  const [stmtName,setStmtName]=useState("");
   const [dueDate,setDueDate]=useState("");
   const [totalDue,setTotalDue]=useState("");
   const [closingBalance,setClosingBalance]=useState("");
@@ -11480,7 +11471,6 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
   useEffect(()=>{
     if(!show||!statement) return;
     setStmtMonth(statement.statement_date?statement.statement_date.slice(0,7):"");
-    setStmtName(statement.label||"");
     setDueDate(statement.due_date?statement.due_date.slice(0,10):"");
     setTotalDue(statement.total_due!=null?String(statement.total_due):"");
     setClosingBalance(statement.closing_balance!=null?String(statement.closing_balance):"");
@@ -11490,23 +11480,16 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
   if(!show||!statement) return null;
 
   const save=async()=>{
-    if(!stmtMonth&&!stmtName.trim()) return setErr("Enter a statement month or a custom statement name");
+    if(!stmtMonth) return setErr("Enter a statement month");
     setSaving(true);
     try{
-      const common={
-        statement_date:stmtMonth?stmtMonth+"-01":null,
-        label:stmtName.trim()||null,
-      };
+      const common={statement_date:stmtMonth+"-01"};
       const patch=isCC?{
         ...common,
-        due_date:dueDate||null,
         total_due:totalDue!==""?parseFloat(totalDue):null,
       }:common;
       const {error}=await db.from("account_statements").update(statement.id,patch);
-      if(error){
-        if(error.code==="42703"||error.code==="PGRST204") throw new Error("Your database is missing the \"label\" column. Run in Supabase SQL: ALTER TABLE account_statements ADD COLUMN IF NOT EXISTS label text;");
-        throw new Error(JSON.stringify(error));
-      }
+      if(error) throw new Error(JSON.stringify(error));
       setSaving(false);
       onSaved&&onSaved();
       onClose();
@@ -11515,14 +11498,10 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
 
   return(
     <Modal show={show} onClose={onClose} title="Edit Statement">
-      <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"end",marginBottom:4}}>
-        <div>{lbl("Statement month")}<MonthYearPicker value={stmtMonth} onChange={setStmtMonth}/></div>
-        <div style={{fontSize:11,color:mut,paddingBottom:11}}>or</div>
-        <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. June 2026" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
-      </div>
-      <div style={{fontSize:11,color:mut,marginBottom:16}}>Enter one of the two — whichever fits this statement.</div>
+      <div style={{marginBottom:16}}>{lbl("Statement month")}<MonthYearPicker value={stmtMonth} onChange={setStmtMonth}/></div>
       {isCC?(<>
-        {lbl("Due date")}<input style={inp} type="date" value={dueDate} onChange={e=>setDueDate(e.target.value)}/>
+        {lbl("Due date")}
+        <input style={{...inp,opacity:0.6,cursor:"not-allowed"}} type="date" value={dueDate} disabled title="Set from the card's due date day — not editable here"/>
         {lbl("Total due (₹)")}<input style={inp} type="number" value={totalDue} onChange={e=>setTotalDue(e.target.value)}/>
       </>):(<>
         {lbl("Closing balance (₹)")}
