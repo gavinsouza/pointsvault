@@ -12605,14 +12605,16 @@ export default function App(){
         <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:8,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
             <span style={{fontSize:12,color:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}</span>
-            <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+            <button onClick={()=>setShowBugReport(true)} style={{border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
+              Report a bug
+            </button>
           </div>
-          <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
-            <SignOutIcon size={12}/> Sign Out
-          </button>
-          <button onClick={()=>setShowBugReport(true)} style={{border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
-            Report a bug
-          </button>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
+            <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+            <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
+              <SignOutIcon size={12}/> Sign Out
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -12691,14 +12693,16 @@ export default function App(){
             <div style={{padding:"16px 20px",borderTop:`1px solid ${bdr}`,marginTop:8,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
                 <span style={{fontSize:13,color:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}</span>
-                <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+                <button onClick={()=>{setShowBugReport(true);setMenuOpen(false);}} style={{border:"none",background:"none",color:mut,fontSize:12,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
+                  Report a bug
+                </button>
               </div>
-              <button onClick={()=>{handleSignOut();setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:6,border:"none",background:"none",color:mut,fontSize:13,fontWeight:600,cursor:"pointer",padding:"4px 0"}}>
-                <SignOutIcon size={14}/> Sign Out
-              </button>
-              <button onClick={()=>{setShowBugReport(true);setMenuOpen(false);}} style={{border:"none",background:"none",color:mut,fontSize:12,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
-                Report a bug
-              </button>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+                <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+                <button onClick={()=>{handleSignOut();setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:6,border:"none",background:"none",color:mut,fontSize:13,fontWeight:600,cursor:"pointer",padding:"4px 0"}}>
+                  <SignOutIcon size={14}/> Sign Out
+                </button>
+              </div>
             </div>
           </div>
         )}
