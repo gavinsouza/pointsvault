@@ -347,6 +347,8 @@ function createClient(url, key) {
   };
 }
 
+const APP_VERSION="1.0.1";
+
 // ── Auth helpers ──────────────────────────────────────────────────────────────
 const SUPA_URL="https://gmrpweqrclfiaxnzqvtn.supabase.co";
 const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
@@ -12541,7 +12543,7 @@ export default function App(){
           <BrandLogo width={175} dark={theme==="dark"} onClick={()=>{setTab("home");setCollapsed(collapseAllSet());}}/>
         </div>
 
-        <div style={{flex:1,overflowY:"auto",padding:"0 12px 12px"}}>
+        <div style={{flex:1,minHeight:0,overflowY:"auto",padding:"0 12px 12px"}}>
           {NAV.map((section,si)=>{
             const isCollapsed=collapsed.has("s"+si);
             const hasItems=(section.items||[]).length>0||(section.sub||[]).length>0;
@@ -12594,11 +12596,12 @@ export default function App(){
           })}
         </div>
 
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
-          <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:10,flexShrink:0}}>
+          <span style={{fontSize:10,color:mut,letterSpacing:"0.02em"}}>v{APP_VERSION}</span>
           <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
             <SignOutIcon size={12}/> Sign Out
           </button>
+          <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
         </div>
       </aside>
 
