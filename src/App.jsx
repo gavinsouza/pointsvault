@@ -12596,12 +12596,14 @@ export default function App(){
           })}
         </div>
 
-        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:10,flexShrink:0}}>
-          <span style={{fontSize:10,color:mut,letterSpacing:"0.02em"}}>v{APP_VERSION}</span>
-          <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
-            <SignOutIcon size={12}/> Sign Out
-          </button>
-          <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+        <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:8,flexShrink:0}}>
+          <span style={{fontSize:10,color:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}</span>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:16}}>
+            <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
+              <SignOutIcon size={12}/> Sign Out
+            </button>
+            <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+          </div>
         </div>
       </aside>
 
@@ -12677,9 +12679,14 @@ export default function App(){
                 </div>
               );
             })}
-            <div onClick={toggleTheme} style={{display:"flex",alignItems:"center",gap:8,padding:"16px 20px",cursor:"pointer",borderTop:`1px solid ${bdr}`,marginTop:8}}>
-              <ThemeIcon dark={theme==="dark"} size={15}/>
-              <span style={{fontSize:13,fontWeight:600,color:txt}}>{theme==="dark"?"Light Mode":"Dark Mode"}</span>
+            <div style={{padding:"16px 20px",borderTop:`1px solid ${bdr}`,marginTop:8,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+              <span style={{fontSize:11,color:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}</span>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:20}}>
+                <button onClick={()=>{handleSignOut();setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:6,border:"none",background:"none",color:mut,fontSize:13,fontWeight:600,cursor:"pointer",padding:"4px 0"}}>
+                  <SignOutIcon size={14}/> Sign Out
+                </button>
+                <ThemeToggleSwitch dark={theme==="dark"} onClick={toggleTheme}/>
+              </div>
             </div>
           </div>
         )}
