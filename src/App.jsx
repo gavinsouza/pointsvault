@@ -12614,7 +12614,7 @@ export default function App(){
 
         <div style={{padding:"12px 16px",borderTop:`1px solid ${bdr}`,display:"flex",flexDirection:"column",alignItems:"center",gap:8,flexShrink:0}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:10}}>
-            <span style={{fontSize:12,color:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}</span>
+            <span style={{fontSize:12,fontWeight:IS_SANDBOX?700:400,color:IS_SANDBOX?amber:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}{IS_SANDBOX?" · Sandbox":""}</span>
             <button onClick={()=>setShowBugReport(true)} style={{border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
               Report a bug
             </button>
@@ -12702,7 +12702,7 @@ export default function App(){
             })}
             <div style={{padding:"16px 20px",borderTop:`1px solid ${bdr}`,marginTop:8,display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
-                <span style={{fontSize:13,color:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}</span>
+                <span style={{fontSize:13,fontWeight:IS_SANDBOX?700:400,color:IS_SANDBOX?amber:mut,letterSpacing:"0.02em"}}>Version {APP_VERSION}{IS_SANDBOX?" · Sandbox":""}</span>
                 <button onClick={()=>{setShowBugReport(true);setMenuOpen(false);}} style={{border:"none",background:"none",color:mut,fontSize:12,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
                   Report a bug
                 </button>
