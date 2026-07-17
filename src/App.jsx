@@ -983,6 +983,11 @@ function LogoCircle({url,name,size=56}){
   );
 }
 
+// Logo uploads are disabled pending a fix for a Supabase Storage bug that
+// blocks authenticated uploads (see the logos_insert/update/delete RLS
+// policies) — flip this back to false once that's resolved.
+const LOGO_UPLOAD_DISABLED=true;
+
 function LogoUpload({current,onUpload}){
   const handleFile=f=>{
     if(!f) return;
@@ -997,9 +1002,9 @@ function LogoUpload({current,onUpload}){
         <div style={{width:52,height:52,borderRadius:10,border:`2px dashed ${bdr2}`,background:surf2,display:"flex",alignItems:"center",justifyContent:"center",overflow:"hidden",flexShrink:0}}>
           {current?<img src={current} style={{width:"100%",height:"100%",objectFit:"contain"}}/>:<span style={{fontSize:20}}>img</span>}
         </div>
-        <label style={{...gbtn,padding:"6px 14px",fontSize:12,cursor:"pointer"}}>
+        <label style={{...gbtn,padding:"6px 14px",fontSize:12,cursor:LOGO_UPLOAD_DISABLED?"not-allowed":"pointer",opacity:LOGO_UPLOAD_DISABLED?0.45:1}} title={LOGO_UPLOAD_DISABLED?"Logo uploads are temporarily unavailable":undefined}>
           {current?"Change":"Upload"} Logo
-          <input type="file" accept="image/*" style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
+          <input type="file" accept="image/*" disabled={LOGO_UPLOAD_DISABLED} style={{display:"none"}} onChange={e=>handleFile(e.target.files[0])}/>
         </label>
         {current&&<button style={dbtnSm} onClick={()=>onUpload(null,null)}>Remove</button>}
       </div>
@@ -12398,6 +12403,7 @@ export default function App(){
   };
   const [owners,setOwners]=useState([]);
   const [showFabAdd,setShowFabAdd]=useState(false);
+  const [showBugReport,setShowBugReport]=useState(false);
   // Everything starts collapsed — every top-level section AND every sub-section
   // (e.g. Settings → Setup) — built dynamically from NAV so it never drifts out
   // of sync if sections are added/removed/reordered later.
@@ -12604,6 +12610,9 @@ export default function App(){
           <button onClick={handleSignOut} style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0"}}>
             <SignOutIcon size={12}/> Sign Out
           </button>
+          <button onClick={()=>setShowBugReport(true)} style={{border:"none",background:"none",color:mut,fontSize:11,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
+            Report a bug
+          </button>
         </div>
       </aside>
 
@@ -12687,6 +12696,9 @@ export default function App(){
               <button onClick={()=>{handleSignOut();setMenuOpen(false);}} style={{display:"flex",alignItems:"center",gap:6,border:"none",background:"none",color:mut,fontSize:13,fontWeight:600,cursor:"pointer",padding:"4px 0"}}>
                 <SignOutIcon size={14}/> Sign Out
               </button>
+              <button onClick={()=>{setShowBugReport(true);setMenuOpen(false);}} style={{border:"none",background:"none",color:mut,fontSize:12,fontWeight:500,cursor:"pointer",padding:"4px 0",textDecoration:"underline",textUnderlineOffset:2}}>
+                Report a bug
+              </button>
             </div>
           </div>
         )}
@@ -12722,6 +12734,7 @@ export default function App(){
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </div>
       <AddTransactionModal show={showFabAdd} onClose={()=>setShowFabAdd(false)} db={db} onSaved={()=>setResetTick(v=>v+1)}/>
+      <ReportBugModal show={showBugReport} onClose={()=>setShowBugReport(false)} db={db} user={user} tab={tab}/>
 
       <style>{`
         @media (max-width:700px){
@@ -14430,6 +14443,58 @@ async function parseAmexPointsPDF(file){
     }
   }
   return{statementYear,statementMonthNum,items};
+}
+
+function ReportBugModal({show,onClose,db,user,tab}){
+  const [kind,setKind]=useState("bug");
+  const [message,setMessage]=useState("");
+  const [saving,setSaving]=useState(false);
+  const [err,setErr]=useState("");
+  const [done,setDone]=useState(false);
+
+  const close=()=>{setKind("bug");setMessage("");setErr("");setDone(false);onClose();};
+
+  const submit=async()=>{
+    setErr("");
+    if(!message.trim()) return setErr("Tell us what happened");
+    setSaving(true);
+    try{
+      const {error}=await db.from("bug_reports").insert({
+        user_id:getCurrentUserId(), email:user?.email||null, kind, message:message.trim(),
+        app_version:APP_VERSION, page:tab||null,
+      });
+      if(error) throw new Error(error.message||JSON.stringify(error));
+      setDone(true);
+    }catch(e){
+      setErr(e.message||"Couldn't send that — try again");
+    }
+    setSaving(false);
+  };
+
+  return(
+    <Modal show={show} onClose={close} title="Report a bug or suggestion">
+      {done?(
+        <div style={{textAlign:"center",padding:"20px 0"}}>
+          <div style={{fontSize:15,color:txt,fontWeight:600,marginBottom:6}}>Thanks — got it.</div>
+          <div style={{fontSize:13,color:mut,marginBottom:20}}>We'll take a look.</div>
+          <button style={pbtn} onClick={close}>Close</button>
+        </div>
+      ):(
+        <>
+          <div style={{display:"flex",gap:8,marginBottom:16}}>
+            <button style={kind==="bug"?pbtn:gbtn} onClick={()=>setKind("bug")}>Bug</button>
+            <button style={kind==="suggestion"?pbtn:gbtn} onClick={()=>setKind("suggestion")}>Suggestion</button>
+          </div>
+          {lbl(kind==="bug"?"What happened?":"What would you like to see?")}
+          <textarea value={message} onChange={e=>setMessage(e.target.value)} rows={5}
+            placeholder={kind==="bug"?"I clicked X and...":"It would help if..."}
+            style={{...inp,resize:"vertical",fontFamily:"'Manrope',sans-serif"}}/>
+          {err&&<div style={{color:red,fontSize:12,marginBottom:10}}>{err}</div>}
+          <button style={{...pbtn,width:"100%",justifyContent:"center",opacity:saving?0.6:1}} disabled={saving} onClick={submit}>{saving?"Sending…":"Send"}</button>
+        </>
+      )}
+    </Modal>
+  );
 }
 
 // ── WelcomePage — the new Home tab. Placeholder for now; the old guided
