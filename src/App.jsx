@@ -350,8 +350,14 @@ function createClient(url, key) {
 const APP_VERSION="1.0.1";
 
 // ── Auth helpers ──────────────────────────────────────────────────────────────
-const SUPA_URL="https://gmrpweqrclfiaxnzqvtn.supabase.co";
-const SUPA_KEY="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
+// Reads from Vite env vars first (VITE_SUPABASE_URL/VITE_SUPABASE_ANON_KEY — set per
+// environment via .env.local) and falls back to the production project so a plain
+// checkout with no env file still works. IS_SANDBOX drives the sign-in screen badge
+// below so it's always visible which project a running instance actually talks to.
+const PROD_SUPA_URL="https://gmrpweqrclfiaxnzqvtn.supabase.co";
+const SUPA_URL=import.meta.env.VITE_SUPABASE_URL||PROD_SUPA_URL;
+const SUPA_KEY=import.meta.env.VITE_SUPABASE_ANON_KEY||"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdtcnB3ZXFyY2xmaWF4bnpxdnRuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODIxMTYwMTEsImV4cCI6MjA5NzY5MjAxMX0.LSZ5EDwCgn6KuqQCMofxS-FFJE5iZfjRpSDmC1wauoc";
+const IS_SANDBOX=SUPA_URL!==PROD_SUPA_URL;
 function getRawSession(){try{const r=localStorage.getItem("pv_session");return r?JSON.parse(r):null;}catch(_){return null;}}
 function getStoredSession(){try{const s=getRawSession();if(!s)return null;if(s.expires_at&&Date.now()/1000>s.expires_at-60)return null;return s;}catch(_){return null;}}
 function storeSession(s){localStorage.setItem("pv_session",JSON.stringify(s));}
@@ -12510,7 +12516,12 @@ export default function App(){
   if(!db) return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:bg,fontFamily:"'Manrope',sans-serif"}}>
       <div style={{width:"100%",maxWidth:420,padding:"0 24px"}}>
-        <div style={{marginBottom:32}}><BrandLogo width={185} dark={theme==="dark"}/></div>
+        <div style={{marginBottom:32}}>
+          <BrandLogo width={185} dark={theme==="dark"}/>
+          <div style={{fontSize:11,fontWeight:IS_SANDBOX?700:400,color:IS_SANDBOX?amber:mut,marginTop:8,letterSpacing:"0.02em"}}>
+            Version {APP_VERSION}{IS_SANDBOX?" · Sandbox":""}
+          </div>
+        </div>
         <AuthScreen onAuth={handleAuth}/>
         <div style={{marginTop:16,textAlign:"center"}}>
           <button onClick={()=>{clearSession();window.location.reload();}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:11,fontFamily:"'Manrope',sans-serif",textDecoration:"underline"}}>
