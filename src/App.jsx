@@ -12510,8 +12510,7 @@ export default function App(){
   if(!db) return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:bg,fontFamily:"'Manrope',sans-serif"}}>
       <div style={{width:"100%",maxWidth:420,padding:"0 24px"}}>
-        <div style={{fontSize:28,fontWeight:700,color:txt,letterSpacing:"-0.04em",marginBottom:6}}>PointsVault</div>
-        <div style={{fontSize:13,color:mut,marginBottom:32,fontWeight:400,textTransform:"uppercase",letterSpacing:"0.08em"}}>Wealth Tracker</div>
+        <div style={{marginBottom:32}}><BrandLogo width={185} dark={theme==="dark"}/></div>
         <AuthScreen onAuth={handleAuth}/>
         <div style={{marginTop:16,textAlign:"center"}}>
           <button onClick={()=>{clearSession();window.location.reload();}} style={{background:"none",border:"none",cursor:"pointer",color:mut,fontSize:11,fontFamily:"'Manrope',sans-serif",textDecoration:"underline"}}>
@@ -14503,6 +14502,19 @@ function ReportBugModal({show,onClose,db,user,tab}){
 
 // ── WelcomePage — the new Home tab. Placeholder for now; the old guided
 // checklist landing page moved to Settings → Setup → Overview.
+// Whether the Account Setup shortcut shows on the Home page — shared between
+// WelcomePage (which lets you hide it) and LandingPage/Settings→Setup→Overview
+// (which lets you bring it back). Plain localStorage, same pattern as the
+// per-section collapse state in Collapsible — no server round-trip needed for
+// a one-device UI preference.
+const ACCOUNT_SETUP_CARD_KEY="pv_show_account_setup_card";
+function getAccountSetupCardVisible(){
+  try{return localStorage.getItem(ACCOUNT_SETUP_CARD_KEY)!=="0";}catch(_){return true;}
+}
+function setAccountSetupCardVisible(v){
+  try{localStorage.setItem(ACCOUNT_SETUP_CARD_KEY,v?"1":"0");}catch(_){}
+}
+
 function WelcomePage({user,goTo,onQuickAdd}){
   const email=user?.email||"";
   const displayName=user?.user_metadata?.display_name;
@@ -14513,7 +14525,22 @@ function WelcomePage({user,goTo,onQuickAdd}){
   const timeGreeting=hour<12?"Good morning":hour<18?"Good afternoon":"Good evening";
   const dateStr=new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"});
 
+  const [showSetupCard,setShowSetupCard]=useState(getAccountSetupCardVisible);
+
+  const hideSetupCard=e=>{
+    e.stopPropagation();
+    if(confirm("Hide Account Setup from your home page? You can bring it back any time from Settings → Setup → Overview.")){
+      setAccountSetupCardVisible(false);
+      setShowSetupCard(false);
+    }
+  };
+
   const MODULES=[
+    ...(showSetupCard?[{
+      id:"setup-overview", label:"Account Setup", desc:"Finish setting up owners, accounts, and categories.",
+      icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>,
+      hideable:true,
+    }]:[]),
     {
       id:"spend-overview", label:"Spend Tracker", desc:"See where this month went.",
       icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l5-5 4 3 6-8"/><path d="M14 7h4v4"/></svg>,
@@ -14545,9 +14572,12 @@ function WelcomePage({user,goTo,onQuickAdd}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
         {MODULES.map(m=>(
           <div key={m.label} onClick={()=>m.id&&goTo(m.id)}
-            style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:22,cursor:m.id?"pointer":"default",opacity:m.soon?0.5:1,transition:"border-color 0.15s"}}
+            style={{position:"relative",background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:22,cursor:m.id?"pointer":"default",opacity:m.soon?0.5:1,transition:"border-color 0.15s"}}
             onMouseEnter={e=>{if(m.id)e.currentTarget.style.borderColor=bdr2;}}
             onMouseLeave={e=>{if(m.id)e.currentTarget.style.borderColor=bdr;}}>
+            {m.hideable&&(
+              <span onClick={hideSetupCard} style={{position:"absolute",top:14,right:16,fontSize:11,color:mut,fontFamily:fontBody,textDecoration:"underline",cursor:"pointer"}}>Hide</span>
+            )}
             <div style={{width:26,height:26,color:acc}}>{m.icon}</div>
             <div style={{fontFamily:fontBody,fontSize:15,fontWeight:600,color:txt,marginTop:14}}>{m.label}</div>
             <div style={{fontFamily:fontBody,fontSize:12.5,color:mut,marginTop:3,lineHeight:1.5}}>{m.desc}</div>
@@ -14574,6 +14604,7 @@ function WelcomePage({user,goTo,onQuickAdd}){
 function LandingPage({db,user,owners,navigate,goTo}){
   const [busy,setBusy]=useState(true);
   const [counts,setCounts]=useState(null);
+  const [showSetupCard,setShowSetupCard]=useState(getAccountSetupCardVisible);
 
   useEffect(()=>{
     if(!db) return;
@@ -14682,6 +14713,10 @@ function LandingPage({db,user,owners,navigate,goTo}){
           Welcome to PointsVault
         </div>
         <div style={{fontSize:14,color:mut,marginTop:28,fontFamily:fontBody}}>Here's where things stand today.</div>
+        <label style={{display:"inline-flex",alignItems:"center",gap:7,marginTop:16,fontSize:12.5,color:mut,fontFamily:fontBody,cursor:"pointer"}}>
+          <input type="checkbox" checked={showSetupCard} onChange={e=>{setAccountSetupCardVisible(e.target.checked);setShowSetupCard(e.target.checked);}} style={{width:13,height:13,margin:0,cursor:"pointer"}}/>
+          Show Account Setup on home page
+        </label>
       </div>
 
       {/* Module checklists */}
