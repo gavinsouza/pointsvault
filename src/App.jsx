@@ -12773,7 +12773,7 @@ export default function App(){
             .stat-grid-4{grid-template-columns:1fr 1fr!important;}
           }
         `}</style>
-        {tab==="home"&&<WelcomePage/>}
+        {tab==="home"&&<WelcomePage user={user} goTo={goTo} onQuickAdd={()=>setShowFabAdd(true)}/>}
         {tab==="setup-overview"&&<LandingPage key={resetTick} db={db} user={user} owners={owners} navigate={navigate} goTo={goTo}/>}
         {tab==="overview"          &&<Overview key={resetTick} db={db} owners={owners} onNavigate={goTo}/>}
         {tab==="my-cards"          &&<MyCards key={resetTick} db={db} owners={owners} onNavigate={goTo} initialSelectId={navTarget}/>}
@@ -14434,10 +14434,65 @@ async function parseAmexPointsPDF(file){
 
 // ── WelcomePage — the new Home tab. Placeholder for now; the old guided
 // checklist landing page moved to Settings → Setup → Overview.
-function WelcomePage(){
+function WelcomePage({user,goTo,onQuickAdd}){
+  const email=user?.email||"";
+  const displayName=user?.user_metadata?.display_name;
+  const emailName=email?email.split("@")[0]:"";
+  const greetName=displayName||(emailName?emailName.charAt(0).toUpperCase()+emailName.slice(1):"there");
+
+  const hour=new Date().getHours();
+  const timeGreeting=hour<12?"Good morning":hour<18?"Good afternoon":"Good evening";
+  const dateStr=new Date().toLocaleDateString(undefined,{weekday:"long",day:"numeric",month:"long"});
+
+  const MODULES=[
+    {
+      id:"spend-overview", label:"Spend Tracker", desc:"See where this month went.",
+      icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17l5-5 4 3 6-8"/><path d="M14 7h4v4"/></svg>,
+    },
+    {
+      id:"overview", label:"Points & Miles", desc:"Every card and program, together.",
+      icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/></svg>,
+    },
+    {
+      id:"books-overview", label:"Books & Accounts", desc:"Your accounts, ledgers, and statements.",
+      icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 5.5A2.5 2.5 0 016.5 3H19v16H6.5A2.5 2.5 0 004 21.5V5.5z"/><path d="M4 5.5A2.5 2.5 0 006.5 8H19"/></svg>,
+    },
+    {
+      id:null, label:"Transfer Routes", desc:"Find the best way to move points.", soon:true,
+      icon:<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17l5-10 5 10"/><path d="M9 13h6"/></svg>,
+    },
+  ];
+
   return(
-    <div style={{maxWidth:760,margin:"0 auto",padding:"80px 0 60px",textAlign:"center"}}>
-      <div style={{fontFamily:fontDisplay,fontSize:"clamp(28px,5vw,40px)",fontWeight:600,color:txt,letterSpacing:"-0.01em"}}>Welcome</div>
+    <div style={{maxWidth:760,margin:"0 auto",padding:"56px 24px 60px"}}>
+      <div style={{fontSize:12,color:mut,fontFamily:fontBody}}>{dateStr}</div>
+      <div style={{fontFamily:fontDisplay,fontSize:"clamp(30px,5vw,42px)",fontWeight:600,color:txt,letterSpacing:"-0.01em",lineHeight:1.15,marginTop:6}}>
+        {timeGreeting},<br/><span style={{color:acc}}>{greetName}</span>
+      </div>
+      <div style={{fontSize:14,color:mut,fontFamily:fontBody,marginTop:12}}>Everything you track, in one quiet place.</div>
+
+      <div style={{height:1,background:bdr,margin:"36px 0 28px"}}/>
+
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
+        {MODULES.map(m=>(
+          <div key={m.label} onClick={()=>m.id&&goTo(m.id)}
+            style={{background:surf,border:`1px solid ${bdr}`,borderRadius:14,padding:22,cursor:m.id?"pointer":"default",opacity:m.soon?0.5:1,transition:"border-color 0.15s"}}
+            onMouseEnter={e=>{if(m.id)e.currentTarget.style.borderColor=bdr2;}}
+            onMouseLeave={e=>{if(m.id)e.currentTarget.style.borderColor=bdr;}}>
+            <div style={{width:26,height:26,color:acc}}>{m.icon}</div>
+            <div style={{fontFamily:fontBody,fontSize:15,fontWeight:600,color:txt,marginTop:14}}>{m.label}</div>
+            <div style={{fontFamily:fontBody,fontSize:12.5,color:mut,marginTop:3,lineHeight:1.5}}>{m.desc}</div>
+            {m.soon&&<span style={{display:"inline-block",fontSize:9,fontWeight:700,letterSpacing:"0.06em",textTransform:"uppercase",color:acc,background:acc+"15",border:`1px solid ${acc}33`,borderRadius:8,padding:"2px 7px",marginTop:10}}>Soon</span>}
+          </div>
+        ))}
+      </div>
+
+      {onQuickAdd&&(
+        <div onClick={onQuickAdd} style={{display:"inline-flex",alignItems:"center",gap:8,marginTop:32,fontFamily:fontBody,fontSize:13,color:mut,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 16px",cursor:"pointer"}}>
+          <span style={{width:16,height:16,borderRadius:"50%",background:acc,color:surf,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,lineHeight:1}}>+</span>
+          Add a transaction
+        </div>
+      )}
     </div>
   );
 }
