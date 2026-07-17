@@ -10874,7 +10874,7 @@ function AddAccountModal({show,onClose,db,owners,onSaved,lockType,embedded}){
         const {data:arows,error:aerr}=await db.from("accounts").insert({
           name:name.trim()||masterCard?.name||"Card",
           type:"liability",subtype:"credit_card",owner_id:ownerId,
-          opening_balance:0,linked_my_card_id:myCardId,logo_url:logoFile?null:logoPreview,user_id:uid,
+          opening_balance:parseFloat(openingBalance)||0,linked_my_card_id:myCardId,logo_url:logoFile?null:logoPreview,user_id:uid,
         });
         if(aerr) throw new Error(JSON.stringify(aerr));
         if(logoFile){const u=await upLogo(arows[0].id);if(u) await db.from("accounts").update(arows[0].id,{logo_url:u});}
@@ -10982,6 +10982,10 @@ function AddAccountModal({show,onClose,db,owners,onSaved,lockType,embedded}){
           <div>{lbl("Card expiry (optional)")}<input style={inp} placeholder="MM/YY" value={cardExpiry} onChange={e=>setCardExpiry(e.target.value)}/></div>
           <div>{lbl("Points balance (optional)")}<input style={inp} type="number" placeholder="0" value={pointsBalance} onChange={e=>setPointsBalance(e.target.value)}/></div>
         </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+          <div>{lbl("Opening balance (₹, optional)")}<input style={inp} type="number" placeholder="0" value={openingBalance} onChange={e=>setOpeningBalance(e.target.value)}/></div>
+        </div>
+        <div style={{fontSize:11,color:mut,marginTop:-8,marginBottom:12}}>What you already owe on this card before tracking it here — used as Previous Dues on your first uploaded statement.</div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
           <div>
             {lbl("Billing year start (optional)")}
@@ -11235,7 +11239,7 @@ function EditAccountModal({show,onClose,db,owners,account,onSaved}){
           });
           if(error) throw new Error(JSON.stringify(error));
         }
-        const {error:aerr}=await db.from("accounts").update(account.id,{name:name.trim(),owner_id:ownerId,logo_url:finalLogo});
+        const {error:aerr}=await db.from("accounts").update(account.id,{name:name.trim(),owner_id:ownerId,logo_url:finalLogo,opening_balance:parseFloat(openingBalance)||0});
         if(aerr) throw new Error(JSON.stringify(aerr));
 
       }else if(isLoan){
@@ -11295,6 +11299,10 @@ function EditAccountModal({show,onClose,db,owners,account,onSaved}){
             <div>{lbl("Card expiry (optional)")}<input style={inp} placeholder="MM/YY" value={cardExpiry} onChange={e=>setCardExpiry(e.target.value)}/></div>
             <div>{lbl("Points balance")}<input style={inp} type="number" value={pointsBalance} onChange={e=>setPointsBalance(e.target.value)}/></div>
           </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:4}}>
+            <div>{lbl("Opening balance (₹)")}<input style={inp} type="number" value={openingBalance} onChange={e=>setOpeningBalance(e.target.value)}/></div>
+          </div>
+          <div style={{fontSize:11,color:mut,marginBottom:12}}>What you already owed on this card before tracking it here — used as Previous Dues on your first uploaded statement.</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
             <div>
               {lbl("Billing year start (optional)")}
@@ -11525,6 +11533,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   const [selected,setSelected]=useState(new Set());
   const [bulkType,setBulkType]=useState("category");
   const [bulkName,setBulkName]=useState("");
+  const [bulkNameMode,setBulkNameMode]=useState("select"); // "select" | "custom"
   const [bulkApplying,setBulkApplying]=useState(false);
   const [bulkErr,setBulkErr]=useState("");
   const [categoryNames,setCategoryNames]=useState([]);
@@ -11622,7 +11631,10 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   // this period, plus new purchases, should equal this statement's total due —
   // shown as the calculated figure, with the bank's own fetched figure alongside
   // so the two can be cross-checked.
-  const previousDues=Number(prevStmt?.total_due||0);
+  // No earlier statement means this is the card's first upload — fall back to the
+  // account's opening balance (what was already owed before tracking it here)
+  // instead of assuming Previous Dues was zero.
+  const previousDues=prevStmt?Number(prevStmt.total_due||0):Number(account?.opening_balance||0);
   const paymentsCredits=(staged||[]).filter(s=>Number(s.amount)>0).reduce((a,s)=>a+Number(s.amount),0);
   const purchases=(staged||[]).filter(s=>Number(s.amount)<0).reduce((a,s)=>a+Math.abs(Number(s.amount)),0);
   const calculatedTotalDue=previousDues-paymentsCredits+purchases;
@@ -11690,7 +11702,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
         if(lerr) throw new Error(JSON.stringify(lerr));
         await db.from("staged_transactions").update(row.id,{is_reconciled:true,resulting_transaction_id:txnId});
       }
-      setSelected(new Set());setBulkName("");
+      setSelected(new Set());setBulkName("");setBulkNameMode("select");
       await load();
       onSaved&&onSaved();
     }catch(e){setBulkErr(e.message||String(e));}
@@ -11896,14 +11908,22 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
             {selected.size>0&&(
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 14px",marginBottom:10}}>
                 <div style={{fontSize:12,fontWeight:600,color:txt,marginRight:4}}>Tag {selected.size} selected as:</div>
-                <select style={{...inp,marginBottom:0,width:110,fontSize:12}} value={bulkType} onChange={e=>{setBulkType(e.target.value);setBulkName("");}}>
+                <select style={{...inp,marginBottom:0,width:110,fontSize:12}} value={bulkType} onChange={e=>{setBulkType(e.target.value);setBulkName("");setBulkNameMode("select");}}>
                   <option value="category">Expense category</option>
                   <option value="person">Paid on behalf of</option>
                 </select>
-                <input style={{...inp,marginBottom:0,width:200}} list="bulk-tag-opts" placeholder={bulkType==="category"?"Category name":"Person/company name"} value={bulkName} onChange={e=>setBulkName(e.target.value)}/>
-                <datalist id="bulk-tag-opts">
-                  {(bulkType==="category"?categoryNames:entityNames).map(n=><option key={n} value={n}/>)}
-                </datalist>
+                {bulkNameMode==="select"?(
+                  <select style={{...inp,marginBottom:0,width:200,fontSize:12}} value={bulkName} onChange={e=>{
+                    if(e.target.value==="__custom__"){setBulkNameMode("custom");setBulkName("");}
+                    else setBulkName(e.target.value);
+                  }}>
+                    <option value="">{bulkType==="category"?"Choose category…":"Choose person/company…"}</option>
+                    {(bulkType==="category"?categoryNames:entityNames).map(n=><option key={n} value={n}>{n}</option>)}
+                    <option value="__custom__">+ Add new {bulkType==="category"?"category":"person/company"}…</option>
+                  </select>
+                ):(
+                  <input style={{...inp,marginBottom:0,width:200}} autoFocus placeholder={bulkType==="category"?"New category name":"New person/company name"} value={bulkName} onChange={e=>setBulkName(e.target.value)}/>
+                )}
                 <button style={{...pbtnXs,opacity:bulkApplying?0.5:1}} disabled={bulkApplying} onClick={bulkApply}>{bulkApplying?"Applying…":"Apply"}</button>
                 <button style={gbtnXs} onClick={()=>setSelected(new Set())}>Clear</button>
                 {bulkErr&&<div style={{color:red,fontSize:11,width:"100%"}}>{bulkErr}</div>}
