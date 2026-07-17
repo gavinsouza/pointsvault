@@ -48,7 +48,7 @@ const LIBRARY = {
   cards: [
     {
       lid:"cc_infinia", logo_url:"/logos/hdfc.png",
-      name:"Infinia Metal", bank:"HDFC Bank", network:"Visa",
+      name:"Infinia Metal", bank:"HDFC Bank", network:"Mastercard",
       points_currency:"Reward Points", inr_per_point:1.00, annual_fee:14750,
       auto_transfer_to:null,
       milestones:[
@@ -757,6 +757,39 @@ function Modal({show,onClose,title,children,wide=false}){
 
 function Card({children,style={},...rest}){
   return <div style={{background:surf,border:`1px solid ${bdr}`,borderRadius:18,padding:"22px 24px",boxShadow:"0 1px 2px rgba(0,0,0,0.04),0 0 0 0 transparent",...style}} {...rest}>{children}</div>;
+}
+
+// Month+Year dropdown pair standing in for <input type="month"> — that native picker
+// renders fine in Chromium but falls back to a bare, iconless text box in Safari with
+// no way to pick a date at all. value/onChange both use "YYYY-MM" (or "" when either
+// half is unset) so it drops into existing state the same way the native input did.
+function MonthYearPicker({value,onChange}){
+  const [y,setY]=useState((value||"").split("-")[0]||"");
+  const [m,setM]=useState((value||"").split("-")[1]||"");
+  useEffect(()=>{
+    setY((value||"").split("-")[0]||"");
+    setM((value||"").split("-")[1]||"");
+  },[value]);
+  const commit=(newY,newM)=>{
+    setY(newY);setM(newM);
+    onChange(newY&&newM?newY+"-"+newM:"");
+  };
+  return(
+    <div style={{display:"flex",gap:8}}>
+      <select style={{...inp,flex:1,marginBottom:0}} value={m} onChange={e=>commit(y,e.target.value)}>
+        <option value="">Month</option>
+        {["01","02","03","04","05","06","07","08","09","10","11","12"].map((mm,i)=>(
+          <option key={mm} value={mm}>{["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][i]}</option>
+        ))}
+      </select>
+      <select style={{...inp,flex:1,marginBottom:0}} value={y} onChange={e=>commit(e.target.value,m)}>
+        <option value="">Year</option>
+        {Array.from({length:8},(_,i)=>String(new Date().getFullYear()-i)).map(yy=>(
+          <option key={yy} value={yy}>{yy}</option>
+        ))}
+      </select>
+    </div>
+  );
 }
 
 // ── useIsMobile — tracks whether the viewport is at/below the mobile breakpoint ──
@@ -10060,9 +10093,9 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
 
       {acctId&&(<>
         <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"end",marginBottom:4}}>
-          <div>{lbl("Statement month")}<input type="month" style={{...inp,marginBottom:0}} value={stmtMonth} onChange={e=>setStmtMonth(e.target.value)}/></div>
+          <div>{lbl("Statement month")}<MonthYearPicker value={stmtMonth} onChange={setStmtMonth}/></div>
           <div style={{fontSize:11,color:mut,paddingBottom:11}}>or</div>
-          <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. Dubai Trip" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
+          <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. 22 May to 26 Aug" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
         </div>
         <div style={{fontSize:11,color:mut,marginBottom:16}}>Enter one of the two — whichever fits this statement.</div>
       </>)}
@@ -11483,7 +11516,7 @@ function EditStatementModal({show,onClose,db,statement,isCC,onSaved}){
   return(
     <Modal show={show} onClose={onClose} title="Edit Statement">
       <div style={{display:"grid",gridTemplateColumns:"1fr auto 1fr",gap:10,alignItems:"end",marginBottom:4}}>
-        <div>{lbl("Statement month")}<input style={{...inp,marginBottom:0}} type="month" value={stmtMonth} onChange={e=>setStmtMonth(e.target.value)}/></div>
+        <div>{lbl("Statement month")}<MonthYearPicker value={stmtMonth} onChange={setStmtMonth}/></div>
         <div style={{fontSize:11,color:mut,paddingBottom:11}}>or</div>
         <div>{lbl("Custom statement name")}<input style={{...inp,marginBottom:0}} placeholder="e.g. June 2026" value={stmtName} onChange={e=>setStmtName(e.target.value)}/></div>
       </div>
