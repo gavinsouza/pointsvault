@@ -7020,12 +7020,16 @@ function SetupCategories({db}){
       db.from("merchant_rules").select(),
     ]);
     let rows=c.data||[];
-    // Auto-seed defaults for new users
+    // Auto-seed defaults for new users — inserted as a single batch (one request)
+    // rather than one-by-one, so an overlapping load() (e.g. navigating away and
+    // back before the first finishes) can't interleave and leave a partial set:
+    // either this whole batch lands, or it fails outright (e.g. a concurrent
+    // seed already won) and the re-select below just picks up what's there.
     if(rows.length===0){
       const uid=getCurrentUserId();
       if(uid){
         const defaults=CATEGORIES.map(name=>({name,is_default:true,user_id:uid}));
-        for(const d of defaults) await db.from("spend_categories").insert(d);
+        await db.from("spend_categories").insert(defaults);
         const {data:d2}=await db.from("spend_categories").select();
         rows=d2||[];
       }
@@ -7035,7 +7039,7 @@ function SetupCategories({db}){
       const uid=getCurrentUserId();
       if(uid){
         const defaults=INCOME_CATEGORIES.map(name=>({name,is_default:true,user_id:uid}));
-        for(const d of defaults) await db.from("income_categories").insert(d);
+        await db.from("income_categories").insert(defaults);
         const {data:d2}=await db.from("income_categories").select();
         incRows=d2||[];
       }
