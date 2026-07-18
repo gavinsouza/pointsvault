@@ -4708,8 +4708,8 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
   const [ef,setEf]=useState({});
   const eup=k=>e=>setEf(p=>({...p,[k]:e.target.value}));
 
-  const load=useCallback(async()=>{
-    setBusy(true);
+  const load=useCallback(async(silent)=>{
+    if(!silent) setBusy(true);
     const [t,par,mp,myp]=await Promise.all([
       db.from("point_transactions").filter("entity_id",card.id),
       db.from("master_partners").filter("from_id",master?.id||"x"),
@@ -4893,16 +4893,16 @@ function CardDetail({card:initCard,master,owner,db,mCards,owners,onBack,onDelete
             entity={{type:"card",id:card.id,nickname:card.nickname,masterName:master?.name,owner_id:card.owner_id}}
             eligibleTransferPrograms={eligibleTransferPrograms}
             onTag={setTagTxn} onEdit={setEditTxn} onEditTransfer={setEditTransferTxn} onDelete={setDeleteTxn}
-            onReload={load} reloadTrigger={txns}/>
+            onReload={()=>load(true)} reloadTrigger={txns}/>
         )}
         </Collapsible>
       </Card>
       <TagModal show={!!tagTxn} onClose={()=>setTagTxn(null)} db={db} txn={tagTxn}
         entity={{type:"card",id:card.id,nickname:card.nickname,masterName:master?.name,owner_id:card.owner_id}}
-        eligibleTransferPrograms={eligibleTransferPrograms} onSaved={load}/>
-      <EditTransactionModal show={!!editTxn} onClose={()=>setEditTxn(null)} db={db} txn={editTxn} onSaved={load}/>
-      <TransferEditModal show={!!editTransferTxn} onClose={()=>setEditTransferTxn(null)} db={db} txn={editTransferTxn} onSaved={load}/>
-      <DeleteConfirmModal show={!!deleteTxn} onClose={()=>setDeleteTxn(null)} db={db} txn={deleteTxn} onDeleted={load}/>
+        eligibleTransferPrograms={eligibleTransferPrograms} onSaved={()=>load(true)}/>
+      <EditTransactionModal show={!!editTxn} onClose={()=>setEditTxn(null)} db={db} txn={editTxn} onSaved={()=>load(true)}/>
+      <TransferEditModal show={!!editTransferTxn} onClose={()=>setEditTransferTxn(null)} db={db} txn={editTransferTxn} onSaved={()=>load(true)}/>
+      <DeleteConfirmModal show={!!deleteTxn} onClose={()=>setDeleteTxn(null)} db={db} txn={deleteTxn} onDeleted={()=>load(true)}/>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {master?.auto_transfer_to&&<div style={{background:acc+"10",border:`1px solid ${acc}33`,borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:11,color:acc,fontWeight:500}}>
           Co-branded card — points auto-transfer to linked LP after logging
@@ -5176,8 +5176,8 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
   const [ef,setEf]=useState({});
   const eup=k=>e=>setEf(p=>({...p,[k]:e.target.value}));
 
-  const load=useCallback(async()=>{
-    setBusy(true);
+  const load=useCallback(async(silent)=>{
+    if(!silent) setBusy(true);
     const [t,par,myp]=await Promise.all([
       db.from("point_transactions").filter("entity_id",prog.id),
       db.from("master_partners").filter("from_id",master?.id||"x"),
@@ -5312,16 +5312,16 @@ function ProgDetail({prog:initProg,master,owner,db,mProgs,mCards,owners,onBack,o
             entity={{type:"program",id:prog.id,nickname:prog.nickname,masterName:master?.name,owner_id:prog.owner_id}}
             eligibleTransferPrograms={eligibleTransferPrograms}
             onTag={setTagTxn} onEdit={setEditTxn} onEditTransfer={setEditTransferTxn} onDelete={setDeleteTxn}
-            onReload={load} reloadTrigger={txns}/>
+            onReload={()=>load(true)} reloadTrigger={txns}/>
         )}
         </Collapsible>
       </Card>
       <TagModal show={!!tagTxn} onClose={()=>setTagTxn(null)} db={db} txn={tagTxn}
         entity={{type:"program",id:prog.id,nickname:prog.nickname,masterName:master?.name,owner_id:prog.owner_id}}
-        eligibleTransferPrograms={eligibleTransferPrograms} onSaved={load}/>
-      <EditTransactionModal show={!!editTxn} onClose={()=>setEditTxn(null)} db={db} txn={editTxn} onSaved={load}/>
-      <TransferEditModal show={!!editTransferTxn} onClose={()=>setEditTransferTxn(null)} db={db} txn={editTransferTxn} onSaved={load}/>
-      <DeleteConfirmModal show={!!deleteTxn} onClose={()=>setDeleteTxn(null)} db={db} txn={deleteTxn} onDeleted={load}/>
+        eligibleTransferPrograms={eligibleTransferPrograms} onSaved={()=>load(true)}/>
+      <EditTransactionModal show={!!editTxn} onClose={()=>setEditTxn(null)} db={db} txn={editTxn} onSaved={()=>load(true)}/>
+      <TransferEditModal show={!!editTransferTxn} onClose={()=>setEditTransferTxn(null)} db={db} txn={editTransferTxn} onSaved={()=>load(true)}/>
+      <DeleteConfirmModal show={!!deleteTxn} onClose={()=>setDeleteTxn(null)} db={db} txn={deleteTxn} onDeleted={()=>load(true)}/>
       <Modal show={showTxn} onClose={()=>setShowTxn(false)} title="Add Transaction">
         {lbl("Type")}<select style={inp} value={f.type} onChange={up("type")}><option value="earn">Earn (+ points)</option><option value="redeem">Redeem (- points)</option><option value="transfer_out">Transfer Out</option><option value="refund">Refund (- points)</option><option value="adjust">Adjustment</option></select>
         {f.type==="earn"&&(<>{lbl("Earn Type")}<select style={inp} value={f.earn_type||"on_spends"} onChange={up("earn_type")}>{EARN_TYPES.map(e=><option key={e.id} value={e.id}>{e.label}</option>)}</select></>)}
@@ -6749,7 +6749,7 @@ function SettingsDanger({db,owners,onReset}){
     "bank_accounts",                   // legacy Spend Tracker accounts
     "entities",                        // Books ledger people/institutions (after accounts, before owners)
     "owners","people",                 // owners/people — after every table with an owner_id FK
-    "merchant_rules","spend_categories",  // settings
+    "merchant_rules","spend_categories","income_categories",  // settings
     "master_partners","master_milestones","master_programs","master_cards", // master catalog — after my_cards/my_programs
   ];
 
@@ -6999,10 +6999,11 @@ function SetupMappings({db}){
 
 
 function SetupCategories({db}){
-  const [cats,setCats]=useState([]);
+  const [expenseCats,setExpenseCats]=useState([]);
+  const [incomeCats,setIncomeCats]=useState([]);
   const [rules,setRules]=useState([]);
   const [busy,setBusy]=useState(true);
-  const [activeTab,setActiveTab]=useState("categories"); // "categories" | "rules"
+  const [activeTab,setActiveTab]=useState("expense"); // "expense" | "income" | "rules"
   // Category state
   const [newName,setNewName]=useState("");
   const [editId,setEditId]=useState(null);
@@ -7013,8 +7014,9 @@ function SetupCategories({db}){
 
   const load=useCallback(async()=>{
     setBusy(true);
-    const [c,r]=await Promise.all([
+    const [c,ic,r]=await Promise.all([
       db.from("spend_categories").select(),
+      db.from("income_categories").select(),
       db.from("merchant_rules").select(),
     ]);
     let rows=c.data||[];
@@ -7028,23 +7030,38 @@ function SetupCategories({db}){
         rows=d2||[];
       }
     }
-    setCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
+    let incRows=ic.data||[];
+    if(incRows.length===0){
+      const uid=getCurrentUserId();
+      if(uid){
+        const defaults=INCOME_CATEGORIES.map(name=>({name,is_default:true,user_id:uid}));
+        for(const d of defaults) await db.from("income_categories").insert(d);
+        const {data:d2}=await db.from("income_categories").select();
+        incRows=d2||[];
+      }
+    }
+    setExpenseCats(rows.sort((a,b)=>a.name.localeCompare(b.name)));
+    setIncomeCats(incRows.sort((a,b)=>a.name.localeCompare(b.name)));
     setRules((r.data||[]).sort((a,b)=>a.keyword.localeCompare(b.keyword)));
     setBusy(false);
   },[db]);
   useEffect(()=>{load();},[load]);
 
-  // Category CRUD
+  const catTable=activeTab==="income"?"income_categories":"spend_categories";
+  const cats=activeTab==="income"?incomeCats:expenseCats;
+
+  // Category CRUD — targets whichever table the active tab points at
   const addCat=async()=>{
     if(!newName.trim()) return;
-    await db.from("spend_categories").insert({name:newName.trim(),is_default:false,user_id:getCurrentUserId()});
+    await db.from(catTable).insert({name:newName.trim(),is_default:false,user_id:getCurrentUserId()});
     setNewName(""); load();
   };
-  const delCat=async id=>{if(!confirm("Delete this category?")) return;await db.from("spend_categories").delete(id);load();};
+  const delCat=async id=>{if(!confirm("Delete this category?")) return;await db.from(catTable).delete(id);load();};
   const startEdit=(c)=>{setEditId(c.id);setEditName(c.name);};
-  const saveEdit=async()=>{if(!editName.trim()) return;await db.from("spend_categories").update(editId,{name:editName.trim()});setEditId(null);load();};
+  const saveEdit=async()=>{if(!editName.trim()) return;await db.from(catTable).update(editId,{name:editName.trim()});setEditId(null);load();};
 
-  // Rule CRUD
+  // Rule CRUD — auto-rules only ever categorise expenses, so they stay tied to
+  // spend_categories regardless of which category tab is currently active.
   const addRule=async()=>{
     if(!newKeyword.trim()||!newRuleCat) return alert("Enter both keyword and category");
     await db.from("merchant_rules").insert({keyword:newKeyword.trim().toLowerCase(),category:newRuleCat,user_id:getCurrentUserId()});
@@ -7056,23 +7073,24 @@ function SetupCategories({db}){
 
   return(
     <div>
-      <Hdr title="Categories & Rules" sub="Define spend categories and set keywords to auto-categorise transactions on import"/>
+      <Hdr title="Categories & Rules" sub="Define expense and income categories, and set keywords to auto-categorise transactions on import"/>
       <Toolbar justify="flex-start">
-        <button style={tabBtn(activeTab==="categories")} onClick={()=>setActiveTab("categories")}>Categories ({cats.length})</button>
+        <button style={tabBtn(activeTab==="expense")} onClick={()=>{setActiveTab("expense");setEditId(null);}}>Expense Categories ({expenseCats.length})</button>
+        <button style={tabBtn(activeTab==="income")} onClick={()=>{setActiveTab("income");setEditId(null);}}>Income Categories ({incomeCats.length})</button>
         <button style={tabBtn(activeTab==="rules")} onClick={()=>setActiveTab("rules")}>Auto-rules ({rules.length})</button>
       </Toolbar>
 
-      {activeTab==="categories"&&<div style={{maxWidth:520}}>
+      {(activeTab==="expense"||activeTab==="income")&&<div style={{maxWidth:520}}>
         <Card style={{marginBottom:16}}>
           <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Add Category</div>
           <div style={{display:"flex",gap:8}}>
-            <input style={{...inp,marginBottom:0,flex:1}} placeholder="e.g. Investments" value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCat()}/>
+            <input style={{...inp,marginBottom:0,flex:1}} placeholder={activeTab==="income"?"e.g. Freelance Income":"e.g. Investments"} value={newName} onChange={e=>setNewName(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addCat()}/>
             <button style={pbtn} onClick={addCat}>Add</button>
           </div>
         </Card>
         <Card>
-          <Collapsible storageKey="categories-list" header={
-          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>Categories ({cats.length})</div>
+          <Collapsible storageKey={activeTab==="income"?"income-categories-list":"categories-list"} header={
+          <div style={{fontSize:10,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em",marginBottom:14}}>{activeTab==="income"?"Income":"Expense"} Categories ({cats.length})</div>
           }>
           {busy?<div style={{color:mut,fontSize:12}}>Loading…</div>:cats.map(c=>(
             <div key={c.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"9px 0",borderBottom:`1px solid ${bdr}`,gap:8}}>
@@ -7113,7 +7131,7 @@ function SetupCategories({db}){
               {lbl("Category")}
               <select style={{...inp,marginBottom:0}} value={newRuleCat} onChange={e=>setNewRuleCat(e.target.value)}>
                 <option value="">Select category…</option>
-                {cats.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
+                {expenseCats.map(c=><option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
             </div>
             <button style={{...pbtn,alignSelf:"flex-end"}} onClick={addRule}>Add</button>
@@ -7229,6 +7247,7 @@ function SetupPeople({db}){
 
 // ── SpendUpload ───────────────────────────────────────────────────────────────
 const CATEGORIES=["F&B Order In","F&B Dining Out","Travel","Fuel","Groceries","Shopping","Utilities","Entertainment","Healthcare","Education","Rent","Insurance","Vouchers / Wallet","Reimbursable","Emi","Staff Welfare","Building Maintenance","Income tax","Card Charges, Taxes & Fees","Investments","Home Expense","Other"];
+const INCOME_CATEGORIES=["Salary","Bonus","Interest Income","Dividends","Rental Income","Business / Freelance Income","Refunds & Reimbursements","Gifts Received","Investment Returns","Other Income"];
 
 const DEFAULT_RULES=[
   {keyword:"swiggy",category:"F&B Order In"},{keyword:"zomato",category:"F&B Order In"},{keyword:"eazydiner",category:"F&B Dining Out"},
@@ -9188,21 +9207,23 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   const [entities,setEntities]=useState([]);
   const [people,setPeople]=useState([]);
   const [spendCategories,setSpendCategories]=useState([]);
+  const [incomeCategories,setIncomeCategories]=useState([]);
   const [owners,setOwners]=useState([]);
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState("");
-  const [splitRows,setSplitRows]=useState([{type:"expense",selId:"",newName:"",amount:""}]);
+  const [splitRows,setSplitRows]=useState([{type:"expense",selId:"",newName:"",amount:"",custom:false}]);
   const [editTxnId,setEditTxnId]=useState(null);
 
   useEffect(()=>{
     if(!show) return;
     (async()=>{
-      const [a,e,c,p,mr,o]=await Promise.all([db.from("accounts").select(),db.from("entities").select(),db.from("spend_categories").select(),db.from("people").select(),db.from("merchant_rules").select(),db.from("owners").select()]);
+      const [a,e,c,ic,p,mr,o]=await Promise.all([db.from("accounts").select(),db.from("entities").select(),db.from("spend_categories").select(),db.from("income_categories").select(),db.from("people").select(),db.from("merchant_rules").select(),db.from("owners").select()]);
       const accts=a.data||[];
       const ents=e.data||[];
       setAccounts(accts);
       setEntities(ents);
       setSpendCategories((c.data||[]).map(x=>x.name));
+      setIncomeCategories((ic.data||[]).map(x=>x.name));
       setPeople((p.data||[]).map(x=>x.name));
       setRules(mr.data||[]);
       setOwners(o.data||[]);
@@ -9214,7 +9235,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         setSourceAcctId(prefill.sourceAccountId||"");
         const dir=Number(prefill.amount||0)<0?"out":"in";
         setDirection(dir);
-        setSplitRows([{type:dir==="out"?"expense":"income",selId:"",newName:"",amount:String(Math.abs(Number(prefill.amount||0)))}]);
+        setSplitRows([{type:dir==="out"?"expense":"income",selId:"",newName:"",amount:String(Math.abs(Number(prefill.amount||0))),custom:false}]);
 
         if(prefill.existingTransactionId){
           setEditTxnId(prefill.existingTransactionId);
@@ -9234,12 +9255,12 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
               setSplitRows(otherLines.map(ln=>{
                 const acct=accts.find(x=>x.id===ln.account_id);
                 const rowAmt=String(Number(ln.debit)||Number(ln.credit));
-                if(acct?.type==="expense"||acct?.type==="income") return {type:inferredDir==="in"?"income":"expense",selId:acct.id,newName:"",amount:rowAmt};
+                if(acct?.type==="expense"||acct?.type==="income") return {type:inferredDir==="in"?"income":"expense",selId:acct.id,newName:"",amount:rowAmt,custom:false};
                 let type;
                 if(acct?.subtype==="receivable") type=inferredDir==="out"?"paid_on_behalf":"refund_received";
                 else if(acct?.subtype==="payable") type=inferredDir==="out"?"repaid":"borrowed";
                 else type=inferredDir==="out"?"expense":"income";
-                return {type,selId:ents.find(x=>x.id===acct?.entity_id)?.id||"",newName:"",amount:rowAmt};
+                return {type,selId:ents.find(x=>x.id===acct?.entity_id)?.id||"",newName:"",amount:rowAmt,custom:false};
               }));
             }
           }
@@ -9268,6 +9289,11 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   if(!show) return null;
 
   const needsDest=direction==="transfer";
+  // Tagging a credit (money arriving) as a transfer means the account you tagged
+  // from is the receiving side, not the sending side — flip which field is locked
+  // vs. a picker, and which side gets debited/credited, instead of always assuming
+  // the tagged account sent the money.
+  const isTransferCredit=direction==="transfer"&&!!prefill&&Number(prefill.amount||0)>=0;
 
   const sourceAccts=accounts.filter(a=>(a.type==="asset"||a.type==="liability")&&!a.entity_id);
   // "Account Name" alone is ambiguous once two owners have similarly-named accounts
@@ -9275,12 +9301,12 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
   // show the owner alongside the account name in this picker.
   const acctLabel=a=>{const on=owners.find(o=>o.id===a.owner_id)?.name;return on?`${a.name} - ${on}`:a.name;};
   const categoryAccts=accounts.filter(a=>a.type===(direction==="in"?"income":"expense"));
-  const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(direction==="out"?spendCategories:[])])].sort();
+  const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(direction==="out"?spendCategories:direction==="in"?incomeCategories:[])])].sort();
   const entityNames=[...new Set([...entities.map(e=>e.name),...people])].sort();
 
   const reset=()=>{
     setAmount("");setDescription("");setNotes("");setSourceAcctId("");setDestAcctId("");setErr("");
-    setDirection("out");setSplitRows([{type:"expense",selId:"",newName:"",amount:""}]);
+    setDirection("out");setSplitRows([{type:"expense",selId:"",newName:"",amount:"",custom:false}]);
     setEditTxnId(null);setAutoTagged(false);
   };
 
@@ -9345,7 +9371,12 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         const rowTypes=splitRows.map(r=>r.type);
         primaryAction=rowTypes.includes("expense")?"expense":rowTypes.includes("income")?"income":rowTypes[0];
       }else if(direction==="transfer"){
-        lines=[{account_id:destAcctId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
+        // Normally sourceAcctId is the sender (credited) and destAcctId the receiver
+        // (debited). Tagging a credit reverses that — the tagged account received
+        // the money, so it's the one debited here instead.
+        lines=isTransferCredit
+          ?[{account_id:sourceAcctId,debit:amt,credit:0},{account_id:destAcctId,debit:0,credit:amt}]
+          :[{account_id:destAcctId,debit:amt,credit:0},{account_id:sourceAcctId,debit:0,credit:amt}];
       }
 
       if(editTxnId){
@@ -9396,8 +9427,8 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         {[...TXN_DIRECTIONS,...(prefill?.stagedId?[{id:"recorded_elsewhere",label:"Recorded elsewhere"}]:[])].map(d=>(
           <button key={d.id} onClick={()=>{
             setDirection(d.id);setAutoTagged(false);
-            if(d.id==="out") setSplitRows([{type:"expense",selId:"",newName:"",amount:""}]);
-            else if(d.id==="in") setSplitRows([{type:"income",selId:"",newName:"",amount:""}]);
+            if(d.id==="out") setSplitRows([{type:"expense",selId:"",newName:"",amount:"",custom:false}]);
+            else if(d.id==="in") setSplitRows([{type:"income",selId:"",newName:"",amount:"",custom:false}]);
           }} style={direction===d.id?pbtnSm:gbtnSm}>{d.label}</button>
         ))}
       </div>
@@ -9420,7 +9451,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
         </div>
       )}
 
-      {lbl(direction==="transfer"?"From account":"Account")}
+      {lbl(direction==="transfer"?(isTransferCredit?"To account":"From account"):"Account")}
       {prefill?(
         <div style={{...inp,display:"flex",alignItems:"center",color:mut,background:surf3,cursor:"not-allowed"}}>{(()=>{const a=sourceAccts.find(a=>a.id===sourceAcctId);return a?acctLabel(a):"—";})()}</div>
       ):(
@@ -9431,7 +9462,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
       )}
 
       {needsDest&&(<>
-        {lbl("To account")}
+        {lbl(isTransferCredit?"From account":"To account")}
         <select style={inp} value={destAcctId} onChange={e=>setDestAcctId(e.target.value)}>
           <option value="">Select…</option>
           {sourceAccts.filter(a=>a.id!==sourceAcctId).map(a=><option key={a.id} value={a.id}>{acctLabel(a)}</option>)}
@@ -9450,7 +9481,7 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
 
               <select style={inp} value={row.type} onChange={e=>{
                 const t=e.target.value;
-                setSplitRows(rs=>rs.map((r,ri)=>ri===i?{type:t,selId:"",newName:"",amount:r.amount}:r));
+                setSplitRows(rs=>rs.map((r,ri)=>ri===i?{type:t,selId:"",newName:"",amount:r.amount,custom:false}:r));
                 setAutoTagged(false);
               }}>
                 <option value="">Select type…</option>
@@ -9461,29 +9492,41 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
                 {i===0&&autoTagged&&(row.selId||row.newName)&&(
                   <div style={{fontSize:11,color:acc,margin:"0 0 6px",display:"flex",alignItems:"center",gap:5}}>✨ Auto-tagged from your rules — click to change</div>
                 )}
-                <select style={inp} value={row.selId?categoryAccts.find(c=>c.id===row.selId)?.name||"":row.newName} onChange={e=>{
-                  const val=e.target.value;
-                  const existing=categoryAccts.find(c=>c.name===val);
-                  setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:existing?existing.id:"",newName:existing?"":val}:r));
-                }}>
-                  <option value="">Select existing category…</option>
-                  {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
-                </select>
+                {row.custom?(
+                  <input style={inp} autoFocus placeholder={direction==="in"?"New income category name":"New expense category name"} value={row.newName} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,newName:e.target.value}:r))}/>
+                ):(
+                  <select style={inp} value={row.selId?categoryAccts.find(c=>c.id===row.selId)?.name||"":row.newName} onChange={e=>{
+                    const val=e.target.value;
+                    if(val==="__custom__"){setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:"",newName:"",custom:true}:r));return;}
+                    const existing=categoryAccts.find(c=>c.name===val);
+                    setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:existing?existing.id:"",newName:existing?"":val}:r));
+                  }}>
+                    <option value="">Select existing category…</option>
+                    {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
+                    <option value="__custom__">+ Add new category…</option>
+                  </select>
+                )}
               </>):(<>
-                <select style={inp} value={row.selId?entities.find(en=>en.id===row.selId)?.name||"":row.newName} onChange={e=>{
-                  const val=e.target.value;
-                  const existing=entities.find(en=>en.name===val);
-                  setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:existing?existing.id:"",newName:existing?"":val}:r));
-                }}>
-                  <option value="">Select existing person/company…</option>
-                  {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
-                </select>
+                {row.custom?(
+                  <input style={inp} autoFocus placeholder="New person/company name" value={row.newName} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,newName:e.target.value}:r))}/>
+                ):(
+                  <select style={inp} value={row.selId?entities.find(en=>en.id===row.selId)?.name||"":row.newName} onChange={e=>{
+                    const val=e.target.value;
+                    if(val==="__custom__"){setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:"",newName:"",custom:true}:r));return;}
+                    const existing=entities.find(en=>en.name===val);
+                    setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,selId:existing?existing.id:"",newName:existing?"":val}:r));
+                  }}>
+                    <option value="">Select existing person/company…</option>
+                    {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
+                    <option value="__custom__">+ Add new person/company…</option>
+                  </select>
+                )}
               </>))}
 
               <input style={{...inp,marginTop:8,marginBottom:0}} type="number" placeholder="Amount ₹" value={row.amount} onChange={e=>setSplitRows(rs=>rs.map((r,ri)=>ri===i?{...r,amount:e.target.value}:r))}/>
             </div>
           ))}
-          <button style={{...gbtnXs,marginBottom:10}} onClick={()=>setSplitRows(rs=>[...rs,{type:"",selId:"",newName:"",amount:""}])}>+ Add split</button>
+          <button style={{...gbtnXs,marginBottom:10}} onClick={()=>setSplitRows(rs=>[...rs,{type:"",selId:"",newName:"",amount:"",custom:false}])}>+ Add split</button>
           <div style={{fontSize:12,color:Math.abs(splitRemaining)>0.01?red:grn,fontWeight:600}}>
             {Math.abs(splitRemaining)>0.01?`Remaining: ₹${splitRemaining.toLocaleString("en-IN")}`:"✓ Splits add up to the total"}
           </div>
@@ -9615,9 +9658,12 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
   const [categoryId,setCategoryId]=useState("");
   const [newEntityName,setNewEntityName]=useState("");
   const [newCategoryName,setNewCategoryName]=useState("");
+  const [entCustom,setEntCustom]=useState(false);
+  const [catCustom,setCatCustom]=useState(false);
   const [entities,setEntities]=useState([]);
   const [people,setPeople]=useState([]);
   const [spendCategories,setSpendCategories]=useState([]);
+  const [incomeCategories,setIncomeCategories]=useState([]);
   const [saving,setSaving]=useState(false);
   const [err,setErr]=useState("");
   const [rules,setRules]=useState([]);
@@ -9626,10 +9672,11 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
   useEffect(()=>{
     if(!show) return;
     (async()=>{
-      const [a,e,c,p,mr]=await Promise.all([db.from("accounts").select(),db.from("entities").select(),db.from("spend_categories").select(),db.from("people").select(),db.from("merchant_rules").select()]);
+      const [a,e,c,ic,p,mr]=await Promise.all([db.from("accounts").select(),db.from("entities").select(),db.from("spend_categories").select(),db.from("income_categories").select(),db.from("people").select(),db.from("merchant_rules").select()]);
       setAllAccounts(a.data||[]);
       setEntities(e.data||[]);
       setSpendCategories((c.data||[]).map(x=>x.name));
+      setIncomeCategories((ic.data||[]).map(x=>x.name));
       setPeople((p.data||[]).map(x=>x.name));
       setRules(mr.data||[]);
       if(presetAcctId) setAcctId(presetAcctId);
@@ -9657,7 +9704,7 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
   const needsCategory=action==="income"||action==="expense";
   const needsDest=action==="transfer";
   const categoryAccts=allAccounts.filter(a=>a.type===(action==="income"?"income":"expense"));
-  const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(action==="expense"?spendCategories:[])])].sort();
+  const categoryNames=[...new Set([...categoryAccts.map(c=>c.name),...(action==="expense"?spendCategories:action==="income"?incomeCategories:[])])].sort();
   const entityNames=[...new Set([...entities.map(e=>e.name),...people])].sort();
   const destAccts=allAccounts.filter(a=>(a.type==="asset"||a.type==="liability")&&!a.entity_id&&a.id!==acctId);
 
@@ -9665,7 +9712,7 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
     setAcctId(presetAcctId||"");setOwnerId("");setAction("expense");setAmount("");
     setTxnDate(new Date().toISOString().split("T")[0]);setDescription("");setNotes("");
     setDestAcctId("");setEntityId("");setCategoryId("");setNewEntityName("");setNewCategoryName("");setErr("");
-    setAutoTagged(false);
+    setAutoTagged(false);setEntCustom(false);setCatCustom(false);
   };
 
   const save=async()=>{
@@ -9775,7 +9822,7 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
       {lbl("Date")}<input style={inp} type="date" value={txnDate} onChange={e=>setTxnDate(e.target.value)}/>
 
       {lbl("Type of transaction")}
-      <select style={inp} value={action} onChange={e=>{setAction(e.target.value);setEntityId("");setCategoryId("");setNewEntityName("");setNewCategoryName("");setAutoTagged(false);}}>
+      <select style={inp} value={action} onChange={e=>{setAction(e.target.value);setEntityId("");setCategoryId("");setNewEntityName("");setNewCategoryName("");setAutoTagged(false);setEntCustom(false);setCatCustom(false);}}>
         {BOOKS_ACTIONS.map(a=><option key={a.id} value={a.id}>{a.label}</option>)}
       </select>
 
@@ -9789,15 +9836,21 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
 
       {needsEntity&&(<>
         {lbl(action==="paid_on_behalf"?"Paid on behalf of":action==="refund_received"?"Refund from":action==="borrowed"?"Borrowed from":"Repaid to")}
-        <select style={inp} value={entityId?entities.find(en=>en.id===entityId)?.name||"":newEntityName} onChange={e=>{
-          const val=e.target.value;
-          const existing=entities.find(en=>en.name===val);
-          setEntityId(existing?existing.id:"");
-          setNewEntityName(existing?"":val);
-        }}>
-          <option value="">Select existing…</option>
-          {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
-        </select>
+        {entCustom?(
+          <input style={inp} autoFocus placeholder="New person/company name" value={newEntityName} onChange={e=>setNewEntityName(e.target.value)}/>
+        ):(
+          <select style={inp} value={entityId?entities.find(en=>en.id===entityId)?.name||"":newEntityName} onChange={e=>{
+            const val=e.target.value;
+            if(val==="__custom__"){setEntCustom(true);setEntityId("");setNewEntityName("");return;}
+            const existing=entities.find(en=>en.name===val);
+            setEntityId(existing?existing.id:"");
+            setNewEntityName(existing?"":val);
+          }}>
+            <option value="">Select existing…</option>
+            {entityNames.map(n=><option key={n} value={n}>{n}</option>)}
+            <option value="__custom__">+ Add new person/company…</option>
+          </select>
+        )}
       </>)}
 
       {needsCategory&&(<>
@@ -9805,16 +9858,22 @@ function ManualCashEntryModal({show,onClose,db,owners,onSaved,presetAcctId}){
         {autoTagged&&(categoryId||newCategoryName)&&(
           <div style={{fontSize:11,color:acc,marginBottom:6,display:"flex",alignItems:"center",gap:5}}>✨ Auto-tagged from your rules — click to change</div>
         )}
-        <select style={inp} value={categoryId?categoryAccts.find(c=>c.id===categoryId)?.name||"":newCategoryName} onChange={e=>{
-          const val=e.target.value;
-          const existing=categoryAccts.find(c=>c.name===val);
-          setCategoryId(existing?existing.id:"");
-          setNewCategoryName(existing?"":val);
-          setAutoTagged(false);
-        }}>
-          <option value="">Select existing…</option>
-          {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
-        </select>
+        {catCustom?(
+          <input style={inp} autoFocus placeholder="New category name" value={newCategoryName} onChange={e=>{setNewCategoryName(e.target.value);setAutoTagged(false);}}/>
+        ):(
+          <select style={inp} value={categoryId?categoryAccts.find(c=>c.id===categoryId)?.name||"":newCategoryName} onChange={e=>{
+            const val=e.target.value;
+            if(val==="__custom__"){setCatCustom(true);setCategoryId("");setNewCategoryName("");setAutoTagged(false);return;}
+            const existing=categoryAccts.find(c=>c.name===val);
+            setCategoryId(existing?existing.id:"");
+            setNewCategoryName(existing?"":val);
+            setAutoTagged(false);
+          }}>
+            <option value="">Select existing…</option>
+            {categoryNames.map(n=><option key={n} value={n}>{n}</option>)}
+            <option value="__custom__">+ Add new category…</option>
+          </select>
+        )}
       </>)}
 
       {lbl("Amount (₹)")}<input style={inp} type="number" placeholder="0" value={amount} onChange={e=>setAmount(e.target.value)}/>
