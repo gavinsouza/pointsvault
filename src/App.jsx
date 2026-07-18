@@ -9380,10 +9380,16 @@ function AddTransactionModal({show,onClose,db,onSaved,prefill}){
       }
 
       if(editTxnId){
-        // staged_transactions.resulting_transaction_id FKs to this row — clear the
-        // reference first or the delete fails with fk_resulting_txn.
-        if(prefill&&prefill.stagedId){
-          const {error:cerr}=await db.from("staged_transactions").update(prefill.stagedId,{resulting_transaction_id:null});
+        // staged_transactions.resulting_transaction_id FKs to this row — a transfer
+        // can have TWO staged rows pointing at it (the tagged side plus its
+        // auto-linked mirror on the other account), so clear every reference,
+        // not just the one being tagged from, or the delete fails with
+        // fk_resulting_txn. Un-reconciling them here also makes the mirror
+        // eligible to be re-matched by the transfer auto-link logic below.
+        const {data:linkedStaged,error:lserr}=await db.from("staged_transactions").select();
+        if(lserr) throw new Error(JSON.stringify(lserr));
+        for(const row of (linkedStaged||[]).filter(row=>row.resulting_transaction_id===editTxnId)){
+          const {error:cerr}=await db.from("staged_transactions").update(row.id,{resulting_transaction_id:null,is_reconciled:false});
           if(cerr) throw new Error(JSON.stringify(cerr));
         }
         const {error:derr}=await db.from("transactions").delete(editTxnId);
