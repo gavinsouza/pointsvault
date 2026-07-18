@@ -12048,8 +12048,11 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
   const isCC=account.subtype==="credit_card";
   const isCash=account.subtype==="cash";
 
-  const load=useCallback(async()=>{
-    setBusy(true);
+  // silent=true skips the full-page "Loading…" swap — used when refreshing after a
+  // tag/save inside an already-rendered page, where re-fetching in place reads as an
+  // instant update instead of the whole page flashing and losing scroll position.
+  const load=useCallback(async(silent)=>{
+    if(!silent) setBusy(true);
     if(account.subtype==="loan"){
       const {data}=await db.from("loans").select();
       setLoan((data||[]).find(l=>l.account_id===account.id)||null);
@@ -12227,7 +12230,7 @@ function BooksAccountDetail({account,db,owners,onBack,onUpdated}){
         {statements.length===0?<Empty icon="🧾" msg={isCash?"No transactions yet — record one to get started":"No statements yet — upload one to get started"}/>:(
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {statements.map(s=>(
-              <StatementAccordionRow key={s.id} statement={s} account={account} db={db} onSaved={load} expanded={expandedIds.has(s.id)} onToggle={()=>toggleStmt(s.id)} onDeleted={load} hideAmounts={!isCC&&hideAmounts} computedBalance={!isCC?computedBalances[s.id]:undefined}/>
+              <StatementAccordionRow key={s.id} statement={s} account={account} db={db} onSaved={()=>load(true)} expanded={expandedIds.has(s.id)} onToggle={()=>toggleStmt(s.id)} onDeleted={()=>load(true)} hideAmounts={!isCC&&hideAmounts} computedBalance={!isCC?computedBalances[s.id]:undefined}/>
             ))}
           </div>
         )}
