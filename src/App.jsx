@@ -11756,9 +11756,16 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   const parsedClosing=statement.closing_balance!=null?Number(statement.closing_balance):null;
 
   const toggleSelect=id=>setSelected(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  // Only the current page's rows have a rendered, clickable checkbox — scoping
+  // "select all" (and its own checked state) to whichever page is visible, instead
+  // of every untagged row in the whole (often multi-page) statement, means there's
+  // never a hidden selection sitting on another page that keeps the mixed-direction
+  // bulk-tag warning stuck on after the user's unchecked everything they can see.
   const toggleSelectAll=()=>setSelected(prev=>{
-    const untaggedIds=(staged||[]).filter(s=>!s.is_reconciled).map(s=>s.id);
-    return prev.size===untaggedIds.length?new Set():new Set(untaggedIds);
+    const allSelected=pageUntaggedIds.length>0&&pageUntaggedIds.every(id=>prev.has(id));
+    const next=new Set(prev);
+    pageUntaggedIds.forEach(id=>allSelected?next.delete(id):next.add(id));
+    return next;
   });
 
   // Which way money is moving for the current selection — drives which set of tag
@@ -11905,6 +11912,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   }
 
   const toggleSort=col=>{if(sortBy===col)setSortDir(d=>d==="asc"?"desc":"asc");else{setSortBy(col);setSortDir("asc");}};
+  const pageUntaggedIds=sorted.slice(page*PAGE_SIZE,(page+1)*PAGE_SIZE).filter(s=>!s.is_reconciled).map(s=>s.id);
   const sortHdr=(col,label,align,ci)=>(
     <th onClick={()=>toggleSort(col)} style={{padding:"6px 8px",textAlign:align||"left",cursor:"pointer",userSelect:"none",fontSize:10,textTransform:"uppercase",letterSpacing:"0.06em",color:sortBy===col?acc:mut,whiteSpace:"nowrap",position:"relative",overflow:"hidden",textOverflow:"ellipsis"}}>
       {label}{sortBy===col?(sortDir==="desc"?" ↓":" ↑"):""}
@@ -12045,7 +12053,7 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
                   <colgroup>{(isCC?colW.filter((_,i)=>i!==5):colW).map((w,i)=><col key={i} style={{width:w}}/>)}</colgroup>
                   <thead>
                     <tr style={{background:surf3,borderBottom:`1px solid ${bdr}`}}>
-                      <th style={{padding:"6px 8px",position:"relative"}}><input type="checkbox" checked={untaggedCount>0&&selected.size===untaggedCount} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
+                      <th style={{padding:"6px 8px",position:"relative"}}><input type="checkbox" checked={pageUntaggedIds.length>0&&pageUntaggedIds.every(id=>selected.has(id))} onChange={toggleSelectAll}/><ColResizeHandle width={colW[0]} onResize={w=>setColWAt(0,w)}/></th>
                       {sortHdr("date","Date",null,1)}
                       {sortHdr("desc","Description",null,2)}
                       {sortHdr("status","Tag",null,3)}
