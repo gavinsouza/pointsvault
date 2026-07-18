@@ -11600,15 +11600,17 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   const [sortDir,setSortDir]=useState("asc");
   const [page,setPage]=useState(0);
   const [selected,setSelected]=useState(new Set());
-  const [bulkType,setBulkType]=useState("category");
+  const [bulkType,setBulkType]=useState("expense");
   const [bulkName,setBulkName]=useState("");
   const [bulkNameMode,setBulkNameMode]=useState("select"); // "select" | "custom"
   const [bulkApplying,setBulkApplying]=useState(false);
   const [bulkErr,setBulkErr]=useState("");
   const [categoryNames,setCategoryNames]=useState([]);
+  const [incomeCategoryNames,setIncomeCategoryNames]=useState([]);
   const [entityNames,setEntityNames]=useState([]);
   const [entities,setEntities]=useState([]);
   const [categoryAccts,setCategoryAccts]=useState([]);
+  const [incomeCategoryAccts,setIncomeCategoryAccts]=useState([]);
   const [deleting,setDeleting]=useState(false);
   const [allAccts,setAllAccts]=useState([]);
   const [allTxns,setAllTxns]=useState([]);
@@ -11622,11 +11624,12 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
   const isCC=account.subtype==="credit_card";
 
   const load=useCallback(async()=>{
-    const [s,a,e,c,p,t,l,st]=await Promise.all([
+    const [s,a,e,c,ic,p,t,l,st]=await Promise.all([
       db.from("staged_transactions").select(),
       db.from("accounts").select(),
       db.from("entities").select(),
       db.from("spend_categories").select(),
+      db.from("income_categories").select(),
       db.from("people").select(),
       db.from("transactions").select(),
       db.from("transaction_lines").select(),
@@ -11638,6 +11641,9 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
     const cats=accts.filter(x=>x.type==="expense");
     setCategoryAccts(cats);
     setCategoryNames([...new Set([...cats.map(x=>x.name),...(c.data||[]).map(x=>x.name)])].sort());
+    const incCats=accts.filter(x=>x.type==="income");
+    setIncomeCategoryAccts(incCats);
+    setIncomeCategoryNames([...new Set([...incCats.map(x=>x.name),...(ic.data||[]).map(x=>x.name)])].sort());
     setEntities(e.data||[]);
     setEntityNames([...new Set([...(e.data||[]).map(x=>x.name),...(p.data||[]).map(x=>x.name)])].sort());
     setAllTxns(t.data||[]);
@@ -11745,26 +11751,47 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
     return prev.size===untaggedIds.length?new Set():new Set(untaggedIds);
   });
 
+  // Which way money is moving for the current selection — drives which set of tag
+  // types (Expense/Paid on behalf of… vs Income/Refund received from…/Borrowed
+  // from…) the bulk-tag dropdown offers, same split as the per-row Tag Transaction
+  // form. null when nothing's selected or the selection mixes both directions,
+  // since one bulk action can't correctly apply to both.
+  const selectedRows=(staged||[]).filter(s=>selected.has(s.id));
+  const bulkDirection=selectedRows.length===0?null:selectedRows.every(s=>Number(s.amount)<0)?"out":selectedRows.every(s=>Number(s.amount)>=0)?"in":null;
+  // If the selection's direction flips (or a fresh selection starts), snap the
+  // type dropdown to a type that's actually valid for it instead of silently
+  // keeping e.g. "Expense" selected against a newly-all-credit selection.
+  useEffect(()=>{
+    if(bulkDirection){
+      const valid=rowTypesFor(bulkDirection);
+      if(!valid.some(t=>t.id===bulkType)){setBulkType(valid[0].id);setBulkName("");setBulkNameMode("select");}
+    }
+  },[bulkDirection]);
+
   const bulkApply=async()=>{
-    if(!bulkName.trim()) return setBulkErr("Choose or type a "+(bulkType==="category"?"category":"person/company"));
+    if(!bulkName.trim()) return setBulkErr("Choose or type a "+(isCategoryRowType(bulkType)?"category":"person/company"));
+    if(bulkDirection===null) return setBulkErr("Selected transactions mix money in and money out — select rows of the same direction to bulk tag them together");
     setBulkApplying(true);setBulkErr("");
     try{
       const uid=getCurrentUserId();
       const name=bulkName.trim();
+      const isDebit=bulkDirection==="out";
       let targetAcctId;
-      if(bulkType==="category"){
-        targetAcctId=await resolveCategoryAccount(db,name,"expense",categoryAccts,uid);
+      if(isCategoryRowType(bulkType)){
+        const catType=bulkType==="income"?"income":"expense";
+        targetAcctId=await resolveCategoryAccount(db,name,catType,catType==="income"?incomeCategoryAccts:categoryAccts,uid);
       }else{
         const entId=await resolveEntityId(db,entities,name,account.owner_id,uid);
-        const {recvAcctId}=await ensureEntityAccounts(db,entId,name,account.owner_id,uid);
-        targetAcctId=recvAcctId;
+        const {recvAcctId,payAcctId}=await ensureEntityAccounts(db,entId,name,account.owner_id,uid);
+        targetAcctId=(bulkType==="paid_on_behalf"||bulkType==="refund_received")?recvAcctId:payAcctId;
       }
       const rows=(staged||[]).filter(s=>selected.has(s.id));
-      const action=bulkType==="category"?"expense":"paid_on_behalf";
       for(const row of rows){
         const amt=Math.abs(Number(row.amount));
-        const lines=[{account_id:targetAcctId,debit:amt,credit:0},{account_id:statement.account_id,debit:0,credit:amt}];
-        const {data:txnRows,error:terr}=await db.from("transactions").insert({txn_date:row.txn_date,description:row.raw_description,action,source:"import",user_id:uid});
+        const lines=isDebit
+          ?[{account_id:targetAcctId,debit:amt,credit:0},{account_id:statement.account_id,debit:0,credit:amt}]
+          :[{account_id:targetAcctId,debit:0,credit:amt},{account_id:statement.account_id,debit:amt,credit:0}];
+        const {data:txnRows,error:terr}=await db.from("transactions").insert({txn_date:row.txn_date,description:row.raw_description,action:bulkType,source:"import",user_id:uid});
         if(terr) throw new Error(JSON.stringify(terr));
         const txnId=txnRows[0].id;
         const {error:lerr}=await db.from("transaction_lines").insert(lines.map(l=>({...l,transaction_id:txnId})));
@@ -11977,23 +12004,26 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
             {selected.size>0&&(
               <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:surf,border:`1px solid ${bdr}`,borderRadius:10,padding:"10px 14px",marginBottom:10}}>
                 <div style={{fontSize:12,fontWeight:600,color:txt,marginRight:4}}>Tag {selected.size} selected as:</div>
-                <select style={{...inp,marginBottom:0,width:110,fontSize:12}} value={bulkType} onChange={e=>{setBulkType(e.target.value);setBulkName("");setBulkNameMode("select");}}>
-                  <option value="category">Expense category</option>
-                  <option value="person">Paid on behalf of</option>
-                </select>
-                {bulkNameMode==="select"?(
-                  <select style={{...inp,marginBottom:0,width:200,fontSize:12}} value={bulkName} onChange={e=>{
-                    if(e.target.value==="__custom__"){setBulkNameMode("custom");setBulkName("");}
-                    else setBulkName(e.target.value);
-                  }}>
-                    <option value="">{bulkType==="category"?"Choose category…":"Choose person/company…"}</option>
-                    {(bulkType==="category"?categoryNames:entityNames).map(n=><option key={n} value={n}>{n}</option>)}
-                    <option value="__custom__">+ Add new {bulkType==="category"?"category":"person/company"}…</option>
+                {bulkDirection===null?(
+                  <div style={{fontSize:11,color:amber}}>Selected transactions mix money in and money out — select rows of the same direction to bulk tag them together</div>
+                ):(<>
+                  <select style={{...inp,marginBottom:0,width:150,fontSize:12}} value={bulkType} onChange={e=>{setBulkType(e.target.value);setBulkName("");setBulkNameMode("select");}}>
+                    {rowTypesFor(bulkDirection).map(t=><option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
-                ):(
-                  <input style={{...inp,marginBottom:0,width:200}} autoFocus placeholder={bulkType==="category"?"New category name":"New person/company name"} value={bulkName} onChange={e=>setBulkName(e.target.value)}/>
-                )}
-                <button style={{...pbtnXs,opacity:bulkApplying?0.5:1}} disabled={bulkApplying} onClick={bulkApply}>{bulkApplying?"Applying…":"Apply"}</button>
+                  {bulkNameMode==="select"?(
+                    <select style={{...inp,marginBottom:0,width:200,fontSize:12}} value={bulkName} onChange={e=>{
+                      if(e.target.value==="__custom__"){setBulkNameMode("custom");setBulkName("");}
+                      else setBulkName(e.target.value);
+                    }}>
+                      <option value="">{isCategoryRowType(bulkType)?"Choose category…":"Choose person/company…"}</option>
+                      {(isCategoryRowType(bulkType)?(bulkType==="income"?incomeCategoryNames:categoryNames):entityNames).map(n=><option key={n} value={n}>{n}</option>)}
+                      <option value="__custom__">+ Add new {isCategoryRowType(bulkType)?"category":"person/company"}…</option>
+                    </select>
+                  ):(
+                    <input style={{...inp,marginBottom:0,width:200}} autoFocus placeholder={isCategoryRowType(bulkType)?"New category name":"New person/company name"} value={bulkName} onChange={e=>setBulkName(e.target.value)}/>
+                  )}
+                  <button style={{...pbtnXs,opacity:bulkApplying?0.5:1}} disabled={bulkApplying} onClick={bulkApply}>{bulkApplying?"Applying…":"Apply"}</button>
+                </>)}
                 <button style={gbtnXs} onClick={()=>setSelected(new Set())}>Clear</button>
                 {bulkErr&&<div style={{color:red,fontSize:11,width:"100%"}}>{bulkErr}</div>}
               </div>
