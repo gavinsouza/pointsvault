@@ -14343,12 +14343,19 @@ function parseHDFCStatement(rows){
 
 // ── Axis Bank statement parser ─────────────────────────────────────────────
 function parseAxisStatement(rows){
-  // Row 17 = headers: SRL NO,Tran Date,CHQNO,PARTICULARS,DR,CR,BAL,SOL
-  // Data starts row 18
+  // Headers: SRL NO,Tran Date,CHQNO,PARTICULARS,DR,CR,BAL,SOL — but the number of
+  // account-info lines above that row varies (e.g. an extra "Nominee Name :- ..."
+  // line only appears when a nominee is actually named), so the header can land on
+  // a different row per statement. Scan for it instead of assuming a fixed offset,
+  // or a statement whose info block is one line shorter has its real first
+  // transaction silently skipped. Falls back to the old fixed offset if the header
+  // text isn't found at all (e.g. a differently-formatted export).
+  const headerIdx=rows.findIndex(r=>(r[0]||"").toString().trim().toUpperCase()==="SRL NO");
+  const startRow=headerIdx>=0?headerIdx+1:18;
   const txns=[];
   let closingBal=null;
 
-  for(let i=18;i<rows.length;i++){
+  for(let i=startRow;i<rows.length;i++){
     const row=rows[i];
     if(!row[0]||isNaN(parseInt(row[0]))) continue; // SRL NO must be a number
     // Date format DD-MM-YYYY
