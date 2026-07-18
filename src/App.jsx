@@ -10022,7 +10022,17 @@ function BooksUploadModal({show,onClose,db,onImported,presetAcctId}){
       if(headerText.includes("hdfc bank")||(headerText.includes("narration")&&headerText.includes("withdrawal amt"))) return BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_hdfc_xls");
       // Axis Bank statements don't always spell out "Axis Bank" in the header block —
       // the IFSC prefix "UTIB" (assigned bank-wide to Axis) is a reliable stand-in.
-      if(headerText.includes("axis bank")||headerText.includes("utib0")) return BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_axis_xls");
+      if(headerText.includes("axis bank")||headerText.includes("utib0")){
+        const base=BANK_MAPPING_LIBRARY.find(p=>p.lid==="ml_bank_axis_xls");
+        // The preset's skip_rows (18) assumes a fixed number of account-info lines
+        // above the "SRL NO" column-header row, but Axis pads a variable number of
+        // them (e.g. an extra "Nominee Name :- ..." line only when a nominee is
+        // actually named) — a statement whose info block is one line shorter has
+        // its real first transaction land one row earlier and gets silently
+        // skipped. Find the header row directly instead of assuming its position.
+        const headerIdx=rows.findIndex(r=>(r[0]||"").toString().trim().toUpperCase()==="SRL NO");
+        return headerIdx>=0?{...base,skip_rows:headerIdx+1}:base;
+      }
     }
     return null;
   };
