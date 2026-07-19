@@ -11531,18 +11531,34 @@ function Pager({page,setPage,total}){
 // squeezed down much further than the old modules allowed.
 const COL_MIN_WIDTH=30;
 function ColResizeHandle({width,onResize}){
+  // The visible bar stays a thin 4px line, but the tappable strip around it is much
+  // wider (16px, entirely within this column so it can't steal taps meant for the
+  // next column's sort header) — a 4px target is unusable on a touchscreen.
   return(
-    <span onMouseDown={e=>{
-      e.preventDefault();
-      const startX=e.clientX,startW=width;
-      const move=ev=>onResize(Math.max(COL_MIN_WIDTH,startW+(ev.clientX-startX)));
-      const up=()=>{document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);};
-      document.addEventListener("mousemove",move);
-      document.addEventListener("mouseup",up);
-    }}
-    style={{position:"absolute",right:0,top:"15%",bottom:"15%",width:4,cursor:"col-resize",background:acc+"55",borderRadius:2}}
-    onMouseEnter={e=>e.currentTarget.style.background=acc}
-    onMouseLeave={e=>e.currentTarget.style.background=acc+"55"}/>
+    <span
+      onMouseDown={e=>{
+        e.preventDefault();
+        const startX=e.clientX,startW=width;
+        const move=ev=>onResize(Math.max(COL_MIN_WIDTH,startW+(ev.clientX-startX)));
+        const up=()=>{document.removeEventListener("mousemove",move);document.removeEventListener("mouseup",up);};
+        document.addEventListener("mousemove",move);
+        document.addEventListener("mouseup",up);
+      }}
+      onTouchStart={e=>{
+        const startX=e.touches[0].clientX,startW=width;
+        // Attached manually (not as a React prop) so {passive:false} can actually take
+        // effect — React makes its own onTouchMove passive by default, which would
+        // silently ignore preventDefault and let the table scroll out from under the drag.
+        const move=ev=>{ev.preventDefault();onResize(Math.max(COL_MIN_WIDTH,startW+(ev.touches[0].clientX-startX)));};
+        const up=()=>{document.removeEventListener("touchmove",move);document.removeEventListener("touchend",up);};
+        document.addEventListener("touchmove",move,{passive:false});
+        document.addEventListener("touchend",up);
+      }}
+      style={{position:"absolute",right:0,top:0,bottom:0,width:16,cursor:"col-resize",touchAction:"none",display:"flex",justifyContent:"flex-end",alignItems:"center"}}
+      onMouseEnter={e=>{e.currentTarget.firstChild.style.background=acc;}}
+      onMouseLeave={e=>{e.currentTarget.firstChild.style.background=acc+"55";}}>
+      <span style={{width:4,height:"70%",background:acc+"55",borderRadius:2}}/>
+    </span>
   );
 }
 
