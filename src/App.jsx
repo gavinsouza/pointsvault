@@ -3676,7 +3676,7 @@ function HDFCPointsUploadModal({show,onClose,db,card,existingTxns,onSaved}){
       {err&&<div style={{color:red,fontSize:12,marginBottom:12}}>{err}</div>}
       {parsed&&(<>
         {lbl("Statement Name")}<input style={inp} value={stmtName} onChange={e=>setStmtName(e.target.value)}/>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
+        <div className="stat-grid-3" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:14}}>
           <div style={{background:surf2,borderRadius:10,padding:"10px 12px",border:`1px solid ${bdr}`}}>
             <div style={{fontSize:10,color:mut,textTransform:"uppercase",letterSpacing:"0.07em",marginBottom:4}}>Statement Opening</div>
             <div className="pv-num" style={{fontSize:15,fontWeight:700,color:txt}}>{(parsed.opening||0).toLocaleString("en-IN")}</div>
@@ -15200,10 +15200,16 @@ function MonthlyBudgetModal({show,onClose,db,owners,onSaved}){
 // ── bucketSpendRows — groups spend rows into period buckets for the trend
 // chart. Granularity scales with the selected period so short windows stay
 // readable at daily resolution and long ones don't render hundreds of points.
-function bucketSpendRows(rows,periodId){
+// Shared by the trend chart's bucketing and the category pie chart's own period
+// filter, so both interpret e.g. "3M" as exactly the same window.
+const spendCutoffDate=periodId=>{
+  if(periodId==="LT") return null;
   const period=SPEND_PERIODS.find(p=>p.id===periodId)||SPEND_PERIODS[1];
-  const now=new Date();
-  const cutoff=periodId==="LT"?null:new Date(now.getTime()-period.days*86400000);
+  return new Date(Date.now()-period.days*86400000);
+};
+
+function bucketSpendRows(rows,periodId){
+  const cutoff=spendCutoffDate(periodId);
   const inRange=cutoff?rows.filter(r=>new Date(r.date)>=cutoff):rows;
   if(inRange.length===0) return [];
   // Lifetime has no fixed window, so a flat "year" bucket collapses to a single
@@ -15429,11 +15435,14 @@ function SpendTxnMonthAccordion({rows,isMobile,owners,onNavigate}){
 
 const SPEND_PIE_COLORS=["#4f86c6","#6dc0a0","#f0a364","#e07b8a","#a78bdb","#5bb8c4","#f6c94e","#7b9e87","#c87dd4","#8fb0d4"];
 
-// ── SpendCategoryPieChart — half-width donut of this month's category split,
-// sitting between the budget breakdown and the trend line. Categories can be
-// excluded via the dropdown (e.g. to ignore EMI/rent skewing the picture)
-// without affecting the budget breakdown or trend chart above/below it.
-function SpendCategoryPieChart({categoryBreakdown,excludedCats,setExcludedCats}){
+// ── SpendCategoryPieChart — half-width donut of the selected period's category
+// split, sitting between the budget breakdown and the trend line. Has its own
+// period selector (independent of the trend chart's — comparing "this month by
+// category" against "3 years by category" are both useful, and there's no
+// reason picking one should force the other). Categories can be excluded via
+// the dropdown (e.g. to ignore EMI/rent skewing the picture) without affecting
+// the budget breakdown or trend chart above/below it.
+function SpendCategoryPieChart({categoryBreakdown,excludedCats,setExcludedCats,period,setPeriod}){
   const [open,setOpen]=useState(false);
   const included=categoryBreakdown.filter(c=>!excludedCats.has(c.id)).sort((a,b)=>b.actual-a.actual);
   const total=included.reduce((a,c)=>a+c.actual,0);
@@ -15448,11 +15457,12 @@ function SpendCategoryPieChart({categoryBreakdown,excludedCats,setExcludedCats})
   const allIncluded=excludedCats.size===0;
   const toggleAll=()=>setExcludedCats(allIncluded?new Set(categoryBreakdown.map(c=>c.id)):new Set());
   const toggleOne=id=>setExcludedCats(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+  const pb=a=>({padding:"3px 9px",borderRadius:20,border:"1px solid "+(a?txt:bdr),cursor:"pointer",fontSize:10,fontWeight:a?600:400,background:a?txt:"transparent",color:a?bg:mut2,fontFamily:"'Manrope',sans-serif"});
 
   return(
     <Card className="ov-col" style={{marginBottom:16}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-        <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by category — this month</div>
+        <div style={{fontSize:9,fontWeight:500,color:mut,textTransform:"uppercase",letterSpacing:"0.09em"}}>Spend by category</div>
         <div style={{position:"relative"}}>
           <button onClick={()=>setOpen(v=>!v)} style={{padding:"5px 10px",borderRadius:8,border:`1px solid ${bdr}`,background:surf,color:txt,fontSize:11,fontWeight:500,fontFamily:"'Manrope',sans-serif",cursor:"pointer",display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}}>
             Categories ({categoryBreakdown.length-excludedCats.size}/{categoryBreakdown.length}) <span style={{fontSize:9,color:mut}}>▾</span>
@@ -15473,6 +15483,9 @@ function SpendCategoryPieChart({categoryBreakdown,excludedCats,setExcludedCats})
             </div>
           </>)}
         </div>
+      </div>
+      <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:14}}>
+        {SPEND_PERIODS.map(p=><button key={p.id} onClick={()=>setPeriod(p.id)} style={pb(period===p.id)}>{p.label}</button>)}
       </div>
       {pieSlices.length===0?(
         <div style={{color:mut,fontSize:12,textAlign:"center",padding:"20px 0"}}>No spend to show</div>
@@ -15515,6 +15528,7 @@ function SpendTrackerHome({db,owners,onNavigate}){
   const [txnsOpen,setTxnsOpen]=useState(false);
   const [showBudget,setShowBudget]=useState(false);
   const [excludedCats,setExcludedCats]=useState(()=>new Set());
+  const [pieChartPeriod,setPieChartPeriod]=useState("1m");
   const isMobile=useIsMobile();
 
   const load=useCallback(async()=>{
@@ -15650,6 +15664,13 @@ function SpendTrackerHome({db,owners,onNavigate}){
   const unbudgetedCats=categoryBreakdown.filter(c=>c.budget==null).sort((a,b)=>b.actual-a.actual);
   const mostOverspent=rankedCats.length&&rankedCats[0].overspend>0?rankedCats[0]:null;
 
+  const pieCutoff=spendCutoffDate(pieChartPeriod);
+  const catSpendPiePeriod={};
+  spendRows.filter(r=>!pieCutoff||new Date(r.date)>=pieCutoff).forEach(r=>{
+    catSpendPiePeriod[r.categoryId]=(catSpendPiePeriod[r.categoryId]||0)+r.amount;
+  });
+  const pieCategoryBreakdown=Object.keys(catSpendPiePeriod).map(cid=>({id:cid,name:accountsById[cid]?.name||"Uncategorized",actual:catSpendPiePeriod[cid]}));
+
   const deltaMonths=[];
   for(let i=5;i>=0;i--){
     const d=new Date(now.getFullYear(),now.getMonth()-i,1);
@@ -15699,7 +15720,7 @@ function SpendTrackerHome({db,owners,onNavigate}){
         </div>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:24,alignItems:"stretch"}}>
+      <div className="stat-grid-3" style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:16,marginBottom:24,alignItems:"stretch"}}>
         {tiles.map((t,i)=>{
           const over=t.budget!=null&&t.actual>t.budget;
           const delta=t.budget!=null?Math.abs(t.actual-t.budget):null;
@@ -15761,9 +15782,9 @@ function SpendTrackerHome({db,owners,onNavigate}){
 
       {totalMonthlyBudget>0&&<OverspendDeltaChart data={deltaMonths}/>}
 
-      {categoryBreakdown.length>0&&(
+      {pieCategoryBreakdown.length>0&&(
         <div className="ov-grid" style={{marginBottom:16}}>
-          <SpendCategoryPieChart categoryBreakdown={categoryBreakdown} excludedCats={excludedCats} setExcludedCats={setExcludedCats}/>
+          <SpendCategoryPieChart categoryBreakdown={pieCategoryBreakdown} excludedCats={excludedCats} setExcludedCats={setExcludedCats} period={pieChartPeriod} setPeriod={setPieChartPeriod}/>
         </div>
       )}
 
