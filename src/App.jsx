@@ -405,7 +405,7 @@ function createAuthedClient(token,onAuthError){
       return{data:d,error:r.ok?null:d};
     }catch(e){return{data:null,error:{message:e.message}};}
   };
-  return{from:t=>({select:(q="")=>req(`/${t}?select=*${q}`),insert:row=>req(`/${t}`,{method:"POST",body:JSON.stringify(row)}),update:(id,row)=>req(`/${t}?id=eq.${id}`,{method:"PATCH",body:JSON.stringify(row)}),delete:id=>req(`/${t}?id=eq.${id}`,{method:"DELETE"}),filter:(col,val)=>req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`)}),storage,rpc,updateUser};
+  return{from:t=>({select:(q="")=>req(`/${t}?select=*${q}`),insert:row=>req(`/${t}`,{method:"POST",body:JSON.stringify(row)}),update:(id,row)=>req(`/${t}?id=eq.${id}`,{method:"PATCH",body:JSON.stringify(row)}),delete:id=>req(`/${t}?id=eq.${id}`,{method:"DELETE"}),deleteWhere:(col,val)=>req(`/${t}?${col}=eq.${encodeURIComponent(val)}`,{method:"DELETE"}),filter:(col,val)=>req(`/${t}?select=*&${col}=eq.${encodeURIComponent(val)}`)}),storage,rpc,updateUser};
 }
 
 // ── Design tokens: private-banking premium ────────────────────────────────────
@@ -11882,8 +11882,17 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
     const msg=`Remove this tag? ${tagDesc?`This transaction is tagged to ${tagDesc}. `:""}Removing the tag will delete that ledger/account entry. This cannot be undone. Are you sure you want to continue?`;
     if(!confirm(msg)) return;
     try{
-      if(s.resulting_transaction_id) await deleteTxnAndLines(s.resulting_transaction_id);
-      await db.from("staged_transactions").update(s.id,{is_reconciled:false,resulting_transaction_id:null});
+      if(s.resulting_transaction_id){
+        // staged_transactions.resulting_transaction_id FKs to this row — a transfer
+        // can have TWO staged rows pointing at it (this one plus its auto-linked
+        // mirror on the other account), so clear every reference before deleting
+        // the transaction, or the delete fails with fk_resulting_txn.
+        const {data:linkedStaged}=await db.from("staged_transactions").select();
+        for(const row of (linkedStaged||[]).filter(r=>r.resulting_transaction_id===s.resulting_transaction_id)){
+          await db.from("staged_transactions").update(row.id,{is_reconciled:false,resulting_transaction_id:null});
+        }
+        await deleteTxnAndLines(s.resulting_transaction_id);
+      }
       await load();
       onSaved&&onSaved();
     }catch(e){ alert("Remove tag failed: "+e.message); }
