@@ -11861,14 +11861,22 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
     if(!confirm("Delete this statement and all "+((staged||[]).length)+" of its transactions? Tagged ledger entries will be removed too. This cannot be undone.")) return;
     setDeleting(true);
     try{
-      for(const s of (staged||[])){
+      // Re-fetch this statement's own rows with a server-side filter rather than
+      // trusting the already-loaded `staged` state — that state comes from an
+      // unfiltered select() over the account's entire staged_transactions history,
+      // which a large account can silently truncate against Supabase's default
+      // row cap. A statement-scoped fetch can't be truncated the same way, so it's
+      // the only reliable source for "every row that actually blocks this delete".
+      const {data:ownStaged,error:fe}=await db.from("staged_transactions").filter("statement_id",statement.id);
+      if(fe) throw new Error("Failed to load statement's transactions: "+JSON.stringify(fe));
+      for(const s of (ownStaged||[])){
         if(s.resulting_transaction_id){
           // A transfer can have TWO staged rows pointing at the same resulting
           // transaction (this one plus its auto-linked mirror on the other
           // account's statement) — clear every reference, not just this row's,
           // or the transaction delete below fails with fk_resulting_txn.
-          const {data:linkedStaged}=await db.from("staged_transactions").select();
-          for(const row of (linkedStaged||[]).filter(r=>r.id!==s.id&&r.resulting_transaction_id===s.resulting_transaction_id)){
+          const {data:linkedStaged}=await db.from("staged_transactions").filter("resulting_transaction_id",s.resulting_transaction_id);
+          for(const row of (linkedStaged||[]).filter(r=>r.id!==s.id)){
             const {error:ue}=await db.from("staged_transactions").update(row.id,{is_reconciled:false,resulting_transaction_id:null});
             if(ue) throw new Error("Failed to clear linked transfer row: "+JSON.stringify(ue));
           }
