@@ -11862,13 +11862,26 @@ function StatementAccordionRow({statement,account,db,onSaved,expanded,onToggle,o
     setDeleting(true);
     try{
       for(const s of (staged||[])){
+        if(s.resulting_transaction_id){
+          // A transfer can have TWO staged rows pointing at the same resulting
+          // transaction (this one plus its auto-linked mirror on the other
+          // account's statement) — clear every reference, not just this row's,
+          // or the transaction delete below fails with fk_resulting_txn.
+          const {data:linkedStaged}=await db.from("staged_transactions").select();
+          for(const row of (linkedStaged||[]).filter(r=>r.id!==s.id&&r.resulting_transaction_id===s.resulting_transaction_id)){
+            const {error:ue}=await db.from("staged_transactions").update(row.id,{is_reconciled:false,resulting_transaction_id:null});
+            if(ue) throw new Error("Failed to clear linked transfer row: "+JSON.stringify(ue));
+          }
+        }
         // staged_transactions.resulting_transaction_id references transactions —
         // delete the staged row first, or the transaction delete is blocked by
         // that FK (fk_resulting_txn) while this row still points at it.
-        await db.from("staged_transactions").delete(s.id);
+        const {error:se}=await db.from("staged_transactions").delete(s.id);
+        if(se) throw new Error("Failed to delete staged transaction: "+JSON.stringify(se));
         if(s.resulting_transaction_id) await deleteTxnAndLines(s.resulting_transaction_id);
       }
-      await db.from("account_statements").delete(statement.id);
+      const {error:ae}=await db.from("account_statements").delete(statement.id);
+      if(ae) throw new Error("Failed to delete statement: "+JSON.stringify(ae));
       onDeleted&&onDeleted();
     }catch(e){ alert("Delete failed: "+e.message); }
     finally{setDeleting(false);}
